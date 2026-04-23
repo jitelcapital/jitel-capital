@@ -1,0 +1,2245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>JiTel Capital</title>
+<style>
+:root{--bg:#07111e;--card:#0d1e33;--c2:#112240;--bor:#1c3455;--acc:#e9a020;--txt:#d8e8f5;--mut:#5a7a9a;--grn:#2dd87a;--red:#f04f70;--blu:#4a9eff;--wa:#25D366;--pur:#9b6dff}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px}
+#app{height:100vh;display:flex;flex-direction:column;max-width:600px;margin:0 auto;position:relative}
+#topbar{background:linear-gradient(135deg,#0d1e33 0%,#0a1a2e 100%);border-bottom:1px solid var(--bor);padding:11px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;z-index:5}
+#content{flex:1;overflow-y:auto;padding:14px 14px 90px;-webkit-overflow-scrolling:touch}
+#navbar{position:absolute;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--bor);display:flex;z-index:5}
+#modals{position:fixed;inset:0;z-index:100;pointer-events:none}
+#modals .mbg{pointer-events:all}
+.nbtn{flex:1;border:none;background:none;color:var(--mut);padding:8px 0;cursor:pointer;font-size:10px;display:flex;flex-direction:column;align-items:center;gap:2px;touch-action:manipulation;font-family:inherit}
+.nbtn.on{color:var(--acc)}
+.ico{font-size:19px;line-height:1}
+input,select{background:var(--c2);border:1px solid var(--bor);color:var(--txt);border-radius:8px;padding:9px 12px;font-size:15px;outline:none;width:100%;-webkit-appearance:none;font-family:inherit}
+input:focus,select:focus{border-color:var(--acc)}
+select option{background:var(--card)}
+.btn{border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:9px 14px;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;font-family:inherit;-webkit-appearance:none}
+.btn:active{opacity:.65}
+.ba{background:var(--acc);color:#000}
+.bh{background:var(--c2);color:var(--txt);border:1px solid var(--bor)}
+.bg{background:#0e4a2e;color:var(--grn);border:1px solid #1a6b42}
+.bb{background:#0e2a4a;color:var(--blu);border:1px solid #1a4a7a}
+.br{background:#7b1c2f;color:#fca5a5}
+.bw{background:var(--wa);color:#fff}
+.bp{background:#2a1a4a;color:var(--pur);border:1px solid #4a2a7a}
+.card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px}
+.ta{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e3a1e;color:var(--grn)}
+.tp{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e1e38;color:var(--blu)}
+.mn{font-family:'Courier New',monospace}
+.sep{height:1px;background:var(--bor);margin:10px 0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.kpi{background:var(--card);border:1px solid var(--bor);border-radius:10px;padding:12px}
+.lrow{background:var(--card);border:1px solid var(--bor);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px;font-weight:500}
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--card);border-radius:18px 18px 0 0;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;padding:18px;-webkit-overflow-scrolling:touch}
+.pbar{background:var(--c2);border-radius:20px;height:8px;overflow:hidden;margin-bottom:4px}
+.pf{background:var(--grn);height:100%;border-radius:20px}
+.pvb{background:#0a2a12;border:1px solid #1a5a2a;border-radius:10px;padding:12px;white-space:pre-wrap;font-size:12px;color:#c8f0d8;line-height:1.6;max-height:200px;overflow-y:auto;margin-top:8px}
+.dg{border:1px solid var(--bor);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.dh{background:var(--c2);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;touch-action:manipulation}
+.db{padding:12px 14px}
+.cp{background:var(--c2);color:var(--blu);border:1px solid var(--blu);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;touch-action:manipulation;font-family:inherit;display:inline-flex;align-items:center;gap:4px}
+.cp.ok{background:#0e3a1e;color:var(--grn);border-color:var(--grn)}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--bor);border-radius:3px}
+/* Toast */
+#toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);background:#0e4a2e;border:1px solid var(--grn);color:var(--grn);padding:10px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:300;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* Cobros urgency row borders */
+.dg-vencido{border-color:#7b1c2f!important}
+.dg-hoy{border-color:var(--acc)!important}
+.dg-pronto{border-color:#2a4a1a!important}
+.dh-vencido{background:#2a0a12!important}
+.dh-hoy{background:#1a2a00!important}
+.dh-pronto{background:#0a1a08!important}
+.dn-vencido{background:#7b1c2f!important;color:#fca5a5!important}
+.dn-hoy{background:var(--acc)!important;color:#000!important}
+.dn-pronto{background:#0e4a2e!important;color:var(--grn)!important}
+/* Quick pay button in collapsed row */
+.qpay{border:none;border-radius:8px;cursor:pointer;font-weight:700;padding:10px 14px;font-size:13px;background:var(--acc);color:#000;touch-action:manipulation;font-family:inherit;flex-shrink:0;min-width:72px;-webkit-appearance:none}
+.qpay:active{opacity:.65}
+/* ── Floating calculator button ── */
+#btn-calc{position:fixed;bottom:78px;right:14px;width:50px;height:50px;border-radius:50%;border:none;background:linear-gradient(135deg,#9b6dff 0%,#6a3fbf 100%);color:#fff;font-size:22px;cursor:pointer;z-index:90;box-shadow:0 4px 18px rgba(155,109,255,.5);display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .12s,box-shadow .12s,bottom .2s ease-out;font-family:inherit}
+#btn-calc:active{transform:scale(.86);box-shadow:0 2px 8px rgba(155,109,255,.3)}
+#btn-calc.raised{bottom:140px}
+/* ── Cobros selector: checkbox circular ── */
+.chk{width:26px;height:26px;border-radius:50%;border:2px solid var(--bor);background:var(--card);color:var(--mut);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,border-color .15s,color .15s;font-family:inherit;padding:0}
+.chk:active{transform:scale(.9)}
+.chk.on{background:var(--acc);border-color:var(--acc);color:#000}
+/* ── Floating sum bar (above navbar) ── */
+#sumbar{position:fixed;bottom:60px;left:0;right:0;max-width:600px;margin:0 auto;background:linear-gradient(135deg,#0e2a4a 0%,#1a3a6a 100%);border-top:2px solid var(--blu);padding:10px 14px;z-index:80;display:none;box-shadow:0 -4px 16px rgba(0,0,0,.4);transform:translateY(100%);transition:transform .2s ease-out}
+#sumbar.on{display:flex;align-items:center;justify-content:space-between;gap:10px;transform:translateY(0)}
+#sumbar .sb-info{display:flex;flex-direction:column;flex:1;min-width:0}
+#sumbar .sb-count{font-size:11px;color:#9bc4e8;text-transform:uppercase;letter-spacing:.5px}
+#sumbar .sb-total{font-family:'Courier New',monospace;font-weight:700;font-size:17px;color:#fff;line-height:1.2}
+#sumbar .sb-clear{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-appearance:none;touch-action:manipulation;flex-shrink:0}
+#sumbar .sb-clear:active{opacity:.6}
+/* ── Calculator modal internals ── */
+.calc-res{background:var(--c2);border:1px solid var(--bor);border-radius:10px;overflow:hidden;margin-top:4px}
+.calc-row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--bor)}
+.calc-row:last-child{border-bottom:none}
+.calc-lbl{font-size:12px;color:var(--mut);flex:1}
+.calc-val{font-family:'Courier New',monospace;font-weight:700;font-size:13px;text-align:right}
+.calc-sep{height:1px;background:linear-gradient(90deg,transparent,var(--pur),transparent);margin:2px 0}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <div>
+      <div style="font-weight:700;font-size:16px;color:var(--acc);letter-spacing:.3px">💼 JiTel Capital</div>
+      <div id="tsub" style="font-size:11px;color:var(--mut)">Cargando...</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn bh" id="btn-alerts" style="font-size:16px;padding:6px 10px;position:relative">🔔</button>
+    <button class="btn ba" id="btn-new" style="font-size:12px;padding:7px 13px">+ Nuevo</button>
+  </div>
+  </div>
+  <div id="content"></div>
+  <div id="navbar"></div>
+</div>
+<div id="modals"></div>
+<button id="btn-calc" title="Calculadora de préstamo">🧮</button>
+<div id="sumbar">
+  <div class="sb-info">
+    <span class="sb-count"><span id="sb-label">Total</span> · <span id="sb-count">0 seleccionados</span></span>
+    <span class="sb-total" id="sb-total">$0</span>
+  </div>
+  <button class="sb-clear" id="sb-clear">✕ Limpiar</button>
+</div>
+<canvas id="cvs" style="display:none"></canvas>
+
+<script>
+// ── UTILS ──
+var COP=function(n){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);};
+var PCT=function(n){return ((n||0)*100).toFixed(1)+'%';};
+var GID=function(){return Math.random().toString(36).slice(2)+Date.now().toString(36);};
+var TODAY=new Date();
+var MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+var TODAY_DIA=TODAY.getDate();
+var CURR_MK=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+function isoToday(){
+  // Use local date components to avoid UTC midnight crossing (Colombia = UTC-5)
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function hoyStr(){return new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});}
+// Parse YYYY-MM-DD as LOCAL date to avoid UTC offset bugs
+function parseLocalDate(s){if(!s||typeof s!=='string')return null;var p=s.slice(0,10).split('-');return p.length===3?new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2])):null;}
+// Julian rule: if int_socio=0, all interest is propio (no external partner cost)
+function IM(l){return l.monto*((+l.int_socio)+(+l.int_propio));}
+function IS(l){return l.monto*(+l.int_socio);}
+function IP(l){return l.monto*(+l.int_propio);}
+// Effective interest shown to client = int_socio + int_propio always
+function cobrarCliente(l){return IM(l);}
+// Unified Julian detection: a loan is "direct to owner" when int_socio is 0 AND socio is JULIAN.
+// This prevents false positives (otro socio with 0% by mistake) and false negatives (typo in name).
+function isJulianLoan(l){return (+l.int_socio===0)&&(l.socio||'').toUpperCase()==='JULIAN';}
+function paidMth(l){
+  var p=l.pagos||[],i,tm=TODAY.getMonth(),ty=TODAY.getFullYear();
+  for(i=0;i<p.length;i++){var d=parseLocalDate(p[i].fecha);if(d&&d.getMonth()===tm&&d.getFullYear()===ty)return true;}
+  return false;
+}
+
+// ── TOAST ──
+function showToast(msg){
+  var t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
+  t.textContent=msg;t.className='show';
+  clearTimeout(t._to);t._to=setTimeout(function(){t.className='';},2000);
+}
+
+// ── PAYMENT CONFIRMATION MODAL ──
+// Shows a summary of the payment(s) about to be registered. Only on ✓ Listo the callback fires.
+function showPaymentConfirm(loans,dia,onConfirm){
+  var m=D('modal',null,null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';
+  h2.textContent=loans.length===1?'Confirmar pago':'Confirmar '+loans.length+' pagos';
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'12px'},null);
+  sub.textContent='Revisa los detalles antes de guardar. Aún no se registra nada.';
+  m.appendChild(sub);
+  var tot=0,i;
+  var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
+  for(i=0;i<loans.length;i++){
+    var ln=loans[i],amt=Math.round(IM(ln));tot+=amt;
+    var row=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:i<loans.length-1?'1px solid var(--bor)':'none'},null);
+    var lft=D(null,{flex:'1',minWidth:'0'},null);
+    var n1=D(null,{fontWeight:'600',fontSize:'13px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);n1.textContent=ln.socio||ln.responsable;
+    var n2=D(null,{fontSize:'11px',color:'var(--mut)'},null);n2.textContent='Día '+dia+' · Interés '+COP(IS(ln))+' + '+COP(IP(ln));
+    lft.appendChild(n1);lft.appendChild(n2);
+    var rgt=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'14px',marginLeft:'10px'},null);rgt.textContent=COP(amt);
+    row.appendChild(lft);row.appendChild(rgt);box.appendChild(row);
+  }
+  if(loans.length>1){
+    var totRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0 0',marginTop:'8px',borderTop:'2px solid var(--acc)'},null);
+    var tl2=D(null,{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);tl2.textContent='TOTAL';
+    var tv2=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'16px'},null);tv2.textContent=COP(tot);
+    totRow.appendChild(tl2);totRow.appendChild(tv2);box.appendChild(totRow);
+  }
+  m.appendChild(box);
+  var dateBox=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'14px',textAlign:'center'},null);
+  dateBox.textContent='📅 Fecha: '+isoToday();
+  m.appendChild(dateBox);
+  var brow=D(null,{display:'flex',gap:'8px'},null);
+  brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
+  brow.appendChild(BTN('bg','✓ Listo',function(){closeModal();onConfirm();},{flex:'2'}));
+  m.appendChild(brow);
+  showModal(m);
+}
+
+// ── CONFIRMATION MODAL (reusable) ──
+// Shows a clear confirm dialog and calls onConfirm only if user taps Confirm.
+// Replaces native confirm() for destructive actions.
+function showConfirm(opts){
+  var title=opts.title||'¿Confirmar?';
+  var msg=opts.msg||'Esta acción no se puede deshacer.';
+  var confirmLbl=opts.confirmLbl||'Confirmar';
+  var cancelLbl=opts.cancelLbl||'Cancelar';
+  var danger=opts.danger!==false;
+  var onConfirm=opts.onConfirm||function(){};
+  var onCancel=opts.onCancel||function(){};
+  var m=D('modal',{maxWidth:'420px'},null);
+  var icoEl=D(null,{fontSize:'36px',textAlign:'center',marginBottom:'10px'},null);icoEl.textContent=danger?'⚠️':'❓';
+  var ttl=D(null,{fontSize:'17px',fontWeight:'700',color:danger?'var(--red)':'var(--acc)',textAlign:'center',marginBottom:'8px'},null);ttl.textContent=title;
+  var mEl=D(null,{fontSize:'13px',color:'var(--mut)',textAlign:'center',marginBottom:'16px',lineHeight:'1.5'},null);mEl.textContent=msg;
+  m.appendChild(icoEl);m.appendChild(ttl);m.appendChild(mEl);
+  var brow=D(null,{display:'flex',gap:'8px'},null);
+  brow.appendChild(BTN('bh',cancelLbl,function(){closeModal();onCancel();},{flex:'1'}));
+  brow.appendChild(BTN(danger?'br':'ba',confirmLbl,function(){closeModal();onConfirm();},{flex:'1'}));
+  m.appendChild(brow);
+  showModal(m);
+}
+
+// ── SMART DEFAULTS (most frequent int_socio/int_propio pair + responsable among active loans) ──
+function getSmartDefaults(){
+  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  // Most frequent rate pair
+  var rateMap={},bestRate=null,bestRateN=0;
+  for(i=0;i<active.length;i++){
+    var key=active[i].int_socio+'|'+active[i].int_propio;
+    rateMap[key]=(rateMap[key]||0)+1;
+    if(rateMap[key]>bestRateN){bestRateN=rateMap[key];bestRate=key;}
+  }
+  var defIs=0.035,defIp=0.015;
+  if(bestRate){var parts=bestRate.split('|');defIs=parseFloat(parts[0]);defIp=parseFloat(parts[1]);}
+  // Most frequent responsable
+  var respMap={},bestResp='DAYAM',bestRespN=0;
+  for(i=0;i<active.length;i++){
+    var r=active[i].responsable||'';if(!r)continue;
+    respMap[r]=(respMap[r]||0)+1;
+    if(respMap[r]>bestRespN){bestRespN=respMap[r];bestResp=r;}
+  }
+  return{int_socio:defIs,int_propio:defIp,responsable:bestResp};
+}
+
+// ── DOM HELPERS ──
+function mk(tag,cls,css,ch){
+  var e=document.createElement(tag);
+  if(cls)e.className=cls;
+  if(css){var ks=Object.keys(css);for(var i=0;i<ks.length;i++)e.style[ks[i]]=css[ks[i]];}
+  if(ch){for(var j=0;j<ch.length;j++){var c=ch[j];if(c==null||c===false||c===undefined)continue;e.appendChild(typeof c==='string'||typeof c==='number'?document.createTextNode(String(c)):c);}}
+  return e;
+}
+function D(cls,css,ch){return mk('div',cls,css,ch);}
+function S(cls,css,ch){return mk('span',cls,css,ch);}
+function T(t){return document.createTextNode(String(t));}
+function BTN(cls,lbl,fn,css){var b=mk('button','btn '+cls,css,null);b.textContent=lbl;if(fn)b.addEventListener('click',fn);return b;}
+function INP(a){var e=document.createElement('input');var ks=Object.keys(a);for(var i=0;i<ks.length;i++){var k=ks[i];if(k==='css'){var cs=Object.keys(a[k]);for(var j=0;j<cs.length;j++)e.style[cs[j]]=a[k][cs[j]];}else e[k]=a[k];}return e;}
+function MSEL(opts,val){var s=document.createElement('select');for(var i=0;i<opts.length;i++){var o=document.createElement('option');o.value=opts[i][0];o.textContent=opts[i][1];if(opts[i][0]===val)o.selected=true;s.appendChild(o);}return s;}
+function FLD(lbl,inp){var f=D('fld',null,null);var l=document.createElement('label');l.textContent=lbl;f.appendChild(l);f.appendChild(inp);return f;}
+function R2(a,b){var d=D('g2',null,null);d.appendChild(a);d.appendChild(b);return d;}
+function R3(a,b,c){var d=D('g3',null,null);d.appendChild(a);d.appendChild(b);d.appendChild(c);return d;}
+
+// ── COPY ──
+function doCopy(msg,btn){
+  function ok(){btn.textContent='✓ Copiado';btn.className='cp ok';setTimeout(function(){btn.textContent='📋 Copiar';btn.className='cp';},2000);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(ok).catch(function(){fb();});}else{fb();}
+  function fb(){var ta=document.createElement('textarea');ta.value=msg;ta.style.cssText='position:fixed;top:-9999px;left:-9999px';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');ok();}catch(e){alert('Mantén presionado para copiar.');}document.body.removeChild(ta);}
+}
+function mkCpBtn(msg){var b=mk('button','cp',null,null);b.textContent='📋 Copiar';b.addEventListener('click',function(){doCopy(msg,b);});return b;}
+
+// ── MESSAGES ──
+function waSocioMsg(name,dia,amt,fecha){
+  return 'Hola '+name+' 👋\n\nSe realizó el pago de intereses del día '+dia+':\n💰 Monto girado: '+COP(amt)+'\n📅 Fecha: '+fecha+'\n\n✅ Todo en orden. Confirma recibo 🙏';
+}
+function waRegMsg(dia,loans,fecha){
+  var tc=0,ts=0,gn=0,i;
+  for(i=0;i<loans.length;i++){tc+=IM(loans[i]);ts+=IS(loans[i]);gn+=IP(loans[i]);}
+  var lines=['📋 REGISTRO COBROS — Día '+dia,'📅 '+fecha,'','💵 Cobrado: '+COP(tc),'','Pagos a socios:'];
+  for(i=0;i<loans.length;i++)if(IS(loans[i])>0)lines.push('✓ '+loans[i].socio+': '+COP(IS(loans[i])));
+  lines.push('','Total socios: '+COP(ts),'💚 Ganancia neta: '+COP(gn));
+  return lines.join('\n');
+}
+function waSocioResumen(name,st){
+  var lines=['📊 RESUMEN DE INVERSIÓN','Hola '+name+' 👋','Fecha: '+hoyStr(),'','💰 Capital: '+COP(st.capital),'📈 Tu interés mensual: '+COP(st.intS),'📋 Préstamos activos: '+st.count,'','Detalle:'],i;
+  for(i=0;i<st.loans.length;i++){var l=st.loans[i];lines.push((i+1)+'. '+COP(l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Interés: '+COP(IS(l)));}
+  lines.push('','¡Gracias por tu confianza! 🙏');
+  return lines.join('\n');
+}
+function waClienteMsg(name,loans){
+  var t=0,i;for(i=0;i<loans.length;i++)t+=cobrarCliente(loans[i]);
+  var lines=['💼 ESTADO DE CUENTA','Hola '+name+' 👋','Fecha: '+hoyStr(),'','📋 Préstamos activos: '+loans.length,'💵 Total a pagar este mes: '+COP(t),'','Detalle:'];
+  for(i=0;i<loans.length;i++){var l=loans[i];lines.push((i+1)+'. Capital: '+COP(l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Cuota: '+COP(cobrarCliente(l)));}
+  lines.push('','📅 Recuerda tus fechas de pago 😊');
+  return lines.join('\n');
+}
+
+// ── DATA ──
+// Julian rule applied: int_socio=0 means no partner, int_propio=0.05 (all goes to owner)
+var AR=[];
+var PR=[];
+function mkRow(r,st){return{id:GID(),año:r[0],dia:r[1],mes_fin:r[2].trim(),monto:r[3]||0,socio:r[4]||'',int_socio:r[5]||0,int_propio:r[6]||0,responsable:r[7]||'',mes_comienzo:r[8],status:st,pagos:[],nota:'',created_at:new Date().toISOString()};}
+function mkInit(){var l=[],i;for(i=0;i<AR.length;i++)l.push(mkRow(AR[i],'active'));for(i=0;i<PR.length;i++)l.push(mkRow(PR[i],'paid'));return{loans:l,archives:{}};}
+
+// ── STORAGE ──
+var LSK='jitel_v1';
+var ST={loans:[],archives:{}};
+function loadST(){
+  try{
+    var r=localStorage.getItem(LSK);
+    if(!r)return null;
+    var p=JSON.parse(r);
+    // Structural validation
+    if(!p||typeof p!=='object')return null;
+    if(!Array.isArray(p.loans))return null;
+    if(!p.archives||typeof p.archives!=='object')p.archives={};
+    // Sanitize each loan: ensure required numeric fields exist
+    for(var i=0;i<p.loans.length;i++){
+      var l=p.loans[i];
+      if(!l.id)l.id=GID();
+      if(!Array.isArray(l.pagos))l.pagos=[];
+      if(typeof l.monto!=='number')l.monto=parseFloat(l.monto)||0;
+      if(typeof l.int_socio!=='number')l.int_socio=parseFloat(l.int_socio)||0;
+      if(typeof l.int_propio!=='number')l.int_propio=parseFloat(l.int_propio)||0;
+      if(typeof l.dia!=='number')l.dia=parseInt(l.dia)||1;
+      if(!l.status)l.status='active';
+    }
+    return p;
+  }catch(e){return null;}
+}
+function saveST(){try{localStorage.setItem(LSK,JSON.stringify(ST));}catch(e){}}
+
+// ── MODAL ──
+var MC=document.getElementById('modals');
+var AM=null;
+function closeModal(){if(AM){AM.remove();AM=null;}}
+function showModal(inner){
+  closeModal();
+  var bg=D('mbg',null,null);
+  bg.addEventListener('click',function(e){if(e.target===bg)closeModal();});
+  bg.appendChild(inner);MC.appendChild(bg);AM=bg;
+}
+function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw,old);else if(AM){while(AM.firstChild)AM.removeChild(AM.firstChild);AM.appendChild(nw);}}
+
+// ── IMAGE VIEWER (iOS-safe share) ──
+function showImageViewer(dataUrl){
+  closeModal();
+  var bg=D(null,{position:'fixed',inset:'0',background:'#000',zIndex:'200',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',overflowY:'auto',padding:'12px'},null);
+  var topRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',width:'100%',maxWidth:'600px',marginBottom:'10px'},null);
+  var instr=D(null,{fontSize:'13px',color:'#fff',flex:'1',lineHeight:'1.6'},null);
+  instr.textContent='📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
+  topRow.appendChild(instr);topRow.appendChild(BTN('bh','✕',function(){bg.remove();AM=null;},{marginLeft:'10px',flexShrink:'0'}));
+  bg.appendChild(topRow);
+  var img=document.createElement('img');img.src=dataUrl;img.style.cssText='width:100%;max-width:600px;border-radius:10px;display:block';
+  bg.appendChild(img);
+  MC.appendChild(bg);AM=bg;
+}
+
+// ── CANVAS IMAGE ──
+function buildSocioImage(name,st,onDone){
+  var cvs=document.getElementById('cvs');
+  var loans=st.loans.slice().sort(function(a,b){return a.dia-b.dia;});
+  var sc=Math.min(window.innerWidth,540)*2/480;
+  var rH=Math.round(44*sc),hdH=Math.round(140*sc),pad=Math.round(22*sc);
+  var cW=[Math.round(55*sc),Math.round(105*sc),Math.round(120*sc),Math.round(120*sc)];
+  var tW=cW[0]+cW[1]+cW[2]+cW[3]+pad*2;
+  var H=hdH+rH*(loans.length+2)+Math.round(36*sc);
+  cvs.width=tW;cvs.height=H;
+  var ctx=cvs.getContext('2d');
+  var fs=Math.round(13*sc),fsS=Math.round(10*sc),fsL=Math.round(16*sc),fsXL=Math.round(21*sc);
+  ctx.fillStyle='#07111e';ctx.fillRect(0,0,tW,H);
+  ctx.fillStyle='#0d1e33';
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(pad/2,pad/2,tW-pad,hdH-pad/2,Math.round(12*sc));ctx.fill();}
+  else{ctx.fillRect(pad/2,pad/2,tW-pad,hdH-pad/2);}
+  // Brand
+  ctx.font='bold '+fsXL+'px -apple-system,sans-serif';ctx.fillStyle='#e9a020';ctx.textAlign='left';
+  ctx.fillText('💼 JiTel Capital',pad*1.2,pad*1.8);
+  ctx.font='bold '+fsL+'px -apple-system,sans-serif';ctx.fillStyle='#d8e8f5';
+  ctx.fillText('Resumen: '+name,pad*1.2,pad*1.8+Math.round(28*sc));
+  ctx.font=Math.round(11*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
+  ctx.fillText(hoyStr()+' · '+st.count+' préstamos activos',pad*1.2,pad*1.8+Math.round(50*sc));
+  // Totals bar
+  var tbY=pad*1.8+Math.round(72*sc);
+  ctx.fillStyle='#112240';
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(pad*1.2,tbY,tW-pad*2.4,Math.round(38*sc),Math.round(8*sc));ctx.fill();}
+  else ctx.fillRect(pad*1.2,tbY,tW-pad*2.4,Math.round(38*sc));
+  ctx.font='bold '+Math.round(12*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';ctx.textAlign='left';
+  ctx.fillText('Capital: ',pad*1.8,tbY+Math.round(25*sc));
+  ctx.fillStyle='#e9a020';ctx.fillText(COP(st.capital),pad*1.8+Math.round(55*sc),tbY+Math.round(25*sc));
+  ctx.fillStyle='#5a7a9a';ctx.fillText('  Tu interés/mes: ',pad*1.8+Math.round(165*sc),tbY+Math.round(25*sc));
+  ctx.fillStyle='#f04f70';ctx.fillText(COP(st.intS),pad*1.8+Math.round(295*sc),tbY+Math.round(25*sc));
+  // Table header
+  var tY=hdH;
+  ctx.fillStyle='#112240';ctx.fillRect(0,tY,tW,rH);
+  var hcols=['DÍA','MES FIN','CAPITAL','INT/MES'],cx=pad,cIdx;
+  ctx.font='bold '+fsS+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';ctx.textAlign='center';
+  for(cIdx=0;cIdx<hcols.length;cIdx++){ctx.fillText(hcols[cIdx],cx+cW[cIdx]/2,tY+rH*0.65);cx+=cW[cIdx];}
+  // Rows
+  for(var i=0;i<loans.length;i++){
+    var l=loans[i];var rY=tY+rH*(i+1);
+    ctx.fillStyle=i%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
+    ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
+    var vals=[String(l.dia),l.mes_fin,COP(l.monto),COP(IS(l))];
+    cx=pad;
+    for(cIdx=0;cIdx<vals.length;cIdx++){
+      ctx.font=(cIdx>=2?'bold ':'')+fs+'px -apple-system,sans-serif';
+      ctx.fillStyle=cIdx===3?'#f04f70':'#d8e8f5';ctx.textAlign='center';
+      ctx.fillText(vals[cIdx],cx+cW[cIdx]/2,rY+rH*0.65);cx+=cW[cIdx];
+    }
+  }
+  // Total row
+  var totY=tY+rH*(loans.length+1);
+  ctx.fillStyle='#1c3455';ctx.fillRect(0,totY,tW,rH);
+  ctx.strokeStyle='#e9a020';ctx.lineWidth=Math.round(2*sc);ctx.beginPath();ctx.moveTo(0,totY);ctx.lineTo(tW,totY);ctx.stroke();
+  cx=pad;
+  ctx.font='bold '+fs+'px -apple-system,sans-serif';ctx.textAlign='center';
+  ctx.fillStyle='#e9a020';ctx.fillText('TOTAL',cx+cW[0]/2,totY+rH*0.65);cx+=cW[0];cx+=cW[1];
+  ctx.fillStyle='#e9a020';ctx.fillText(COP(st.capital),cx+cW[2]/2,totY+rH*0.65);cx+=cW[2];
+  ctx.fillStyle='#f04f70';ctx.fillText(COP(st.intS),cx+cW[3]/2,totY+rH*0.65);
+  // Footer
+  ctx.font=Math.round(9*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#2a3a4a';ctx.textAlign='center';
+  ctx.fillText('JiTel Capital — '+hoyStr(),tW/2,totY+rH+Math.round(16*sc));
+  cvs.toBlob(function(blob){onDone(blob,cvs.toDataURL('image/png'));});
+}
+
+function buildGeneralImage(loans,onDone){
+  var cvs=document.getElementById('cvs');
+  var sl=loans.slice().sort(function(a,b){return a.dia-b.dia;});
+  var sc=Math.min(window.innerWidth,540)*2/520;
+  var rH=Math.round(38*sc),hdH=Math.round(100*sc),pad=Math.round(18*sc);
+  var cW=[Math.round(46*sc),Math.round(110*sc),Math.round(106*sc),Math.round(110*sc),Math.round(108*sc)];
+  var tW=cW[0]+cW[1]+cW[2]+cW[3]+cW[4]+pad*2;
+  var H=hdH+rH*(sl.length+2)+Math.round(36*sc);
+  cvs.width=tW;cvs.height=H;
+  var ctx=cvs.getContext('2d');
+  var fs=Math.round(11*sc),fsS=Math.round(9*sc);
+  ctx.fillStyle='#07111e';ctx.fillRect(0,0,tW,H);
+  ctx.fillStyle='#0d1e33';
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(pad/2,pad/2,tW-pad,hdH-pad/2,Math.round(10*sc));ctx.fill();}
+  else ctx.fillRect(pad/2,pad/2,tW-pad,hdH-pad/2);
+  ctx.font='bold '+Math.round(17*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#e9a020';ctx.textAlign='left';
+  ctx.fillText('📋 JiTel Capital — Lista General',pad*1.2,pad*1.6);
+  var totC=0,totI=0,i;for(i=0;i<sl.length;i++){totC+=sl[i].monto;totI+=IM(sl[i]);}
+  ctx.font=Math.round(10*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
+  ctx.fillText(sl.length+' préstamos activos  •  '+hoyStr(),pad*1.2,pad*1.6+Math.round(22*sc));
+  ctx.font='bold '+Math.round(11*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
+  ctx.fillText('Capital: ',pad*1.2,pad*1.6+Math.round(44*sc));ctx.fillStyle='#e9a020';ctx.fillText(COP(totC),pad*1.2+Math.round(52*sc),pad*1.6+Math.round(44*sc));
+  ctx.fillStyle='#5a7a9a';ctx.fillText('  Int. total: ',pad*1.2+Math.round(190*sc),pad*1.6+Math.round(44*sc));ctx.fillStyle='#2dd87a';ctx.fillText(COP(totI),pad*1.2+Math.round(260*sc),pad*1.6+Math.round(44*sc));
+  var tY=hdH,cx,cIdx;
+  ctx.fillStyle='#112240';ctx.fillRect(0,tY,tW,rH);
+  var hcols=['Día','Mes Fin','Cliente','Monto','Interés'];
+  ctx.font='bold '+fsS+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';ctx.textAlign='center';cx=pad;
+  for(cIdx=0;cIdx<hcols.length;cIdx++){ctx.fillText(hcols[cIdx].toUpperCase(),cx+cW[cIdx]/2,tY+rH*0.65);cx+=cW[cIdx];}
+  for(i=0;i<sl.length;i++){
+    var l=sl[i];var rY=tY+rH*(i+1);
+    ctx.fillStyle=i%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
+    ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
+    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(l.monto),COP(IM(l))];cx=pad;
+    for(cIdx=0;cIdx<vals.length;cIdx++){
+      ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
+      ctx.fillStyle=cIdx===3?'#d8e8f5':cIdx===4?'#2dd87a':'#d8e8f5';ctx.textAlign='center';
+      var txt=vals[cIdx];if(txt.length>11)txt=txt.slice(0,10)+'…';
+      ctx.fillText(txt,cx+cW[cIdx]/2,rY+rH*0.65);cx+=cW[cIdx];
+    }
+  }
+  var totY=tY+rH*(sl.length+1);
+  ctx.fillStyle='#1c3455';ctx.fillRect(0,totY,tW,rH);
+  ctx.strokeStyle='#e9a020';ctx.lineWidth=Math.round(2*sc);ctx.beginPath();ctx.moveTo(0,totY);ctx.lineTo(tW,totY);ctx.stroke();
+  cx=pad;ctx.font='bold '+fs+'px -apple-system,sans-serif';ctx.textAlign='center';
+  ctx.fillStyle='#e9a020';ctx.fillText('TOTAL',cx+cW[0]/2,totY+rH*0.65);cx+=cW[0];cx+=cW[1];cx+=cW[2];
+  ctx.fillStyle='#e9a020';ctx.fillText(COP(totC),cx+cW[3]/2,totY+rH*0.65);cx+=cW[3];
+  ctx.fillStyle='#2dd87a';ctx.fillText(COP(totI),cx+cW[4]/2,totY+rH*0.65);
+  ctx.font=Math.round(8*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#2a3a4a';ctx.textAlign='center';
+  ctx.fillText('JiTel Capital — '+hoyStr(),tW/2,totY+rH+Math.round(14*sc));
+  cvs.toBlob(function(blob){onDone(blob,cvs.toDataURL('image/png'));});
+}
+
+// ── WA NOTIFY MODAL ──
+function showWaModal(paidLoans,dia){
+  var fecha=hoyStr();
+  var sm={},i,l;
+  for(i=0;i<paidLoans.length;i++){l=paidLoans[i];if(!l.socio||IS(l)===0)continue;if(!sm[l.socio])sm[l.socio]={name:l.socio,loans:[],total:0};sm[l.socio].loans.push(l);sm[l.socio].total+=IS(l);}
+  var tc=0;for(i=0;i<paidLoans.length;i++)tc+=IM(paidLoans[i]);
+  var pvS={};var cur=null;
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';h2.textContent='✅ Pago Registrado — Día '+dia;
+    var hs=D(null,{color:'var(--mut)',fontSize:'13px'},null);hs.textContent='Cobrado: ';var hv=S('mn',{color:'var(--acc)',fontWeight:'700'},null);hv.textContent=COP(tc);hs.appendChild(hv);
+    hdr.appendChild(D(null,null,[h2,hs]));hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var sb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
+    for(i=0;i<paidLoans.length;i++){
+      l=paidLoans[i];
+      var r=D(null,{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:i<paidLoans.length-1?'1px solid var(--bor)':'none'},null);
+      var rl=D(null,{fontSize:'13px'},null);rl.textContent=l.responsable+' ';var rs=S(null,{color:'var(--mut)',fontSize:'12px'},null);rs.textContent='vía '+l.socio;rl.appendChild(rs);
+      var rr=D(null,{textAlign:'right'},null);
+      var rv=D('mn',{color:'var(--acc)',fontWeight:'700'},null);rv.textContent=COP(IM(l));
+      var ri=D(null,{fontSize:'11px',color:IS(l)>0?'var(--red)':'var(--grn)'},null);
+      ri.textContent=IS(l)>0?'→ socio: '+COP(IS(l)):'→ ganancia directa: '+COP(IP(l));
+      rr.appendChild(rv);rr.appendChild(ri);r.appendChild(rl);r.appendChild(rr);sb.appendChild(r);
+    }
+    m.appendChild(sb);
+    // Per socio — only those with IS > 0
+    var sns=Object.keys(sm);
+    if(sns.length>0){
+      var socLbl=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'1px'},null);socLbl.textContent='Notificar a socios';m.appendChild(socLbl);
+      for(var si=0;si<sns.length;si++){
+        (function(sn,sv){
+          var msg=waSocioMsg(sn,dia,sv.total,fecha);
+          var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'10px'},null);
+          var srow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
+          var stxt=D(null,null,null);
+          var sname=D(null,{fontWeight:'700'},null);sname.textContent=sn;
+          var samt=D('mn',{color:'var(--red)',fontWeight:'700',fontSize:'15px'},null);samt.textContent=COP(sv.total);
+          var scnt=D(null,{fontSize:'11px',color:'var(--mut)'},null);scnt.textContent=sv.loans.length+' préstamo'+(sv.loans.length!==1?'s':'');
+          stxt.appendChild(sname);stxt.appendChild(samt);stxt.appendChild(scnt);
+          srow.appendChild(stxt);
+          srow.appendChild(mkCpBtn(msg));
+          box.appendChild(srow);
+          var pvk='s_'+sn;
+          var pvBtn=BTN('bh',pvS[pvk]?'Ocultar':'👁 Ver mensaje',function(){pvS[pvk]=!pvS[pvk];refresh();},{width:'100%',fontSize:'12px',marginTop:'4px'});
+          box.appendChild(pvBtn);
+          if(pvS[pvk]){var pvb=D('pvb',null,null);pvb.textContent=msg;box.appendChild(pvb);}
+          m.appendChild(box);
+        })(sns[si],sm[sns[si]]);
+      }
+    }
+    // Mi registro
+    var regMsg=waRegMsg(dia,paidLoans,fecha);
+    var rb=D(null,{background:'#0a1f2e',border:'1px solid var(--blu)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
+    var rttl=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--blu)',marginBottom:'6px'},null);rttl.textContent='📋 Mi Registro Personal';
+    var rsub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);rsub.textContent='Envíate este resumen a tu grupo de control';
+    rb.appendChild(rttl);rb.appendChild(rsub);
+    var rrow=D(null,{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'},null);
+    rrow.appendChild(BTN('bh',pvS.reg?'Ocultar':'👁 Ver',function(){pvS.reg=!pvS.reg;refresh();},{flex:'1'}));
+    rrow.appendChild(mkCpBtn(regMsg));
+    rb.appendChild(rrow);
+    if(pvS.reg){var rpvb=D('pvb',null,null);rpvb.textContent=regMsg;rb.appendChild(rpvb);}
+    m.appendChild(rb);
+    m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── LOAN DETAIL ──
+function showLoanDetail(lid){
+  var spay=false,sext=false;
+  var pm='',ptyp='interes',pfec=isoToday(),pnot='';
+  var ed=null,initE=false,cur=null;
+  function render(){
+    var loan=null,i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].id===lid){loan=ST.loans[i];break;}}
+    if(!loan)return D(null,null,null);
+    var iS=IS(loan),iP=IP(loan),iM=IM(loan);
+    var ab=0;var pg=loan.pagos||[];for(i=0;i<pg.length;i++){if(pg[i].tipo!=='interes')ab+=pg[i].monto;}
+    if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,nota:''};initE=true;}
+    if(!pm)pm=String(Math.round(iM));
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px';h2.textContent=loan.responsable;
+    var hs=D(null,{color:'var(--mut)',fontSize:'13px'},null);hs.textContent='Socio: '+(loan.socio||'—')+' · ';
+    var badge=S(loan.status==='active'?'ta':'tp',null,null);badge.textContent=loan.status==='active'?'Activo':'Pagado';hs.appendChild(badge);
+    hdr.appendChild(D(null,null,[h2,hs]));hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    // Julian note
+    if(isJulianLoan(loan)){
+      var jn=D(null,{background:'#1a2a10',border:'1px solid #2a5a20',borderRadius:'8px',padding:'8px 10px',marginBottom:'10px',fontSize:'12px',color:'#7dde9a'},null);
+      jn.textContent='ℹ️ Julián: interés directo al dueño (sin costo de socio)';m.appendChild(jn);
+    }
+    var cb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+    var cttl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);cttl.textContent='Cálculo mensual';cb.appendChild(cttl);
+    var cg=D('g3',null,null);
+    function kv(lb,v,vc){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=lb;var vv=D('mn',vc?{fontWeight:'700',fontSize:'13px',color:vc}:{fontWeight:'700',fontSize:'13px'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);return d;}
+    cg.appendChild(kv('Capital',COP(loan.monto),null));
+    cg.appendChild(kv('Costo socio '+PCT(loan.int_socio),iS>0?COP(iS):'$0','var(--red)'));
+    cg.appendChild(kv('Tu ganancia '+PCT(loan.int_propio),COP(iP),'var(--grn)'));
+    cb.appendChild(cg);cb.appendChild(D('sep',null,null));
+    var crow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center'},null);
+    var cl=D(null,{color:'var(--mut)',fontSize:'13px'},null);cl.textContent='Cobrar al cliente:';
+    var cv=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'16px'},null);cv.textContent=COP(iM);
+    crow.appendChild(cl);crow.appendChild(cv);cb.appendChild(crow);
+    if(ab>0){var cr2=D(null,{display:'flex',justifyContent:'space-between',marginTop:'4px'},null);var cl2=D(null,{fontSize:'12px',color:'var(--mut)'},null);cl2.textContent='Capital restante:';var cv2=S('mn',null,null);cv2.textContent=COP(loan.monto-ab);cr2.appendChild(cl2);cr2.appendChild(cv2);cb.appendChild(cr2);}
+    m.appendChild(cb);
+    // Plazo
+    var pb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+    var pr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
+    var pl=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px'},null);pl.textContent='Plazo';
+    pr.appendChild(pl);
+    if(loan.status==='active')pr.appendChild(BTN('bb',sext?'Cancelar':'📅 Extender',function(){sext=!sext;refresh();},{fontSize:'11px',padding:'4px 10px'}));
+    pb.appendChild(pr);
+    var pg2=D('g2',null,null);
+    var pid=D(null,null,null);var pil=D(null,{fontSize:'11px',color:'var(--mut)'},null);pil.textContent='Inicio';var piv=D(null,{fontWeight:'600'},null);piv.textContent=loan.mes_comienzo||'—';pid.appendChild(pil);pid.appendChild(piv);
+    var pvd=D(null,null,null);var pvl=D(null,{fontSize:'11px',color:'var(--mut)'},null);pvl.textContent='Vence';var pvv=D(null,{fontWeight:'600',color:'var(--acc)'},null);pvv.textContent='Día '+loan.dia+' · '+loan.mes_fin;pvd.appendChild(pvl);pvd.appendChild(pvv);
+    pg2.appendChild(pid);pg2.appendChild(pvd);pb.appendChild(pg2);
+    if(sext){
+      var ediv=D(null,{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--bor)'},null);
+      var dIn=INP({type:'number',min:'1',max:'31',value:String(ed.dia)});dIn.addEventListener('input',function(e){ed.dia=parseInt(e.target.value)||1;});
+      var mopts=[];for(i=0;i<MESES.length;i++)mopts.push([MESES[i],MESES[i].slice(0,3)]);
+      var msel=MSEL(mopts,ed.mes);msel.addEventListener('change',function(e){ed.mes=e.target.value;});
+      var yIn=INP({type:'number',value:String(ed.año)});yIn.addEventListener('input',function(e){ed.año=parseInt(e.target.value)||2026;});
+      var nIn=INP({type:'text',placeholder:'Motivo...',value:ed.nota||''});nIn.addEventListener('input',function(e){ed.nota=e.target.value;});
+      ediv.appendChild(R3(FLD('Día',dIn),FLD('Mes',msel),FLD('Año',yIn)));ediv.appendChild(FLD('Motivo',nIn));
+      ediv.appendChild(BTN('bb','Confirmar nueva fecha',function(){
+        var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var note='Plazo → día '+ed.dia+' '+ed.mes+' '+ed.año+(ed.nota?' ('+ed.nota+')':'');var c={};for(var k in x)c[k]=x[k];c.dia=ed.dia;c.mes_fin=ed.mes;c.año=ed.año;c.nota=x.nota?x.nota+' | '+note:note;nl.push(c);}else nl.push(x);}
+        ST.loans=nl;saveST();sext=false;refresh();renderApp();
+      },{width:'100%'}));
+      pb.appendChild(ediv);
+    }
+    m.appendChild(pb);
+    if(loan.nota){var nd=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'13px',color:'var(--mut)'},null);nd.textContent='📝 '+loan.nota;m.appendChild(nd);}
+    if(pg.length>0){
+      var hd=D(null,{marginBottom:'12px'},null);
+      var htt=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);htt.textContent='Historial de pagos';hd.appendChild(htt);
+      for(i=pg.length-1;i>=0;i--){
+        var p=pg[i];
+        var pr2=D(null,{display:'flex',justifyContent:'space-between',padding:'8px 10px',background:'var(--c2)',borderRadius:'8px',marginBottom:'6px'},null);
+        var pl2=D(null,null,null);
+        var pt=S(null,{fontSize:'13px',fontWeight:'600'},null);pt.textContent=p.tipo==='interes'?'Interés':p.tipo==='abono'?'Abono Capital':'Pago Total';
+        var pdt=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);pdt.textContent=p.fecha;
+        pl2.appendChild(pt);pl2.appendChild(pdt);
+        if(p.nota){var pnt=D(null,{fontSize:'11px',color:'var(--mut)'},null);pnt.textContent=p.nota;pl2.appendChild(pnt);}
+        var pamt=S('mn',{fontWeight:'700',color:p.tipo==='interes'?'var(--blu)':'var(--grn)'},null);pamt.textContent=COP(p.monto);
+        pr2.appendChild(pl2);pr2.appendChild(pamt);hd.appendChild(pr2);
+      }
+      m.appendChild(hd);
+    }
+    if(loan.status==='active'){
+      if(!spay){m.appendChild(BTN('ba','+ Registrar Pago',function(){spay=true;refresh();},{width:'100%',marginBottom:'8px'}));}
+      else{
+        var pd=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'14px',marginBottom:'12px'},null);
+        var pth=D(null,{fontSize:'13px',fontWeight:'600',marginBottom:'12px'},null);pth.textContent='Nuevo Pago';pd.appendChild(pth);
+        var tsel=MSEL([['interes','Pago de Interés mensual ('+COP(iM)+')'],['abono','Abono a Capital'],['total','Pago Total (cierra préstamo)']],ptyp);
+        tsel.addEventListener('change',function(e){ptyp=e.target.value;if(ptyp==='interes')pm=String(Math.round(iM));refresh();});
+        pd.appendChild(FLD('Tipo',tsel));
+        var mIn=INP({type:'number',value:pm,placeholder:String(Math.round(iM))});mIn.addEventListener('input',function(e){pm=e.target.value;});
+        var dtIn=INP({type:'date',value:pfec});dtIn.addEventListener('change',function(e){pfec=e.target.value;});
+        pd.appendChild(R2(FLD('Monto recibido',mIn),FLD('Fecha',dtIn)));
+        var notIn=INP({type:'text',placeholder:'Transferencia, efectivo...',value:pnot});notIn.addEventListener('input',function(e){pnot=e.target.value;});
+        pd.appendChild(FLD('Nota',notIn));
+        var pbtns=D(null,{display:'flex',gap:'8px'},null);
+        pbtns.appendChild(BTN('ba','💾 Guardar Pago',function(){
+          var mv=parseFloat(pm);if(!mv||mv<=0){alert('Ingresa un monto válido');return;}
+          var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,nota:pnot};
+          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];var np=(x.pagos||[]).slice();np.push(pago);c.pagos=np;c.status=pago.tipo==='total'?'paid':x.status;nl.push(c);}else nl.push(x);}
+          ST.loans=nl;saveST();pm=String(Math.round(iM));ptyp='interes';pfec=isoToday();pnot='';spay=false;
+          refresh();renderApp();
+          if(pago.tipo==='interes'){var ln2=null,jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id===lid){ln2=ST.loans[jj];break;}}if(ln2)showWaModal([ln2],ln2.dia);}
+        },{flex:'1'}));
+        pbtns.appendChild(BTN('bh','Cancelar',function(){spay=false;refresh();},null));
+        pd.appendChild(pbtns);m.appendChild(pd);
+      }
+    }
+    var acts=D(null,{display:'flex',gap:'8px',marginTop:'4px'},null);
+    if(loan.status==='active')acts.appendChild(BTN('bg','✓ Cerrar préstamo',function(){
+      showConfirm({
+        title:'¿Cerrar préstamo?',
+        msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',
+        confirmLbl:'Sí, cerrar',
+        danger:true,
+        onConfirm:function(){
+          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];c.status='paid';nl.push(c);}else nl.push(x);}
+          ST.loans=nl;saveST();closeModal();renderApp();
+          showToast('✅ Préstamo cerrado');
+        }
+      });
+    },{flex:'1'}));
+    acts.appendChild(BTN('br','🗑 Eliminar',function(){
+      showConfirm({
+        title:'¿Eliminar préstamo?',
+        msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',
+        confirmLbl:'Sí, eliminar',
+        danger:true,
+        onConfirm:function(){
+          var nl=[],j;for(j=0;j<ST.loans.length;j++){if(ST.loans[j].id!==lid)nl.push(ST.loans[j]);}
+          ST.loans=nl;saveST();closeModal();renderApp();
+          showToast('🗑 Préstamo eliminado');
+        }
+      });
+    },{fontSize:'12px',padding:'9px 12px'}));
+    m.appendChild(acts);return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── NEW LOAN ──
+function showNewLoan(prefill){
+  var ss={},sc={};var socios=[],clients=[];var i;
+  // Build datalists from ALL loans (any status). For Cliente, include BOTH responsable and socio
+  // names — this way anyone who has ever appeared in the cartera can be picked as a new cliente.
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    if(l.socio&&!ss[l.socio]){socios.push(l.socio);ss[l.socio]=1;}
+    if(l.responsable&&!sc[l.responsable]){clients.push(l.responsable);sc[l.responsable]=1;}
+    // Also include socio names as valid cliente options (union of both sides)
+    if(l.socio&&!sc[l.socio]){clients.push(l.socio);sc[l.socio]=1;}
+  }
+  socios.sort();clients.sort();
+  var defs=getSmartDefaults();
+  // Allow calculator to pre-fill monto and tasas
+  var pfill=(prefill&&typeof prefill==='object')?prefill:{};
+  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='';
+  var m=D('modal',null,null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'14px'},null);
+  var h2=document.createElement('h2');h2.style.color='var(--acc)';h2.textContent='Nuevo Préstamo';
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var prevDiv=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px',display:'none'},null);
+  function updPrev(){
+    if(fm>0){prevDiv.style.display='block';prevDiv.innerHTML='';
+      var pg=D('g3',null,null);
+      function pv(l,v,c){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=l;var vv=D('mn',{color:c,fontWeight:'700'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);return d;}
+      pg.appendChild(pv('Pagas socio',COP(fm*fis),'var(--red)'));pg.appendChild(pv('Tu ganancia',COP(fm*fip),'var(--grn)'));pg.appendChild(pv('Cobras total',COP(fm*(fis+fip)),'var(--acc)'));
+      prevDiv.appendChild(pg);
+    } else prevDiv.style.display='none';
+  }
+  var dlR=document.createElement('datalist');dlR.id='dlR_'+GID();clients.forEach(function(c){var o=document.createElement('option');o.value=c;dlR.appendChild(o);});
+  var dlS=document.createElement('datalist');dlS.id='dlS_'+GID();socios.forEach(function(s){var o=document.createElement('option');o.value=s;dlS.appendChild(o);});
+  m.appendChild(dlR);m.appendChild(dlS);
+  var rIn=INP({type:'text',value:fr,placeholder:'DAYAM'});rIn.setAttribute('list',dlR.id);rIn.addEventListener('input',function(e){fr=e.target.value;});
+  // Declare isIn/ipIn BEFORE sIn listeners so Julian auto-fill can reference them safely
+  var isIn=INP({type:'number',value:String(fis)});isIn.step='0.005';isIn.addEventListener('input',function(e){fis=parseFloat(e.target.value)||0;updPrev();});
+  var ipIn=INP({type:'number',value:String(fip)});ipIn.step='0.005';ipIn.addEventListener('input',function(e){fip=parseFloat(e.target.value)||0;updPrev();});
+  // Julian detection: use both 'input' and 'change' for iOS Safari datalist reliability
+  function applyJulianRule(val){
+    if(val.trim().toUpperCase()==='JULIAN'){isIn.value='0';fis=0;updPrev();}
+  }
+  var sIn=INP({type:'text',value:'',placeholder:'VICTOR'});sIn.setAttribute('list',dlS.id);
+  sIn.addEventListener('input',function(e){fs=e.target.value;applyJulianRule(e.target.value);updPrev();});
+  sIn.addEventListener('change',function(e){fs=e.target.value;applyJulianRule(e.target.value);});
+  sIn.addEventListener('blur',function(e){applyJulianRule(e.target.value);});
+  m.appendChild(R2(FLD('Cliente',rIn),FLD('Socio (fuente)',sIn)));
+  var mIn=INP({type:'number',value:fm||'',placeholder:'0'});mIn.addEventListener('input',function(e){fm=parseFloat(e.target.value)||0;updPrev();});
+  m.appendChild(FLD('Monto',mIn));
+  m.appendChild(R2(FLD('Int. socio (ej:0.035)',isIn),FLD('Int. propio (ej:0.02)',ipIn)));
+  var defHint=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',marginTop:'-6px'},null);
+  defHint.textContent='💡 Pre-cargado: tasa más usada (socio '+(defs.int_socio*100).toFixed(1)+'% / propio '+(defs.int_propio*100).toFixed(1)+'%)';
+  m.appendChild(defHint);
+  m.appendChild(prevDiv);
+  var dIn=INP({type:'number',value:'1',min:'1',max:'31'});dIn.addEventListener('input',function(e){fd=parseInt(e.target.value)||1;});
+  var mOpts=[];for(i=0;i<MESES.length;i++)mOpts.push([MESES[i],MESES[i].slice(0,3)]);
+  var mSel=MSEL(mOpts,'JUNIO');mSel.addEventListener('change',function(e){fmf=e.target.value;});
+  var yIn=INP({type:'number',value:String(fay)});yIn.addEventListener('input',function(e){fay=parseInt(e.target.value)||2026;});
+  m.appendChild(R3(FLD('Día vence',dIn),FLD('Mes fin',mSel),FLD('Año',yIn)));
+  var mcIn=INP({type:'month',value:CURR_MK});mcIn.addEventListener('change',function(e){fmc=e.target.value;});
+  m.appendChild(FLD('Mes de inicio',mcIn));
+  var nIn=INP({type:'text',placeholder:'Observación...'});nIn.addEventListener('input',function(e){fn=e.target.value;});
+  m.appendChild(FLD('Nota',nIn));
+  m.appendChild(BTN('ba','💾 Guardar Préstamo',function(){
+    if(!fr||!fs||!fm){alert('Completa cliente, socio y monto');return;}
+    var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString()};
+    ST.loans.unshift(l);saveST();closeModal();renderApp();
+  },{width:'100%'}));
+  showModal(m);
+  if(fm>0)updPrev(); // show preview immediately when coming from calculator
+}
+
+// ── RESET ──
+function showReset(){
+  var step=1;var cur=null;
+  function render(){
+    var m=D('modal',null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);margin-bottom:14px';h2.textContent='🔄 Reinicio Mensual';m.appendChild(h2);
+    if(step===1){
+      var info=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'14px',marginBottom:'14px',lineHeight:'1.8'},null);
+      var it=D(null,{color:'var(--blu)',fontWeight:'600',marginBottom:'8px'},null);it.textContent='¿Qué hace el reinicio?';
+      [it,D(null,null,['✅ Archiva registros del mes '+CURR_MK]),D(null,null,['✅ Limpia pagos mensuales de préstamos activos']),D(null,null,['✅ Deja todo listo para el nuevo mes']),D(null,{marginTop:'8px',fontSize:'12px',color:'var(--mut)'},['Los préstamos no se borran.'])].forEach(function(x){info.appendChild(x);});
+      m.appendChild(info);
+      var brow=D(null,{display:'flex',gap:'8px'},null);brow.appendChild(BTN('ba','Continuar →',function(){step=2;refresh();},null));brow.appendChild(BTN('bh','Cancelar',closeModal,null));m.appendChild(brow);
+    } else {
+      var warn=D(null,{background:'#3a1e0e',border:'1px solid var(--red)',borderRadius:'10px',padding:'14px',marginBottom:'14px'},null);
+      warn.appendChild(D(null,{color:'var(--red)',fontWeight:'700',marginBottom:'8px'},'⚠️ Confirma el reinicio'));
+      warn.appendChild(D(null,null,'Se archivará el mes '+CURR_MK+'. No se puede deshacer.'));
+      m.appendChild(warn);
+      var brow2=D(null,{display:'flex',gap:'8px'},null);
+      brow2.appendChild(BTN('br','Sí, reiniciar mes',function(){
+        // Archive current month's pagos for ALL loans (active + paid)
+        var arc={},j;for(j=0;j<ST.loans.length;j++)arc[ST.loans[j].id]=(ST.loans[j].pagos||[]).slice();
+        if(!ST.archives)ST.archives={};ST.archives[CURR_MK]=arc;
+        // Only clear pagos on ACTIVE loans — paid/closed loans keep their full history
+        var nl=[];for(j=0;j<ST.loans.length;j++){
+          var c={};for(var k in ST.loans[j])c[k]=ST.loans[j][k];
+          if(c.status==='active')c.pagos=[];
+          // paid loans: keep pagos untouched so history is preserved
+          nl.push(c);
+        }
+        ST.loans=nl;saveST();closeModal();renderApp();
+        showToast('✅ Mes '+CURR_MK+' archivado');
+      },{flex:'1'}));
+      brow2.appendChild(BTN('bh','← Atrás',function(){step=1;refresh();},null));m.appendChild(brow2);
+    }
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── EXPORT ──
+function showExport(){
+  var active=[];var i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  var sns=Object.keys(sm);sns.sort();
+  var mode='general';var imgPrev=null;var generating=false;var cur=null;
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='📊 Exportar Lista Visual';
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var vrow=D(null,{display:'flex',gap:'6px',marginBottom:'14px',flexWrap:'wrap'},null);
+    var modes=[['general','📋 General']];for(var si=0;si<sns.length;si++)modes.push([sns[si],'👤 '+sns[si]]);
+    for(var mi=0;mi<modes.length;mi++){
+      (function(mv,ml){
+        var b=document.createElement('button');b.className='btn';b.textContent=ml;
+        b.style.cssText='background:'+(mode===mv?'var(--acc)':'var(--c2)')+';color:'+(mode===mv?'#000':'var(--mut)')+';border:1px solid var(--bor);padding:5px 10px;font-size:11px;border-radius:8px';
+        b.addEventListener('click',function(){mode=mv;imgPrev=null;refresh();});vrow.appendChild(b);
+      })(modes[mi][0],modes[mi][1]);
+    }
+    m.appendChild(vrow);
+    if(imgPrev){var img=document.createElement('img');img.src=imgPrev;img.style.cssText='width:100%;border-radius:10px;margin-bottom:14px;border:1px solid var(--bor)';m.appendChild(img);}
+    if(generating){var gn=D(null,{textAlign:'center',padding:'16px',color:'var(--mut)',fontSize:'14px'},null);gn.textContent='Generando imagen...';m.appendChild(gn);}
+    else{
+      var btnRow=D(null,{display:'flex',gap:'8px',flexWrap:'wrap'},null);
+      btnRow.appendChild(BTN('ba',imgPrev?'🔄 Regenerar':'🖼️ Generar imagen',function(){
+        generating=true;refresh();
+        if(mode==='general'){buildGeneralImage(active,function(blob,dataUrl){imgPrev=dataUrl;generating=false;refresh();});}
+        else if(sm[mode]){buildSocioImage(mode,sm[mode],function(blob,dataUrl){imgPrev=dataUrl;generating=false;refresh();});}
+      },{flex:'1'}));
+      if(imgPrev)btnRow.appendChild(BTN('bw','📲 Ver para compartir',function(){showImageViewer(imgPrev);},{flex:'1'}));
+      m.appendChild(btnRow);
+      if(imgPrev){var note=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'8px',textAlign:'center'},null);note.textContent='💡 Mantén presionada la imagen → Guardar en Fotos → envía por WhatsApp.';m.appendChild(note);}
+    }
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── SUMADOR TEMPORAL (scoped per tab) ──
+// Each scope keeps its own selection and uses its own calculation:
+//   cobros → IM (total cobrado al cliente)
+//   socios → IS (cuota socio — solo su porción del interés)
+// Selections persist across re-renders within the same session; reset on reload.
+var SUM_STATE={
+  cobros:{ids:{},calc:IM,label:'Total a cobrar'},
+  socios:{ids:{},calc:IS,label:'Total interés socio'}
+};
+function sumScope(){return SUM_STATE[curTab]||null;}
+function sumToggle(loanId){
+  var sc=sumScope();if(!sc)return;
+  if(sc.ids[loanId])delete sc.ids[loanId];else sc.ids[loanId]=true;
+  sumRefreshBar();
+  var btn=document.querySelector('[data-chk="'+loanId+'"]');
+  if(btn){if(sc.ids[loanId])btn.classList.add('on');else btn.classList.remove('on');btn.textContent=sc.ids[loanId]?'✓':'＋';}
+}
+function sumClear(){
+  var sc=sumScope();if(!sc)return;
+  sc.ids={};sumRefreshBar();
+  var btns=document.querySelectorAll('.chk.on');
+  for(var i=0;i<btns.length;i++){btns[i].classList.remove('on');btns[i].textContent='＋';}
+}
+function sumRefreshBar(){
+  var bar=document.getElementById('sumbar');if(!bar)return;
+  var sc=sumScope();
+  var ct=document.getElementById('content');
+  var calcBtn=document.getElementById('btn-calc');
+  if(!sc){
+    bar.classList.remove('on');
+    if(ct)ct.style.paddingBottom='';
+    if(calcBtn)calcBtn.classList.remove('raised');
+    return;
+  }
+  var n=Object.keys(sc.ids).length,total=0,i;
+  for(i=0;i<ST.loans.length;i++){if(sc.ids[ST.loans[i].id])total+=sc.calc(ST.loans[i]);}
+  if(n===0){
+    bar.classList.remove('on');
+    if(ct)ct.style.paddingBottom='';
+    if(calcBtn)calcBtn.classList.remove('raised');
+    return;
+  }
+  bar.classList.add('on');
+  if(ct)ct.style.paddingBottom='160px';
+  if(calcBtn)calcBtn.classList.add('raised'); // lift the 🧮 button above the sumbar
+  // Update label per scope + count + total
+  var lblEl=document.getElementById('sb-label');
+  var cEl=document.getElementById('sb-count');
+  var tEl=document.getElementById('sb-total');
+  if(lblEl)lblEl.textContent=sc.label;
+  if(cEl)cEl.textContent=n+' seleccionado'+(n!==1?'s':'');
+  if(tEl)tEl.textContent=COP(Math.round(total));
+}
+// Creates a checkbox button wired to sumToggle. Initial state read from current scope.
+function sumCheckbox(loanId){
+  var sc=sumScope();
+  var isOn=sc&&sc.ids[loanId];
+  var b=document.createElement('button');b.className='chk'+(isOn?' on':'');b.type='button';
+  b.setAttribute('data-chk',loanId);b.textContent=isOn?'✓':'＋';
+  b.addEventListener('click',function(e){e.stopPropagation();sumToggle(loanId);});
+  return b;
+}
+
+// ── VIEW: COBROS ──
+function vCobros(){
+  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
+  var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
+  var tm=0,tc=0;for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
+  var pct=tm>0?Math.round(tc/tm*100):0;
+
+  // helper: urgency class for a day group
+  // A day group is 'vencido' only if its dia < TODAY_DIA — meaning it was due earlier THIS month.
+  // Loans due in a future month (mes_fin) are never vencido regardless of dia.
+  function urgency(g,allPaid){
+    if(allPaid)return'paid';
+    var diff=g.dia-TODAY_DIA;
+    if(diff===0)return'hoy';
+    if(diff>0&&diff<=2)return'pronto';
+    if(diff<0)return'vencido';   // dia < today: overdue this cycle
+    return'future';
+  }
+
+  var w=D(null,null,null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:12px';h2.textContent='Cobros del mes';w.appendChild(h2);
+  var kg=D('g2',{marginBottom:'10px'},null);
+  function mkKpi(l,v,vc,sub){var k=D('kpi',null,null);var kl=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'15px',fontWeight:'700',color:vc||'var(--acc)'},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'11px',color:'var(--mut)'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
+  kg.appendChild(mkKpi('TOTAL MES',COP(tm),'var(--acc)',null));kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));w.appendChild(kg);
+  var bw=D(null,{marginBottom:'14px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
+  // Today's summary banner
+  for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'#1a2a00',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IM(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
+
+  for(var gi=0;gi<groups.length;gi++){
+    (function(g){
+      var pend=[],done=[];for(var pi=0;pi<g.loans.length;pi++){if(paidMth(g.loans[pi]))done.push(g.loans[pi]);else pend.push(g.loans[pi]);}
+      var allPaid=pend.length===0;
+      var urg=urgency(g,allPaid);
+
+      // ── Urgency-based styling ──
+      var dgBorderClass = urg==='vencido'?'dg-vencido':urg==='hoy'?'dg-hoy':urg==='pronto'?'dg-pronto':allPaid?'':'';
+      var dhBgClass     = urg==='vencido'?'dh-vencido':urg==='hoy'?'dh-hoy':urg==='pronto'?'dh-pronto':'';
+      var dnExtraClass  = urg==='vencido'?'dn-vencido':urg==='hoy'?'dn-hoy':urg==='pronto'?'dn-pronto':'';
+
+      var dg=D('dg '+dgBorderClass,null,null);
+      if(allPaid)dg.style.borderColor='#1a5a2a';
+
+      var dh=D('dh',null,null);
+      if(dhBgClass)dh.classList.add(dhBgClass);
+      else dh.style.background='var(--c2)';
+
+      // ── Header left: day bubble + info + quick-pay buttons ──
+      var dhl=D(null,{display:'flex',alignItems:'center',gap:'8px',flex:'1',minWidth:'0'},null);
+      var dn=D(null,{borderRadius:'8px',width:'38px',height:'38px',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'700',fontSize:'16px',flexShrink:'0'},null);
+      dn.textContent=String(g.dia);
+      if(allPaid){dn.style.background='#0e3a1e';dn.style.color='var(--grn)';}
+      else if(dnExtraClass){dn.classList.add(dnExtraClass);}
+      else{dn.style.background='var(--card)';dn.style.color='var(--txt)';}
+
+      var diInfo=D(null,{flex:'1',minWidth:'0'},null);
+      var urgLabel='';
+      if(!allPaid){
+        if(urg==='vencido')urgLabel=' — ⚠️ MORA';
+        else if(urg==='hoy')urgLabel=' — HOY';
+        else if(urg==='pronto')urgLabel=' — pronto';
+      }
+      var dt=D(null,{fontWeight:'600',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);dt.textContent='Día '+g.dia+urgLabel;
+      var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'');
+      diInfo.appendChild(dt);diInfo.appendChild(ds);
+      dhl.appendChild(dn);dhl.appendChild(diInfo);
+
+      // ── Quick-pay buttons (visible in collapsed state) — only when there are pending loans ──
+      if(pend.length>0 && !allPaid){
+        if(pend.length===1){
+          // Single quick-pay for the one pending loan — shows confirmation first
+          (function(ln){
+            var qb=document.createElement('button');qb.className='qpay';
+            qb.textContent='✓ '+COP(IM(ln));
+            qb.style.fontSize='11px';qb.style.padding='8px 10px';
+            qb.addEventListener('click',function(e){
+              e.stopPropagation();
+              showPaymentConfirm([ln],g.dia,function(){
+                var pago={id:GID(),tipo:'interes',monto:Math.round(IM(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
+                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);nl.push(c);}else nl.push(x);}
+                ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
+              });
+            });
+            dhl.appendChild(qb);
+          })(pend[0]);
+        } else {
+          // Show count badge instead (batch pay is inside the expanded body)
+          var qbadge=S(null,{background:urg==='vencido'?'#7b1c2f':urg==='hoy'?'#3a2a00':'#0e2a4a',color:urg==='vencido'?'#fca5a5':urg==='hoy'?'var(--acc)':'var(--blu)',padding:'4px 10px',borderRadius:'20px',fontSize:'12px',fontWeight:'700',flexShrink:'0'},null);
+          qbadge.textContent=pend.length+' pend.';
+          dhl.appendChild(qbadge);
+        }
+      }
+
+      dh.appendChild(dhl);
+
+      // ── Header right: total + paid badge ──
+      var dhr=D(null,{textAlign:'right',flexShrink:'0',marginLeft:'6px'},null);
+      var da=D('mn',{fontWeight:'700',color:allPaid?'var(--grn)':'var(--acc)',fontSize:'13px'},null);da.textContent=COP(g.total);dhr.appendChild(da);
+      if(!allPaid&&g.pagado>0){var dp=D(null,{fontSize:'11px',color:'var(--grn)'},null);dp.textContent='✓ '+COP(g.pagado);dhr.appendChild(dp);}
+      if(allPaid){var dbg=S(null,{background:'#0e3a1e',color:'var(--grn)',padding:'2px 8px',borderRadius:'20px',fontSize:'11px',fontWeight:'600'},null);dbg.textContent='✓ Listo';dhr.appendChild(dbg);}
+      dh.appendChild(dhr);
+      dg.appendChild(dh);
+
+      var exp=urg==='hoy'||urg==='vencido';var bodyEl=null;
+      function buildBody(){
+        var body=D('db',null,null);
+        if(pend.length>0){
+          var ph=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);ph.textContent='Pendientes';body.appendChild(ph);
+          for(var pi2=0;pi2<pend.length;pi2++){
+            (function(ln){
+              var row=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px',background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',gap:'8px'},null);
+              // Selector checkbox — leftmost, non-propagating
+              row.appendChild(sumCheckbox(ln.id));
+              var li2=D(null,{flex:'1',cursor:'pointer',minWidth:'0'},null);li2.addEventListener('click',function(){showLoanDetail(ln.id);});
+              // Emphasize Socio (primary), Cliente below
+              var ln1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)'},null);ln1.textContent=ln.socio||'—';
+              var ln2=D(null,{fontSize:'11px',color:'var(--mut)'},null);ln2.textContent='Cliente: '+ln.responsable+' · '+ln.mes_fin;
+              var ln3=D(null,{fontSize:'11px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
+              ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
+              li2.appendChild(ln1);li2.appendChild(ln2);li2.appendChild(ln3);
+              var la=D(null,{textAlign:'right',marginLeft:'10px'},null);
+              var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'14px'},null);lamt.textContent=COP(IM(ln));
+              var lpay=BTN('ba','✓ Pagar',function(){
+                showPaymentConfirm([ln],g.dia,function(){
+                  var pago={id:GID(),tipo:'interes',monto:Math.round(IM(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
+                  var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);nl.push(c);}else nl.push(x);}
+                  ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
+                });
+              },{fontSize:'11px',padding:'6px 12px',marginTop:'4px'});
+              la.appendChild(lamt);la.appendChild(lpay);row.appendChild(li2);row.appendChild(la);body.appendChild(row);
+            })(pend[pi2]);
+          }
+          if(pend.length>1){
+            var pendTot=0,pendSoc=0,bj;for(bj=0;bj<pend.length;bj++){pendTot+=IM(pend[bj]);pendSoc+=IS(pend[bj]);}
+            var bbox=D(null,{background:'#0a1f0a',border:'1px solid #1a4a1a',borderRadius:'10px',padding:'12px',marginBottom:'8px'},null);
+            var btl=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--grn)',marginBottom:'4px'},null);btl.textContent='⚡ Pagar todos del día '+g.dia;
+            var bsub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);bsub.textContent='Total: '+COP(pendTot)+(pendSoc>0?'  Socios: '+COP(pendSoc):'  (ganancia directa)');
+            bbox.appendChild(btl);bbox.appendChild(bsub);
+            bbox.appendChild(BTN('bg','✓ Pagar grupo',function(){
+              showPaymentConfirm(pend,g.dia,function(){
+                var pids={},li3;for(li3=0;li3<pend.length;li3++)pids[pend[li3].id]=true;
+                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(pids[x.id]){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push({id:GID(),tipo:'interes',monto:Math.round(IM(x)),fecha:isoToday(),nota:'Interés día '+g.dia});nl.push(c);}else nl.push(x);}
+                ST.loans=nl;saveST();showToast('✅ Pagos registrados — día '+g.dia+' ('+pend.length+')');renderApp();showWaModal(pend,g.dia);
+              });
+            },{width:'100%'}));
+            body.appendChild(bbox);
+          }
+        }
+        if(done.length>0){
+          var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
+          for(var di2=0;di2<done.length;di2++){
+            (function(ln){
+              var dr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',background:'#0a1f0a',border:'1px solid #1a3a1a',borderRadius:'8px',marginBottom:'6px',gap:'8px'},null);
+              dr.appendChild(sumCheckbox(ln.id));
+              var dli=D(null,{flex:'1',cursor:'pointer',minWidth:'0'},null);
+              dli.addEventListener('click',function(){showLoanDetail(ln.id);});
+              var dl1=S(null,{fontWeight:'600'},null);dl1.textContent=ln.responsable;
+              var dl2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);dl2.textContent='vía '+ln.socio;
+              dli.appendChild(dl1);dli.appendChild(dl2);
+              var da2=S('mn',{color:'var(--grn)'},null);da2.textContent=COP(IM(ln));
+              dr.appendChild(dli);dr.appendChild(da2);
+              body.appendChild(dr);
+            })(done[di2]);
+          }
+          body.appendChild(BTN('bh','📋 Ver notificaciones',function(){showWaModal(done,g.dia);},{width:'100%',fontSize:'12px',marginTop:'6px'}));
+        }
+        return body;
+      }
+      if(exp){bodyEl=buildBody();dg.appendChild(bodyEl);}
+      dh.addEventListener('click',function(){exp=!exp;if(exp&&!bodyEl){bodyEl=buildBody();dg.appendChild(bodyEl);}else if(!exp&&bodyEl){bodyEl.remove();bodyEl=null;}});
+      w.appendChild(dg);
+    })(groups[gi]);
+  }
+  return w;
+}
+
+// ── VIEW: DASHBOARD ──
+function vDashboard(){
+  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var totCap=0,totP=0,totSoc=0,mora=0;
+  for(i=0;i<active.length;i++){
+    totCap+=active[i].monto;
+    totP+=IP(active[i]);
+    totSoc+=IS(active[i]);
+    if(!paidMth(active[i])&&active[i].dia<TODAY_DIA)mora++;
+  }
+  // Margen neto ponderado = Σ(monto_i × int_propio_i) / Σ(monto_i)
+  // This IS a weighted average by capital — same as totP/totCap. Explicit here for clarity.
+  var margenPonderado=totCap>0?totP/totCap:0;
+  var archKeys=Object.keys(ST.archives||{}).sort().reverse();
+  var w=D(null,null,null);
+  // ── Header: Capital activo + botón Nuevo ──
+  var trow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'18px'},null);
+  var ttxt=D(null,null,null);
+  var tlbl=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px'},null);tlbl.textContent='Capital activo';
+  var tval=D('mn',{fontSize:'28px',fontWeight:'700',color:'var(--acc)',lineHeight:'1.1'},null);tval.textContent=COP(totCap);
+  ttxt.appendChild(tlbl);ttxt.appendChild(tval);
+  trow.appendChild(ttxt);trow.appendChild(BTN('ba','+ Nuevo',showNewLoan,{fontSize:'12px',padding:'7px 13px'}));
+  w.appendChild(trow);
+  // ── 4 KPIs de Resumen (sin duplicar capital — ya está arriba) ──
+  function bigKpi(lbl,val,vc,sub,icon){
+    var k=D('kpi',{padding:'16px',position:'relative',overflow:'hidden'},null);
+    var icon_el=D(null,{fontSize:'28px',position:'absolute',right:'12px',top:'12px',opacity:'0.15'},null);icon_el.textContent=icon;
+    var kl=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.8px',marginBottom:'6px'},null);kl.textContent=lbl;
+    var kv=D('mn',{fontSize:'18px',fontWeight:'700',color:vc,lineHeight:'1.2'},null);kv.textContent=val;
+    k.appendChild(icon_el);k.appendChild(kl);k.appendChild(kv);
+    if(sub){var ks=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'4px'},null);ks.textContent=sub;k.appendChild(ks);}
+    return k;
+  }
+  var kg1=D('g2',{marginBottom:'10px'},null);
+  kg1.appendChild(bigKpi('Ganancia mes',COP(totP),'var(--grn)','Interés propio neto','📈'));
+  kg1.appendChild(bigKpi('Préstamos activos',String(active.length),'var(--blu)','Cartera vigente','📋'));
+  w.appendChild(kg1);
+  var kg2=D('g2',{marginBottom:'18px'},null);
+  var moraKpi=bigKpi('En mora',String(mora),'var(--red)',mora===0?'Al día ✓':mora+' sin pagar hoy','⚠️');
+  if(mora===0){moraKpi.style.borderColor='#1a5a2a';moraKpi.querySelector('.mn').style.color='var(--grn)';}
+  kg2.appendChild(moraKpi);
+  kg2.appendChild(bigKpi('Exportar','>','var(--acc)','Lista visual & socios','📊'));
+  kg2.lastChild.style.cursor='pointer';
+  kg2.lastChild.addEventListener('click',function(){showExportModal('general');});
+  w.appendChild(kg2);
+  // ── Resumen Financiero — solo métricas NO mostradas arriba ──
+  var rfSec=D(null,{background:'linear-gradient(135deg,#1a0e3a 0%,#0e1a38 100%)',border:'1px solid var(--pur)',borderRadius:'12px',padding:'14px',marginBottom:'16px'},null);
+  var rfTtl=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--pur)',marginBottom:'10px'},null);rfTtl.textContent='📊 Resumen financiero';
+  rfSec.appendChild(rfTtl);
+  function kpi2(l,v,vc,sub){var k=D('kpi',{background:'rgba(0,0,0,.2)',border:'1px solid rgba(155,109,255,.2)'},null);var kl=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'15px',fontWeight:'700',color:vc},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'11px',color:'var(--mut)'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
+  var rfRow=D('g2',null,null);
+  rfRow.appendChild(kpi2('Costo socios/mes',COP(totSoc),'var(--red)','Pago a inversores'));
+  // Margen Neto ponderado — Σ(monto × int_propio) / Σ(monto). Reflects REAL mix of rates, not a fixed %.
+  rfRow.appendChild(kpi2('Margen neto ponderado',PCT(margenPonderado),'var(--pur)','Ponderado por capital'));
+  rfSec.appendChild(rfRow);
+  w.appendChild(rfSec);
+  // ── Reinicio mensual + Backup (acciones administrativas) ──
+  var rc=D('card',null,null);
+  var rr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px'},null);
+  var rtxt=D(null,null,null);
+  var rt1=D(null,{fontWeight:'600',fontSize:'14px'},null);rt1.textContent='🔄 Reinicio Mensual';
+  var rt2=D(null,{fontSize:'12px',color:'var(--mut)'},null);rt2.textContent='Mes: '+CURR_MK+' · '+archKeys.length+' archivado'+(archKeys.length!==1?'s':'');
+  rtxt.appendChild(rt1);rtxt.appendChild(rt2);
+  // Two buttons side by side: Reinicio + Backup
+  var rbtns=D(null,{display:'flex',gap:'6px'},null);
+  rbtns.appendChild(BTN('bb','Nuevo mes',showReset,{fontSize:'11px',padding:'7px 10px'}));
+  rbtns.appendChild(BTN('bh','🗄️ Backup',showBackupModal,{fontSize:'11px',padding:'7px 10px'}));
+  rr.appendChild(rtxt);rr.appendChild(rbtns);
+  rc.appendChild(rr);
+  if(archKeys.length>0){
+    var ad=D(null,{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--bor)'},null);
+    var adl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px'},null);adl.textContent='Meses archivados:';ad.appendChild(adl);
+    for(i=0;i<Math.min(archKeys.length,3);i++){var ae=D(null,{fontSize:'12px',color:'var(--blu)',padding:'3px 0'},null);ae.textContent=archKeys[i];ad.appendChild(ae);}
+    rc.appendChild(ad);
+  }
+  w.appendChild(rc);
+  return w;
+}
+
+// ── VIEW: LOANS ──
+function vLoans(){
+  var ss={},sc={};var socios=[],clients=[];var i;
+  for(i=0;i<ST.loans.length;i++){var l=ST.loans[i];if(l.socio&&!ss[l.socio]){socios.push(l.socio);ss[l.socio]=1;}if(l.responsable&&!sc[l.responsable]){clients.push(l.responsable);sc[l.responsable]=1;}}
+  socios.sort();clients.sort();
+  var srch='',fst='active',fsoc='',fcli='';
+  var w=D(null,null,null);var listEl=D(null,null,null);
+  function renderList(){
+    listEl.innerHTML='';
+    var filtered=[],j;
+    for(j=0;j<ST.loans.length;j++){
+      var l=ST.loans[j];
+      if(fst&&l.status!==fst)continue;if(fsoc&&l.socio!==fsoc)continue;if(fcli&&l.responsable!==fcli)continue;
+      if(srch){var q=srch.toLowerCase();if((l.socio+' '+l.responsable+' '+l.mes_fin).toLowerCase().indexOf(q)<0)continue;}
+      filtered.push(l);
+    }
+    filtered.sort(function(a,b){return a.dia-b.dia;});
+    var cnt=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'8px'},null);cnt.textContent=filtered.length+' préstamos';listEl.appendChild(cnt);
+    for(j=0;j<filtered.length;j++){
+      (function(l){
+        var r=D('lrow',null,null);
+        // Header: Socio prominent (top) + Cliente secondary (below) — Socio more relevant visually
+        var top=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'8px',cursor:'pointer'},null);
+        top.addEventListener('click',function(){showLoanDetail(l.id);});
+        var tl=D(null,null,null);
+        // Socio row — big, bold, accent color
+        var tSocRow=D(null,{display:'flex',alignItems:'baseline',gap:'6px',marginBottom:'2px'},null);
+        var tSocLbl=S(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px'},null);tSocLbl.textContent='Socio';
+        var tSocVal=S(null,{fontWeight:'700',fontSize:'16px',color:'var(--acc)'},null);tSocVal.textContent=l.socio||'—';
+        tSocRow.appendChild(tSocLbl);tSocRow.appendChild(tSocVal);
+        // Cliente row — secondary
+        var tCliRow=D(null,{display:'flex',alignItems:'baseline',gap:'6px'},null);
+        var tCliLbl=S(null,{fontSize:'10px',color:'var(--mut)'},null);tCliLbl.textContent='Cliente:';
+        var tCliVal=S(null,{fontSize:'12px',color:'var(--mut)'},null);tCliVal.textContent=l.responsable;
+        tCliRow.appendChild(tCliLbl);tCliRow.appendChild(tCliVal);
+        tl.appendChild(tSocRow);tl.appendChild(tCliRow);
+        var tr2=D(null,{display:'flex',gap:'6px',alignItems:'center',flexShrink:'0'},null);
+        if(l.status==='active'&&paidMth(l)){var pb2=S(null,{fontSize:'10px',color:'var(--grn)',background:'#0e3a1e',padding:'2px 6px',borderRadius:'20px'},null);pb2.textContent='✓ Pagó';tr2.appendChild(pb2);}
+        var badge=S(l.status==='active'?'ta':'tp',null,null);badge.textContent=l.status==='active'?'Activo':'Pagado';tr2.appendChild(badge);
+        top.appendChild(tl);top.appendChild(tr2);r.appendChild(top);
+        // 5-column grid: Capital | Cobrar | Vence | Int. Socio | Int. Propio
+        var bg3=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:'6px',cursor:'pointer'},null);
+        bg3.addEventListener('click',function(){showLoanDetail(l.id);});
+        function col3(lb,vl,vc){var d=D(null,null,null);var dl=D(null,{fontSize:'10px',color:'var(--mut)'},null);dl.textContent=lb;var dv=D('mn',vc?{fontSize:'11px',fontWeight:'700',color:vc}:{fontSize:'11px',fontWeight:'700'},null);dv.textContent=vl;d.appendChild(dl);d.appendChild(dv);return d;}
+        var isSocDirec=isJulianLoan(l);
+        var socVal=isSocDirec?'Directo':COP(IS(l));
+        var socCol=isSocDirec?'var(--grn)':'var(--red)';
+        var propVal=isSocDirec?'Directo':COP(IP(l));
+        var propCol='var(--grn)';
+        bg3.appendChild(col3('Capital',COP(l.monto),null));
+        bg3.appendChild(col3('Cobrar',COP(IM(l)),'var(--acc)'));
+        bg3.appendChild(col3('Vence','D'+l.dia+' '+l.mes_fin.slice(0,3),null));
+        bg3.appendChild(col3('Int.Socio',socVal,socCol));
+        bg3.appendChild(col3('Int.Propio',propVal,propCol));
+        r.appendChild(bg3);
+        // Action row — only for active loans
+        if(l.status==='active'){
+          var actRow=D(null,{display:'flex',gap:'6px',marginTop:'10px',paddingTop:'8px',borderTop:'1px solid var(--bor)'},null);
+          // Extender → opens showLoanDetail with extend mode
+          var extBtn=BTN('bb','📅 Extender',function(e){e.stopPropagation();showLoanDetail(l.id);},{flex:'1',fontSize:'11px',padding:'6px 4px'});
+          // Actualizar → same detail modal (generic entry)
+          var updBtn=BTN('bh','✏️ Actualizar',function(e){e.stopPropagation();showLoanDetail(l.id);},{flex:'1',fontSize:'11px',padding:'6px 4px'});
+          // Cerrar with confirm
+          var closeBtn=BTN('bg','✓ Cerrar',function(e){
+            e.stopPropagation();
+            showConfirm({
+              title:'¿Cerrar préstamo?',
+              msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',
+              confirmLbl:'Sí, cerrar',
+              danger:true,
+              onConfirm:function(){
+                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===l.id){var c={};for(var k in x)c[k]=x[k];c.status='paid';nl.push(c);}else nl.push(x);}
+                ST.loans=nl;saveST();renderApp();showToast('✅ Préstamo cerrado');
+              }
+            });
+          },{flex:'1',fontSize:'11px',padding:'6px 4px'});
+          // Eliminar with confirm
+          var delBtn=BTN('br','🗑',function(e){
+            e.stopPropagation();
+            showConfirm({
+              title:'¿Eliminar préstamo?',
+              msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',
+              confirmLbl:'Sí, eliminar',
+              danger:true,
+              onConfirm:function(){
+                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id!==l.id)nl.push(ST.loans[jj]);}
+                ST.loans=nl;saveST();renderApp();showToast('🗑 Préstamo eliminado');
+              }
+            });
+          },{fontSize:'11px',padding:'6px 10px',flexShrink:'0'});
+          actRow.appendChild(extBtn);actRow.appendChild(updBtn);actRow.appendChild(closeBtn);actRow.appendChild(delBtn);
+          r.appendChild(actRow);
+        }
+        listEl.appendChild(r);
+      })(filtered[j]);
+    }
+  }
+  var si=document.createElement('input');si.type='search';si.placeholder='Buscar...';si.style.flex='1';
+  si.addEventListener('input',function(e){srch=e.target.value;renderList();});
+  si.addEventListener('search',function(e){srch=e.target.value;renderList();});
+  var tbar=D(null,{display:'flex',gap:'8px',marginBottom:'10px'},null);tbar.appendChild(si);tbar.appendChild(BTN('ba','+',showNewLoan,{padding:'9px 14px',flexShrink:'0'}));w.appendChild(tbar);
+  var stDiv=D(null,{display:'flex',gap:'6px',marginBottom:'10px',flexWrap:'wrap'},null);
+  var stBtns={};var stOpts=[['active','Activos'],['paid','Pagados'],['','Todos']];
+  for(var si2=0;si2<stOpts.length;si2++){
+    (function(sv,sl){
+      var b=document.createElement('button');b.textContent=sl;b.className='btn';
+      function upd(){b.style.cssText='background:'+(fst===sv?'var(--acc)':'var(--card)')+';color:'+(fst===sv?'#000':'var(--mut)')+';border:1px solid var(--bor);padding:5px 12px;font-size:12px;border-radius:8px';}
+      upd();b.addEventListener('click',function(){fst=sv;var sks=Object.keys(stBtns);for(var ki=0;ki<sks.length;ki++)stBtns[sks[ki]]();renderList();});stBtns[sv]=upd;stDiv.appendChild(b);
+    })(stOpts[si2][0],stOpts[si2][1]);
+  }
+  w.appendChild(stDiv);
+  var soOpts=[['','Todos los socios']];for(i=0;i<socios.length;i++)soOpts.push([socios[i],socios[i]]);
+  var soSel=MSEL(soOpts,'');soSel.style.flex='1';soSel.style.fontSize='12px';soSel.addEventListener('change',function(e){fsoc=e.target.value;renderList();});
+  var clOpts=[['','Todos los clientes']];for(i=0;i<clients.length;i++)clOpts.push([clients[i],clients[i]]);
+  var clSel=MSEL(clOpts,'');clSel.style.flex='1';clSel.style.fontSize='12px';clSel.addEventListener('change',function(e){fcli=e.target.value;renderList();});
+  var frow=D(null,{display:'flex',gap:'8px',marginBottom:'10px'},null);frow.appendChild(soSel);frow.appendChild(clSel);w.appendChild(frow);
+  w.appendChild(listEl);renderList();return w;
+}
+
+// ── VIEW: SOCIOS ──
+function vSocios(){
+  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  var list=[];var sks=Object.keys(sm);for(i=0;i<sks.length;i++)list.push([sks[i],sm[sks[i]]]);list.sort(function(a,b){return b[1].capital-a[1].capital;});
+  var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
+  var priv=D(null,{background:'#0d2e10',border:'1px solid #1a5a22',borderRadius:'8px',padding:'10px',marginBottom:'14px',fontSize:'12px',color:'#7dde9a'},null);priv.textContent='🔒 Modo privacidad — no se muestra el nombre del cliente';w.appendChild(priv);
+  for(var li=0;li<list.length;li++){
+    (function(name,st2){
+      var exp=false,pv=false;
+      var card=D('card',{marginBottom:'10px'},null);
+      var msg=waSocioResumen(name,st2);
+      var isJulian=(name.toUpperCase()==='JULIAN')&&st2.loans.every(function(l){return isJulianLoan(l);});
+      function rebuild(){
+        card.innerHTML='';
+        var hdr2=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'},null);hdr2.addEventListener('click',function(){exp=!exp;rebuild();});
+        var ht=D(null,null,null);var hn=D(null,{fontWeight:'700',fontSize:'16px'},null);hn.textContent=name;
+        if(isJulian){var jt=S(null,{fontSize:'11px',background:'#1a2a10',color:'#7dde9a',padding:'2px 6px',borderRadius:'20px',marginLeft:'8px'},null);jt.textContent='directo';hn.appendChild(jt);}
+        var hs=D(null,{fontSize:'12px',color:'var(--mut)'},null);hs.textContent=st2.count+' préstamos · '+COP(st2.capital);ht.appendChild(hn);ht.appendChild(hs);
+        var hv=D('mn',{fontWeight:'700',color:isJulian?'var(--grn)':'var(--red)'},null);
+        hv.textContent=isJulian?'→ dueño directo':('−'+COP(st2.intS)+'/mes');
+        hdr2.appendChild(ht);hdr2.appendChild(hv);card.appendChild(hdr2);
+        if(exp){
+          card.appendChild(D('sep',null,null));
+          for(var pi3=0;pi3<st2.loans.length;pi3++){
+            (function(ln,idx){
+              var lr=D(null,{display:'flex',alignItems:'center',padding:'7px 0',borderBottom:'1px solid var(--bor)',gap:'8px'},null);
+              lr.appendChild(sumCheckbox(ln.id));
+              var ll=D(null,{flex:'1',minWidth:'0'},null);
+              var lp1=S(null,{fontWeight:'600',color:'var(--mut)'},null);lp1.textContent='Préstamo '+(idx+1);
+              var lp2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);lp2.textContent='Día '+ln.dia+' '+ln.mes_fin;
+              ll.appendChild(lp1);ll.appendChild(lp2);
+              var lr2=D(null,{textAlign:'right',flexShrink:'0'},null);
+              var lv1=D('mn',{fontWeight:'600'},null);lv1.textContent=COP(ln.monto);
+              var lv2=D(null,{fontSize:'11px',color:isJulian?'var(--grn)':'var(--red)'},null);
+              lv2.textContent=isJulian?'ganancia: '+COP(IP(ln)):COP(IS(ln))+'/mes';
+              lr2.appendChild(lv1);lr2.appendChild(lv2);
+              lr.appendChild(ll);lr.appendChild(lr2);
+              card.appendChild(lr);
+            })(st2.loans[pi3],pi3);
+          }
+          var tr2=D(null,{display:'flex',justifyContent:'space-between',padding:'8px 0 4px'},null);
+          var tl2=D(null,{color:'var(--mut)',fontSize:'13px'},null);tl2.textContent=isJulian?'Ganancia mensual directa:':'Total a pagarte:';
+          var tv2=S('mn',{color:isJulian?'var(--grn)':'var(--red)',fontWeight:'700'},null);
+          var julianTotal=0;if(isJulian){for(var ji=0;ji<st2.loans.length;ji++)julianTotal+=IP(st2.loans[ji]);}
+          tv2.textContent=isJulian?COP(julianTotal):COP(st2.intS);tr2.appendChild(tl2);tr2.appendChild(tv2);card.appendChild(tr2);
+          card.appendChild(D('sep',null,null));
+          // Image export button
+          card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
+          if(!isJulian){
+            var brow=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+            brow.appendChild(mkCpBtn(msg));
+            brow.appendChild(BTN('bh',pv?'Ocultar':'👁 Ver',function(){pv=!pv;rebuild();},{flex:'1'}));
+            card.appendChild(brow);
+            if(pv){var pvb=D('pvb',null,null);pvb.textContent=msg;card.appendChild(pvb);}
+          }
+        }
+      }
+      rebuild();w.appendChild(card);
+    })(list[li][0],list[li][1]);
+  }
+  return w;
+}
+
+function showSocioExport(name,st2){
+  var cur=null;var imgPrev=null;var generating=false;
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🖼️ Imagen para '+name;hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var info=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
+    var il=D(null,{fontSize:'13px',fontWeight:'600',marginBottom:'4px'},null);il.textContent=name+' — '+st2.count+' préstamos';
+    var is2=D(null,{fontSize:'12px',color:'var(--mut)'},null);is2.textContent='Imagen sin nombres de clientes.';
+    info.appendChild(il);info.appendChild(is2);m.appendChild(info);
+    if(imgPrev){var img=document.createElement('img');img.src=imgPrev;img.style.cssText='width:100%;border-radius:10px;margin-bottom:14px;border:1px solid var(--bor)';m.appendChild(img);}
+    if(generating){var gn=D(null,{textAlign:'center',padding:'16px',color:'var(--mut)',fontSize:'14px'},null);gn.textContent='Generando...';m.appendChild(gn);}
+    else{
+      var brow=D(null,{display:'flex',gap:'8px'},null);
+      brow.appendChild(BTN('ba',imgPrev?'🔄 Regenerar':'🖼️ Generar imagen',function(){generating=true;refresh();buildSocioImage(name,st2,function(blob,dataUrl){imgPrev=dataUrl;generating=false;refresh();});},{flex:'1'}));
+      if(imgPrev)brow.appendChild(BTN('bw','📲 Ver para compartir',function(){showImageViewer(imgPrev);},{flex:'1'}));
+      m.appendChild(brow);
+      if(imgPrev){var note=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'8px',textAlign:'center'},null);note.textContent='💡 Mantén presionada → Guardar en Fotos → envía por WhatsApp.';m.appendChild(note);}
+    }
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── VIEW: MI CUENTA (owner panel) ──
+// ── BACKUP: Export CSV / Import CSV ──
+function exportBackupCSV(){
+  // Flatten all loans + their payments into rows
+  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
+  var i,j;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    function esc(v){var s=String(v===undefined||v===null?'':v);return s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0?'"'+s.replace(/"/g,'""')+'"':s;}
+    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||''].map(esc).join(',');
+    var pagos=l.pagos||[];
+    if(pagos.length===0){lines.push(base+',,,,,');}
+    else{for(j=0;j<pagos.length;j++){var p=pagos[j];lines.push(base+','+ [p.id,p.tipo,p.monto,p.fecha,p.nota||''].map(esc).join(','));}}
+  }
+  // Also store full JSON of archives as last special row for lossless restore
+  var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
+  lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,');
+  var csv=lines.join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var d=new Date();
+  a.href=url;a.download='JiTel_Backup_'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},10000);
+  showToast('💾 Backup descargado');
+}
+
+function importBackupCSV(file,onDone){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      // Normalize CRLF → LF (Windows/Excel compatibility)
+      var raw=e.target.result.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+      if(!raw||raw.trim().length<10){alert('Archivo vacío o inválido');return;}
+
+      // RFC-4180 compliant parser: handles quoted fields with embedded newlines/commas/quotes
+      function parseCSV(text){
+        var rows=[],row=[],cur='',inQ=false,i,ch,nx;
+        for(i=0;i<text.length;i++){
+          ch=text[i];nx=text[i+1];
+          if(inQ){
+            if(ch==='"'){if(nx==='"'){cur+='"';i++;}else inQ=false;}
+            else cur+=ch;
+          } else {
+            if(ch==='"'){inQ=true;}
+            else if(ch===','){row.push(cur);cur='';}
+            else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur='';}
+            else cur+=ch;
+          }
+        }
+        // Last field/row
+        row.push(cur);if(row.some(function(f){return f!=='';}))rows.push(row);
+        return rows;
+      }
+
+      var rows=parseCSV(raw);
+      if(rows.length<2){alert('No se encontraron datos en el archivo');return;}
+
+      var EXPECTED_COLS=18; // as defined in exportBackupCSV header
+      var loansMap={},archives={},skipped=0;
+      for(var ri=1;ri<rows.length;ri++){
+        var row=rows[ri];
+        if(!row||!row[0]||row[0]==='')continue;
+        if(row[0]==='__ARCHIVES__'){
+          try{archives=JSON.parse(row[1]||'{}');}catch(er){archives={};}
+          continue;
+        }
+        // Validate minimum column count — skip malformed rows with a counter
+        if(row.length<13){skipped++;continue;}
+        var lid=row[0].trim();
+        if(!lid)continue;
+        if(!loansMap[lid]){
+          loansMap[lid]={
+            id:lid,
+            año:parseInt(row[1])||0,
+            dia:parseInt(row[2])||1,
+            mes_fin:(row[3]||'').trim(),
+            monto:parseFloat(row[4])||0,
+            socio:(row[5]||'').trim(),
+            int_socio:parseFloat(row[6])||0,
+            int_propio:parseFloat(row[7])||0,
+            responsable:(row[8]||'').trim(),
+            mes_comienzo:(row[9]||'').trim(),
+            status:(row[10]||'active').trim(),
+            nota:(row[11]||'').trim(),
+            created_at:(row[12]||'').trim(),
+            pagos:[]
+          };
+        }
+        // Add pago if present (row[13] = pago_id)
+        if(row.length>=17&&row[13]&&row[13].trim()){
+          var pid=row[13].trim();
+          // Avoid duplicate pagos in case of re-import
+          var already=false;
+          for(var pi=0;pi<loansMap[lid].pagos.length;pi++){if(loansMap[lid].pagos[pi].id===pid){already=true;break;}}
+          if(!already){
+            loansMap[lid].pagos.push({
+              id:pid,
+              tipo:(row[14]||'interes').trim(),
+              monto:parseFloat(row[15])||0,
+              fecha:(row[16]||isoToday()).trim(),
+              nota:(row[17]||'').trim()
+            });
+          }
+        }
+      }
+      var loans=[];var keys=Object.keys(loansMap);
+      for(var ki=0;ki<keys.length;ki++)loans.push(loansMap[keys[ki]]);
+      if(loans.length===0){alert('No se encontraron préstamos válidos en el archivo'+(skipped?' ('+skipped+' filas omitidas por formato inválido)':''));return;}
+      var msg='¿Restaurar backup?\n✅ '+loans.length+' préstamos encontrados.';
+      if(skipped>0)msg+='\n⚠️ '+skipped+' filas omitidas (formato inválido).';
+      msg+='\n\nEsto reemplazará todos los datos actuales.';
+      if(!confirm(msg))return;
+      ST.loans=loans;ST.archives=archives||{};saveST();renderApp();
+      showToast('✅ Backup restaurado — '+loans.length+' préstamos'+(skipped?' ('+skipped+' filas omitidas)':''));
+      if(onDone)onDone();
+    }catch(err){alert('Error al procesar el archivo: '+err.message+'\n\nVerifica que sea el CSV exportado desde JiTel Capital.');}
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+// ── BACKUP MODAL (formerly part of vMiCuenta, now standalone via ⭐ button) ──
+function showBackupModal(){
+  var m=D('modal',null,null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🗄️ Copia de Seguridad';
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'14px',lineHeight:'1.6',background:'var(--c2)',borderRadius:'8px',padding:'10px'},null);
+  sub.textContent='Exporta todos los préstamos y pagos a CSV. Importa para restaurar en caso de pérdida de datos por limpieza del navegador o reinstalación.';
+  m.appendChild(sub);
+  var bkBtns=D(null,{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'10px'},null);
+  bkBtns.appendChild(BTN('bg','💾 Exportar backup',function(){exportBackupCSV();},{flex:'1'}));
+  var bkInput=document.createElement('input');bkInput.type='file';bkInput.accept='.csv';bkInput.style.display='none';
+  bkInput.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)importBackupCSV(f,function(){bkInput.value='';closeModal();});});
+  m.appendChild(bkInput);
+  bkBtns.appendChild(BTN('bb','📂 Importar backup',function(){bkInput.click();},{flex:'1'}));
+  m.appendChild(bkBtns);
+  var note=D(null,{fontSize:'10px',color:'var(--mut)',lineHeight:'1.5'},null);
+  note.textContent='⚠️ El CSV incluye todos los préstamos (activos, pagados y archivados). La importación reemplaza todos los datos actuales.';
+  m.appendChild(note);
+  showModal(m);
+}
+
+// vMiCuenta kept as no-op redirect — tab removed from navbar, ⭐ now opens backup modal directly
+function vMiCuenta(){return D(null,null,null);}
+
+
+// ── VIEW: CLIENTES ──
+
+// ── ALERTS SYSTEM ──
+function getAlerts() {
+  var alerts = [], i, l;
+  var active = [];
+  for (i = 0; i < ST.loans.length; i++) { if (ST.loans[i].status === 'active') active.push(ST.loans[i]); }
+  // Reuse module-level TODAY/TODAY_DIA instead of creating a new Date() on every call
+  for (i = 0; i < active.length; i++) {
+    l = active[i];
+    if (paidMth(l)) continue;
+    var diff = l.dia - TODAY_DIA;
+    // Vence HOY
+    if (diff === 0) {
+      alerts.push({type:'hoy', loan:l, msg:'HOY — Cobrar a '+l.responsable+': '+COP(IM(l)), color:'var(--acc)', icon:'🔴'});
+    }
+    // Vence mañana
+    else if (diff === 1) {
+      alerts.push({type:'manana', loan:l, msg:'MAÑANA día '+l.dia+' — '+l.responsable+': '+COP(IM(l)), color:'#f0a020', icon:'🟡'});
+    }
+    // Vence en 2-3 días
+    else if (diff >= 2 && diff <= 3) {
+      alerts.push({type:'pronto', loan:l, msg:'En '+diff+' días (día '+l.dia+') — '+l.responsable+': '+COP(IM(l)), color:'var(--blu)', icon:'🔵'});
+    }
+    // Vencido (dia < hoy, sin pago)
+    else if (diff < 0) {
+      alerts.push({type:'vencido', loan:l, msg:'VENCIDO hace '+Math.abs(diff)+' día'+(Math.abs(diff)!==1?'s':'')+' — '+l.responsable+': '+COP(IM(l)), color:'var(--red)', icon:'⚠️'});
+    }
+  }
+  // Sort: vencido first, hoy, manana, pronto
+  var order = {vencido:0, hoy:1, manana:2, pronto:3};
+  alerts.sort(function(a,b){ return (order[a.type]||9)-(order[b.type]||9); });
+  return alerts;
+}
+
+function showAlertsModal() {
+  var alerts = getAlerts();
+  var m = D('modal', null, null);
+  var hdr = D(null, {display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px'}, null);
+  var h2 = document.createElement('h2'); h2.style.cssText = 'color:var(--acc);font-size:17px';
+  h2.textContent = '🔔 Alertas de Cobro';
+  hdr.appendChild(h2); hdr.appendChild(BTN('bh','✕',closeModal,null));
+  m.appendChild(hdr);
+  if (alerts.length === 0) {
+    var ok = D(null, {textAlign:'center', padding:'24px', color:'var(--grn)', fontSize:'15px'}, null);
+    ok.textContent = '✅ Sin alertas pendientes este mes';
+    m.appendChild(ok);
+  } else {
+    var sub = D(null, {fontSize:'12px', color:'var(--mut)', marginBottom:'14px'}, null);
+    sub.textContent = alerts.length + ' cobro' + (alerts.length!==1?'s':'') + ' requieren atención';
+    m.appendChild(sub);
+    var i;
+    for (i = 0; i < alerts.length; i++) {
+      (function(al) {
+        var box = D(null, {background:'var(--c2)', borderLeft:'4px solid '+al.color, borderRadius:'8px', padding:'12px', marginBottom:'8px', cursor:'pointer'}, null);
+        var top = D(null, {display:'flex', justifyContent:'space-between', alignItems:'center'}, null);
+        var lft = D(null, null, null);
+        var ic = S(null, {fontSize:'16px', marginRight:'6px'}, null); ic.textContent = al.icon;
+        var tx = S(null, {fontSize:'13px', fontWeight:'600', color:al.color}, null); tx.textContent = al.msg;
+        lft.appendChild(ic); lft.appendChild(tx);
+        var rgt = S('mn', {fontSize:'12px', color:'var(--mut)'}, null);
+        rgt.textContent = al.loan.mes_fin;
+        top.appendChild(lft); top.appendChild(rgt);
+        box.appendChild(top);
+        if (al.loan.nota) {
+          var nt = D(null, {fontSize:'11px', color:'var(--mut)', marginTop:'4px'}, null); nt.textContent = '📝 '+al.loan.nota;
+          box.appendChild(nt);
+        }
+        box.addEventListener('click', function() { closeModal(); showLoanDetail(al.loan.id); });
+        m.appendChild(box);
+      })(alerts[i]);
+    }
+  }
+  m.appendChild(BTN('ba','Cerrar',closeModal,{width:'100%', marginTop:'8px'}));
+  showModal(m);
+}
+
+// ── PDF / IMAGE EXPORT PER CLIENT OR SOCIO ──
+// buildClienteImage — paginated, white background, WhatsApp-optimized (max 480px wide)
+// onDone(dataUrls: string[]) — returns array of page dataUrls
+function buildClienteImage(name, loans, onDone) {
+  var cvs = document.getElementById('cvs');
+  var sl = loans.slice().sort(function(a,b){ return a.año!==b.año ? a.año-b.año : a.dia-b.dia; });
+
+  var MAX_ROWS = 18;
+  var SCALE = 2; // retina
+  var PW = 480; // logical px
+  var pw = PW * SCALE; // canvas px
+
+  // Layout constants (all in canvas px)
+  var pad = 20 * SCALE;
+  var hdH = 88 * SCALE;
+  var rH  = 26 * SCALE;
+  var fsHd = 15 * SCALE;
+  var fsSub= 10 * SCALE;
+  var fsCol= 9  * SCALE;
+  var fsRow= 11 * SCALE;
+  var fsFt = 8  * SCALE;
+
+  // Column widths (canvas px): AÑO | DÍA | MES FIN | MONTO | SALDO FINAL
+  var cW = [42*SCALE, 28*SCALE, 68*SCALE, 88*SCALE, 88*SCALE];
+  var usedW = 0; for(var ci=0;ci<cW.length;ci++) usedW+=cW[ci];
+  // Distribute remaining width evenly to MONTO & SALDO
+  var extra = pw - pad*2 - usedW;
+  cW[3] += Math.floor(extra/2);
+  cW[4] += extra - Math.floor(extra/2);
+
+  var totCap=0, totInt=0, i;
+  for(i=0;i<sl.length;i++){totCap+=sl[i].monto; totInt+=IM(sl[i]);}
+
+  var totalPages = Math.ceil(sl.length / MAX_ROWS) || 1;
+  var dataUrls = [];
+  var pagesDone = 0;
+
+  function renderPage(pageIdx) {
+    var startRow = pageIdx * MAX_ROWS;
+    var endRow   = Math.min(startRow + MAX_ROWS, sl.length);
+    var rowCount = endRow - startRow;
+    var isLast   = (pageIdx === totalPages - 1);
+
+    var footerH = 20 * SCALE;
+    var totalRowH = isLast ? rH : 0;
+    var ph = hdH + rH + rH*rowCount + totalRowH + footerH; // hd + col-header + rows + total + footer
+
+    cvs.width  = pw;
+    cvs.height = ph;
+    var ctx = cvs.getContext('2d');
+
+    // ── Background: white
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, pw, ph);
+
+    // ── Header band
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(0, 0, pw, hdH);
+
+    // Gold accent left bar
+    ctx.fillStyle = '#e9a020';
+    ctx.fillRect(0, 0, 5*SCALE, hdH);
+
+    // Brand name
+    ctx.font = 'bold '+fsHd+'px -apple-system,sans-serif';
+    ctx.fillStyle = '#e9a020';
+    ctx.textAlign = 'left';
+    ctx.fillText('JiTel Capital', pad, 26*SCALE);
+
+    // Title
+    ctx.font = 'bold '+(fsHd-2)+'px -apple-system,sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Estado de Cuenta: '+name, pad, 46*SCALE);
+
+    // Subtitle: date + page
+    ctx.font = fsSub+'px -apple-system,sans-serif';
+    ctx.fillStyle = '#99b8cc';
+    ctx.fillText(hoyStr()+'  ·  Pág. '+(pageIdx+1)+'/'+totalPages+'  ·  '+sl.length+' préstamos', pad, 62*SCALE);
+
+    // Summary line
+    ctx.font = 'bold '+fsSub+'px -apple-system,sans-serif';
+    ctx.fillStyle = '#7aadcc';
+    ctx.fillText('Capital total: ', pad, 78*SCALE);
+    ctx.fillStyle = '#e9a020';
+    ctx.fillText(COP(totCap), pad + 72*SCALE, 78*SCALE);
+    ctx.fillStyle = '#7aadcc';
+    ctx.fillText('  Cuota/mes: ', pad + 168*SCALE, 78*SCALE);
+    ctx.fillStyle = '#4ac8ff';
+    ctx.fillText(COP(totInt), pad + 248*SCALE, 78*SCALE);
+
+    // ── Column headers
+    var colHdrY = hdH;
+    ctx.fillStyle = '#f0f4f8';
+    ctx.fillRect(0, colHdrY, pw, rH);
+    // Bottom border of col header
+    ctx.fillStyle = '#c8d8e8';
+    ctx.fillRect(0, colHdrY + rH - SCALE, pw, SCALE);
+
+    var hcols = ['AÑO','DÍA','MES FIN','MONTO','SALDO FINAL'];
+    var hcolColors = ['#4a6a7a','#4a6a7a','#4a6a7a','#1a3a5a','#1a3a5a'];
+    ctx.font = 'bold '+fsCol+'px -apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    var cx = pad;
+    for(var ci2=0;ci2<hcols.length;ci2++){
+      ctx.fillStyle = hcolColors[ci2];
+      ctx.fillText(hcols[ci2], cx + cW[ci2]/2, colHdrY + rH*0.68);
+      cx += cW[ci2];
+    }
+
+    // ── Data rows
+    for(var ri=0; ri<rowCount; ri++){
+      var gi = startRow + ri;
+      var l  = sl[gi];
+      var rY = colHdrY + rH + ri*rH;
+
+      // Alternating row bg
+      ctx.fillStyle = ri%2===0 ? '#ffffff' : '#f7fafc';
+      ctx.fillRect(0, rY, pw, rH);
+
+      // Row separator
+      ctx.fillStyle = '#e8eef4';
+      ctx.fillRect(0, rY + rH - SCALE, pw, SCALE);
+
+      var vals = [String(l.año), String(l.dia), l.mes_fin, COP(l.monto), COP(IM(l))];
+      var valColors = ['#5a7a8a','#1a2a3a','#1a2a3a','#1a3a5a','#0a6a2a'];
+      cx = pad;
+      for(var ci3=0;ci3<vals.length;ci3++){
+        ctx.font = (ci3>=3 ? 'bold ' : '')+fsRow+'px -apple-system,sans-serif';
+        ctx.fillStyle = valColors[ci3];
+        ctx.textAlign = 'center';
+        var txt = vals[ci3];
+        if(txt.length > 12) txt = txt.slice(0,11)+'…';
+        ctx.fillText(txt, cx + cW[ci3]/2, rY + rH*0.68);
+        cx += cW[ci3];
+      }
+    }
+
+    // ── Total row (last page only)
+    if(isLast){
+      var totY = colHdrY + rH + rowCount*rH;
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(0, totY, pw, rH);
+      // Gold top border
+      ctx.fillStyle = '#e9a020';
+      ctx.fillRect(0, totY, pw, 2*SCALE);
+
+      ctx.font = 'bold '+fsRow+'px -apple-system,sans-serif';
+      ctx.textAlign = 'center';
+      cx = pad;
+      ctx.fillStyle = '#e9a020';
+      ctx.fillText('TOTAL', cx+cW[0]/2, totY+rH*0.68); cx+=cW[0];
+      ctx.fillStyle = '#99b8cc';
+      ctx.fillText('', cx+cW[1]/2, totY+rH*0.68); cx+=cW[1];
+      ctx.fillStyle = '#99b8cc';
+      ctx.fillText('', cx+cW[2]/2, totY+rH*0.68); cx+=cW[2];
+      ctx.fillStyle = '#e9a020';
+      ctx.fillText(COP(totCap), cx+cW[3]/2, totY+rH*0.68); cx+=cW[3];
+      ctx.fillStyle = '#4ac8ff';
+      ctx.fillText(COP(totInt), cx+cW[4]/2, totY+rH*0.68);
+    }
+
+    // ── Footer
+    var ftY = ph - footerH + 13*SCALE;
+    ctx.font = fsFt+'px -apple-system,sans-serif';
+    ctx.fillStyle = '#b0c4d4';
+    ctx.textAlign = 'center';
+    ctx.fillText('JiTel Capital — Confidencial — '+hoyStr(), pw/2, ftY);
+
+    // Collect dataUrl
+    var dataUrl = cvs.toDataURL('image/png');
+    dataUrls.push(dataUrl);
+    pagesDone++;
+
+    if(pagesDone < totalPages){
+      renderPage(pageIdx + 1);
+    } else {
+      onDone(dataUrls);
+    }
+  }
+
+  renderPage(0);
+}
+
+function buildOwnerImage(active, onDone) {
+  var cvs = document.getElementById('cvs');
+  var sl = active.slice().sort(function(a,b){return a.dia-b.dia;});
+  var sc = Math.min(window.innerWidth,540)*2/500;
+  var rH = Math.round(40*sc), hdH = Math.round(130*sc), pad = Math.round(18*sc);
+  var cW = [Math.round(48*sc),Math.round(112*sc),Math.round(80*sc),Math.round(112*sc),Math.round(108*sc),Math.round(100*sc)];
+  var tW = cW[0]+cW[1]+cW[2]+cW[3]+cW[4]+cW[5]+pad*2;
+  var H = hdH + rH*(sl.length+2) + Math.round(40*sc);
+  cvs.width = tW; cvs.height = H;
+  var ctx = cvs.getContext('2d');
+  var fs = Math.round(11*sc), fsS = Math.round(9*sc);
+  ctx.fillStyle = '#07111e'; ctx.fillRect(0,0,tW,H);
+  ctx.fillStyle = '#1a0e3a';
+  if(ctx.roundRect){ctx.beginPath();ctx.roundRect(pad/2,pad/2,tW-pad,hdH-pad/2,Math.round(10*sc));ctx.fill();}
+  else ctx.fillRect(pad/2,pad/2,tW-pad,hdH-pad/2);
+  ctx.font='bold '+Math.round(17*sc)+'px -apple-system,sans-serif'; ctx.fillStyle='#9b6dff'; ctx.textAlign='left';
+  ctx.fillText('⭐ JiTel Capital — Mi Cuenta',pad*1.2,pad*1.6);
+  ctx.font=Math.round(10*sc)+'px -apple-system,sans-serif'; ctx.fillStyle='#5a7a9a';
+  ctx.fillText('Julián Jiménez & Dayam Téllez · '+hoyStr(),pad*1.2,pad*1.6+Math.round(22*sc));
+  var totGan=0,totSoc=0,totCap=0,i;
+  for(i=0;i<sl.length;i++){totGan+=IP(sl[i]);totSoc+=IS(sl[i]);totCap+=sl[i].monto;}
+  // KPI row
+  var kvY = pad*1.6+Math.round(46*sc);
+  var kvs = [['Mi Ganancia/mes',COP(totGan),'#2dd87a'],['Costo Socios',COP(totSoc),'#f04f70'],['Capital Gestión',COP(totCap),'#e9a020']];
+  var kvW = (tW-pad*2.4)/3;
+  for(var ki=0;ki<kvs.length;ki++){
+    var kx = pad*1.2 + ki*kvW;
+    ctx.fillStyle='#0d1e33';
+    if(ctx.roundRect){ctx.beginPath();ctx.roundRect(kx,kvY,kvW-Math.round(6*sc),Math.round(40*sc),Math.round(6*sc));ctx.fill();}
+    else ctx.fillRect(kx,kvY,kvW-Math.round(6*sc),Math.round(40*sc));
+    ctx.font=Math.round(9*sc)+'px -apple-system,sans-serif'; ctx.fillStyle='#5a7a9a'; ctx.textAlign='left';
+    ctx.fillText(kvs[ki][0],kx+Math.round(8*sc),kvY+Math.round(14*sc));
+    ctx.font='bold '+Math.round(12*sc)+'px -apple-system,sans-serif'; ctx.fillStyle=kvs[ki][2];
+    ctx.fillText(kvs[ki][1],kx+Math.round(8*sc),kvY+Math.round(30*sc));
+  }
+  var tY = hdH, cx, cIdx;
+  ctx.fillStyle='#1a0e3a'; ctx.fillRect(0,tY,tW,rH);
+  var hcols=['Día','Mes Fin','Cliente','Capital','Mi Gan','Costo S'];
+  ctx.font='bold '+fsS+'px -apple-system,sans-serif'; ctx.fillStyle='#7a5aaa'; ctx.textAlign='center'; cx=pad;
+  for(cIdx=0;cIdx<hcols.length;cIdx++){ctx.fillText(hcols[cIdx].toUpperCase(),cx+cW[cIdx]/2,tY+rH*0.65);cx+=cW[cIdx];}
+  for(i=0;i<sl.length;i++){
+    var l=sl[i]; var rY=tY+rH*(i+1);
+    ctx.fillStyle=i%2===0?'#0d1e33':'#0a0820'; ctx.fillRect(0,rY,tW,rH);
+    ctx.strokeStyle='#2a1a4a'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,rY); ctx.lineTo(tW,rY); ctx.stroke();
+    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(l.monto),COP(IP(l)),IS(l)>0?COP(IS(l)):'—']; cx=pad;
+    for(cIdx=0;cIdx<vals.length;cIdx++){
+      ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
+      ctx.fillStyle=cIdx===4?'#2dd87a':cIdx===5?'#f04f70':'#d8e8f5'; ctx.textAlign='center';
+      var txt=vals[cIdx]; if(txt.length>10)txt=txt.slice(0,9)+'…';
+      ctx.fillText(txt,cx+cW[cIdx]/2,rY+rH*0.65); cx+=cW[cIdx];
+    }
+  }
+  var totY=tY+rH*(sl.length+1);
+  ctx.fillStyle='#2a1a4a'; ctx.fillRect(0,totY,tW,rH);
+  ctx.strokeStyle='#9b6dff'; ctx.lineWidth=Math.round(2*sc); ctx.beginPath(); ctx.moveTo(0,totY); ctx.lineTo(tW,totY); ctx.stroke();
+  cx=pad; ctx.font='bold '+fs+'px -apple-system,sans-serif'; ctx.textAlign='center';
+  ctx.fillStyle='#9b6dff'; ctx.fillText('TOTAL',cx+cW[0]/2,totY+rH*0.65); cx+=cW[0]; cx+=cW[1]; cx+=cW[2];
+  ctx.fillStyle='#e9a020'; ctx.fillText(COP(totCap),cx+cW[3]/2,totY+rH*0.65); cx+=cW[3];
+  ctx.fillStyle='#2dd87a'; ctx.fillText(COP(totGan),cx+cW[4]/2,totY+rH*0.65); cx+=cW[4];
+  ctx.fillStyle='#f04f70'; ctx.fillText(COP(totSoc),cx+cW[5]/2,totY+rH*0.65);
+  ctx.font=Math.round(8*sc)+'px -apple-system,sans-serif'; ctx.fillStyle='#2a3a4a'; ctx.textAlign='center';
+  ctx.fillText('JiTel Capital — Confidencial — '+hoyStr(),tW/2,totY+rH+Math.round(14*sc));
+  cvs.toBlob(function(blob){onDone(blob,cvs.toDataURL('image/png'));});
+}
+
+function showExportModal(mode) {
+  // mode: 'general' | 'cliente_X' | 'socio_X' | 'owner'
+  var active = [], i;
+  for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  // Build options
+  var cm={}, sm={};
+  for(i=0;i<active.length;i++){
+    var l=active[i];
+    if(l.responsable){if(!cm[l.responsable])cm[l.responsable]=[];cm[l.responsable].push(l);}
+    if(l.socio){if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  }
+  var curMode = mode || 'general';
+  // imgPages: null | string (single) | string[] (multi-page cliente)
+  var imgPages = null, generating = false, cur = null, viewPage = 0;
+
+  function isCliMode(){ return curMode.indexOf('cli_')===0; }
+
+  function genForMode() {
+    generating = true; imgPages = null; viewPage = 0; refresh();
+    if(curMode==='general'){
+      buildGeneralImage(active,function(blob,dataUrl){imgPages=dataUrl;generating=false;refresh();});
+    } else if(curMode==='owner'){
+      buildOwnerImage(active,function(blob,dataUrl){imgPages=dataUrl;generating=false;refresh();});
+    } else if(isCliMode()){
+      var cname=curMode.slice(4);
+      if(cm[cname]){
+        buildClienteImage(cname,cm[cname],function(pages){
+          imgPages=pages; generating=false; viewPage=0; refresh();
+        });
+      }
+    } else if(curMode.indexOf('soc_')===0){
+      var sname=curMode.slice(4);
+      if(sm[sname])buildSocioImage(sname,sm[sname],function(blob,dataUrl){imgPages=dataUrl;generating=false;refresh();});
+    }
+  }
+
+  function render(){
+    var m = D('modal',null,null);
+    var hdr = D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
+    var h2 = document.createElement('h2'); h2.style.cssText='color:var(--acc);font-size:16px'; h2.textContent='📊 Exportar Imagen';
+    hdr.appendChild(h2); hdr.appendChild(BTN('bh','✕',closeModal,null)); m.appendChild(hdr);
+
+    // Sections
+    function section(title, modes2) {
+      var sec = D(null,{marginBottom:'12px'},null);
+      var st = D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'6px'},null); st.textContent=title; sec.appendChild(st);
+      var row = D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+      for(var mi=0;mi<modes2.length;mi++){
+        (function(mv,ml){
+          var b=document.createElement('button'); b.className='btn';
+          b.textContent=ml;
+          b.style.cssText='background:'+(curMode===mv?'var(--acc)':'var(--c2)')+';color:'+(curMode===mv?'#000':'var(--mut)')+';border:1px solid var(--bor);padding:5px 10px;font-size:11px;border-radius:8px';
+          b.addEventListener('click',function(){curMode=mv;imgPages=null;viewPage=0;refresh();});
+          row.appendChild(b);
+        })(modes2[mi][0],modes2[mi][1]);
+      }
+      sec.appendChild(row); return sec;
+    }
+
+    m.appendChild(section('📋 General', [['general','Lista General'],['owner','⭐ Mi Cuenta']]));
+
+    var cOpts = []; var ckeys = Object.keys(cm).sort();
+    for(var ci=0;ci<ckeys.length;ci++) cOpts.push(['cli_'+ckeys[ci], ckeys[ci]]);
+    if(cOpts.length>0) m.appendChild(section('👤 Por Cliente', cOpts));
+
+    var sOpts = []; var skeys = Object.keys(sm).sort();
+    for(var si2=0;si2<skeys.length;si2++) sOpts.push(['soc_'+skeys[si2], skeys[si2]]);
+    if(sOpts.length>0) m.appendChild(section('👥 Por Socio', sOpts));
+
+    // Preview area
+    if(imgPages){
+      var pages = Array.isArray(imgPages) ? imgPages : [imgPages];
+      var totalPgs = pages.length;
+      if(totalPgs > 1){
+        // Page navigator
+        var nav = D(null,{display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',marginBottom:'8px'},null);
+        var prevBtn = BTN('bh','◀',function(){if(viewPage>0){viewPage--;refresh();}},{padding:'5px 12px',opacity:viewPage===0?'0.3':'1'});
+        var pgLbl = D(null,{fontSize:'13px',fontWeight:'600',color:'var(--acc)'},null);pgLbl.textContent='Página '+(viewPage+1)+' / '+totalPgs;
+        var nextBtn = BTN('bh','▶',function(){if(viewPage<totalPgs-1){viewPage++;refresh();}},{padding:'5px 12px',opacity:viewPage===totalPgs-1?'0.3':'1'});
+        nav.appendChild(prevBtn); nav.appendChild(pgLbl); nav.appendChild(nextBtn);
+        m.appendChild(nav);
+        // Info
+        var pInfo = D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginBottom:'8px'},null);
+        pInfo.textContent='💡 Guarda y comparte cada página individualmente por WhatsApp';
+        m.appendChild(pInfo);
+      }
+      var img=document.createElement('img');
+      img.src=pages[viewPage];
+      img.style.cssText='width:100%;border-radius:10px;margin-bottom:10px;border:1px solid var(--bor)';
+      m.appendChild(img);
+    }
+
+    if(generating){
+      var gn=D(null,{textAlign:'center',padding:'14px',color:'var(--mut)',fontSize:'14px'},null);
+      gn.textContent='Generando imagen'+(isCliMode()?'s (paginado)':'')+'...';
+      m.appendChild(gn);
+    } else {
+      var brow=D(null,{display:'flex',gap:'8px'},null);
+      brow.appendChild(BTN('ba',imgPages?'🔄 Regenerar':'🖼️ Generar imagen',function(){
+        genForMode();
+      },{flex:'1'}));
+      if(imgPages){
+        var pages2 = Array.isArray(imgPages) ? imgPages : [imgPages];
+        brow.appendChild(BTN('bw','📲 Ver pág.'+(viewPage+1),function(){showImageViewer(pages2[viewPage]);},{flex:'1'}));
+      }
+      m.appendChild(brow);
+      if(imgPages && !generating){
+        var note=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'8px',textAlign:'center'},null);
+        note.textContent='💡 Mantén presionada la imagen → Guardar en Fotos → compartir por WhatsApp.';
+        m.appendChild(note);
+      }
+    }
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
+// ── VIEW: CLIENTES (with Carolina + Dayam) ──
+// ── SEMÁFORO: health indicator per client ──
+// paidMth is called once per loan here; results are not re-evaluated on rebuild()
+function clientSemaforo(loans){
+  var total=loans.length,paid=0,i;
+  for(i=0;i<loans.length;i++){if(paidMth(loans[i]))paid++;}
+  if(paid===total)return{emoji:'🟢',color:'var(--grn)',bg:'#0e3a1e',label:'Al día'};
+  if(paid===0)    return{emoji:'🔴',color:'var(--red)',bg:'#3a0e1a',label:'Sin pagar'};
+  return          {emoji:'🟡',color:'#f0c020',bg:'#3a2a00',label:paid+'/'+total+' pag.'};
+}
+
+function vClientes(){
+  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var cm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.responsable)continue;if(!cm[l.responsable])cm[l.responsable]={capital:0,intT:0,count:0,loans:[]};cm[l.responsable].capital+=l.monto;cm[l.responsable].intT+=IM(l);cm[l.responsable].count++;cm[l.responsable].loans.push(l);}
+  var list=[];var cks=Object.keys(cm);for(i=0;i<cks.length;i++)list.push([cks[i],cm[cks[i]]]);list.sort(function(a,b){return b[1].capital-a[1].capital;});
+  var w=D(null,null,null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px;margin-bottom:10px';h2.textContent='Clientes';
+  w.appendChild(h2);
+  // Summary totals bar
+  var totCap=0,totInt=0;for(i=0;i<list.length;i++){totCap+=list[i][1].capital;totInt+=list[i][1].intT;}
+  var sumBar=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'8px 12px',marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'},null);
+  var sumL=D(null,{fontSize:'12px',color:'var(--mut)'},null);sumL.textContent=list.length+' clientes · '+COP(totCap);
+  var sumR=D('mn',{fontSize:'13px',fontWeight:'700',color:'var(--blu)'},null);sumR.textContent=COP(totInt)+'/mes';
+  sumBar.appendChild(sumL);sumBar.appendChild(sumR);w.appendChild(sumBar);
+  for(var li=0;li<list.length;li++){
+    (function(name,st2){
+      var exp=false,pv=false;
+      var msg=waClienteMsg(name,st2.loans);
+      var sem=clientSemaforo(st2.loans);
+      // Compact row (collapsed)
+      var row=D(null,{background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
+      function rebuild(){
+        row.innerHTML='';
+        row.style.borderColor=exp?sem.color:'var(--bor)';
+        // Header row — always visible, compact
+        var hdr2=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 12px',cursor:'pointer'},null);
+        hdr2.addEventListener('click',function(){exp=!exp;rebuild();});
+        var hl=D(null,{display:'flex',alignItems:'center',gap:'8px',flex:'1',minWidth:'0'},null);
+        var arrow=S(null,{fontSize:'10px',color:'var(--mut)',flexShrink:'0'},null);arrow.textContent=exp?'▼':'▶';
+        // Semáforo emoji + name
+        var semEl=S(null,{fontSize:'14px',flexShrink:'0',lineHeight:'1'},null);semEl.textContent=sem.emoji;
+        var hn=S(null,{fontWeight:'700',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);hn.textContent=name;
+        // Semáforo label badge (small, inline)
+        var semBadge=S(null,{fontSize:'10px',color:sem.color,background:sem.bg,padding:'2px 6px',borderRadius:'20px',flexShrink:'0',fontWeight:'600'},null);semBadge.textContent=sem.label;
+        var hs=S(null,{fontSize:'11px',color:'var(--mut)',flexShrink:'0'},null);hs.textContent=st2.count+'p';
+        hl.appendChild(arrow);hl.appendChild(semEl);hl.appendChild(hn);hl.appendChild(semBadge);hl.appendChild(hs);
+        var hr=D(null,{textAlign:'right',flexShrink:'0',marginLeft:'8px'},null);
+        var hv=D('mn',{fontSize:'13px',fontWeight:'700',color:'var(--blu)'},null);hv.textContent=COP(st2.intT)+'/mes';
+        var hc=D(null,{fontSize:'10px',color:'var(--mut)'},null);hc.textContent=COP(st2.capital);
+        hr.appendChild(hv);hr.appendChild(hc);
+        hdr2.appendChild(hl);hdr2.appendChild(hr);row.appendChild(hdr2);
+        if(exp){
+          var body=D(null,{borderTop:'1px solid var(--bor)',padding:'8px 12px'},null);
+          for(var pi4=0;pi4<st2.loans.length;pi4++){
+            (function(ln,idx){
+              var lr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 0',borderBottom:idx<st2.loans.length-1?'1px solid var(--bor)':'none',cursor:'pointer'},null);
+              lr.addEventListener('click',function(e){e.stopPropagation();showLoanDetail(ln.id);});
+              var ll=D(null,null,null);
+              var lp1=S(null,{fontSize:'12px',fontWeight:'600'},null);lp1.textContent='#'+(idx+1)+' ';
+              var lp2=S(null,{fontSize:'11px',color:'var(--mut)'},null);lp2.textContent='Día '+ln.dia+' '+ln.mes_fin+' · '+ln.socio;
+              ll.appendChild(lp1);ll.appendChild(lp2);
+              var lr2=D(null,{textAlign:'right'},null);
+              var lv1=D('mn',{fontSize:'11px',fontWeight:'600'},null);lv1.textContent=COP(ln.monto);
+              var lv2=D(null,{fontSize:'10px',color:'var(--blu)'},null);lv2.textContent=COP(IM(ln))+'/mes';
+              lr2.appendChild(lv1);lr2.appendChild(lv2);
+              lr.appendChild(ll);lr.appendChild(lr2);body.appendChild(lr);
+            })(st2.loans[pi4],pi4);
+          }
+          // Total + actions
+          var foot=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px',paddingTop:'6px',borderTop:'1px solid var(--bor)',flexWrap:'wrap',gap:'6px'},null);
+          var ftl=D(null,{fontSize:'12px',color:'var(--mut)'},null);
+          var ftv=S('mn',{fontWeight:'700',color:'var(--blu)'},null);ftv.textContent=COP(st2.intT);
+          ftl.textContent='Total mes: ';ftl.appendChild(ftv);
+          var fbtns=D(null,{display:'flex',gap:'6px'},null);
+          fbtns.appendChild(mkCpBtn(msg));
+          fbtns.appendChild(BTN('bh',pv?'Ocultar msg':'👁 Msg',function(){pv=!pv;rebuild();},{fontSize:'11px',padding:'5px 8px'}));
+          fbtns.appendChild(BTN('bb','🖼️',function(e){e.stopPropagation();showExportModal('cli_'+name);},{fontSize:'11px',padding:'5px 8px',title:'Generar imagen'}));
+          foot.appendChild(ftl);foot.appendChild(fbtns);body.appendChild(foot);
+          if(pv){var pvb=D('pvb',null,null);pvb.textContent=msg;body.appendChild(pvb);}
+          row.appendChild(body);
+        }
+      }
+      rebuild();w.appendChild(row);
+    })(list[li][0],list[li][1]);
+  }
+  return w;
+}
+
+// ── CALCULADORA DE SIMULACIÓN ──
+function showCalculadora(){
+  var defs=getSmartDefaults();
+  // State: work in % for UX, convert to decimals for math
+  var cMonto=0;
+  var cIs=+(defs.int_socio*100).toFixed(2);   // socio %
+  var cIp=+(defs.int_propio*100).toFixed(2);  // propio %
+  var m=D('modal',null,null);
+
+  // ── Header ──
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--pur);font-size:18px';h2.textContent='🧮 Simulador de Préstamo';
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+
+  // ── Hint ──
+  var hint=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'14px',background:'var(--c2)',borderRadius:'8px',padding:'8px 10px',lineHeight:'1.5'},null);
+  hint.textContent='💡 Pre-cargado con las tasas más usadas en tu cartera. Edita y ve los resultados al instante.';
+  m.appendChild(hint);
+
+  // ── Input fields ──
+  // Monto
+  var montoIn=INP({type:'number',placeholder:'Ej: 2000000',value:''});
+  montoIn.inputMode='numeric';
+  m.appendChild(FLD('💵 Monto del préstamo (COP)',montoIn));
+
+  // Tasas row
+  var isIn2=INP({type:'number',placeholder:'3.5',value:String(cIs),step:'0.1'});
+  var ipIn2=INP({type:'number',placeholder:'1.5',value:String(cIp),step:'0.1'});
+  m.appendChild(R2(FLD('% Tasa socio/mes',isIn2),FLD('% Tasa propia/mes',ipIn2)));
+
+  // Total rate display (read-only, derived)
+  var totalRateEl=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'12px',marginTop:'-8px'},null);
+  function updTotalRate(){
+    var tot=cIs+cIp;
+    totalRateEl.textContent='Tasa total cobrada al cliente: '+tot.toFixed(2)+'% mensual · '+(tot*12).toFixed(1)+'% anual';
+  }
+  updTotalRate();
+  m.appendChild(totalRateEl);
+
+  // ── Results area (always visible, updates live) ──
+  var resDiv=D('calc-res',null,null);
+  m.appendChild(resDiv);
+
+  // Separator before action button
+  var sepEl=D(null,{height:'12px'},null);m.appendChild(sepEl);
+
+  // ── "Crear préstamo" button (disabled when monto=0) ──
+  var crearBtn=document.createElement('button');
+  crearBtn.className='btn';
+  crearBtn.style.cssText='width:100%;background:var(--pur);color:#fff;border:none;padding:11px;font-size:13px;border-radius:8px;font-weight:700;touch-action:manipulation;opacity:0.35;cursor:not-allowed;font-family:inherit';
+  crearBtn.textContent='→ Crear préstamo con estos datos';
+  crearBtn.disabled=true;
+  m.appendChild(crearBtn);
+
+  var crearNote=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'6px'},null);
+  crearNote.textContent='Ingresa un monto para habilitar';
+  m.appendChild(crearNote);
+
+  // ── Live calculation ──
+  function calcular(){
+    var tot=cIs+cIp;           // % total
+    var cuotaTotal=cMonto*(tot/100);
+    var cuotaSocio=cMonto*(cIs/100);
+    var cuotaPropia=cMonto*(cIp/100);
+    var ganAnual=cuotaPropia*12;
+    var valid=cMonto>0&&tot>0;
+
+    resDiv.innerHTML='';
+
+    if(!valid){
+      var empty=D(null,{textAlign:'center',padding:'16px 0',color:'var(--mut)',fontSize:'13px'},null);
+      empty.textContent='Ingresa el monto para ver la simulación';
+      resDiv.appendChild(empty);
+      crearBtn.disabled=true;crearBtn.style.opacity='0.35';crearBtn.style.cursor='not-allowed';
+      crearNote.textContent='Ingresa un monto para habilitar';
+      return;
+    }
+
+    // Build result rows
+    function row(lbl,val,color,icon){
+      var r=D('calc-row',null,null);
+      var l=D('calc-lbl',null,null);l.textContent=(icon?icon+' ':'')+lbl;
+      var v=D('calc-val',{color:color||'var(--txt)'},null);v.textContent=val;
+      r.appendChild(l);r.appendChild(v);return r;
+    }
+    resDiv.appendChild(row('Cobras al cliente / mes',COP(cuotaTotal),'var(--acc)','💰'));
+    resDiv.appendChild(row('Pagas al socio / mes',COP(cuotaSocio),'var(--red)','👥'));
+    resDiv.appendChild(row('Tu ganancia / mes',COP(cuotaPropia),'var(--grn)','✅'));
+    // Visual separator
+    var sep=D(null,{height:'1px',background:'linear-gradient(90deg,transparent,var(--pur),transparent)',margin:'2px 0'},null);resDiv.appendChild(sep);
+    resDiv.appendChild(row('Tu ganancia anual proyectada',COP(ganAnual),'var(--pur)','📈'));
+
+    // ROI %
+    if(cMonto>0){
+      var roiMes=(cuotaPropia/cMonto*100).toFixed(2);
+      var roiAnual=(ganAnual/cMonto*100).toFixed(1);
+      var roiRow=D('calc-row',null,null);
+      var roiL=D('calc-lbl',null,null);roiL.textContent='📊 ROI neto (tu %)';
+      var roiV=D('calc-val',{color:'var(--pur)'},null);roiV.textContent=roiMes+'%/mes · '+roiAnual+'%/año';
+      roiRow.appendChild(roiL);roiRow.appendChild(roiV);resDiv.appendChild(roiRow);
+    }
+
+    // Enable crear button
+    crearBtn.disabled=false;
+    crearBtn.style.opacity='1';crearBtn.style.cursor='pointer';
+    crearNote.textContent='Se abrirá el formulario con monto y tasas pre-rellenados';
+  }
+
+  // Wire inputs → live update
+  montoIn.addEventListener('input',function(e){cMonto=parseFloat(e.target.value)||0;calcular();});
+  isIn2.addEventListener('input',function(e){cIs=parseFloat(e.target.value)||0;updTotalRate();calcular();});
+  ipIn2.addEventListener('input',function(e){cIp=parseFloat(e.target.value)||0;updTotalRate();calcular();});
+
+  // Crear préstamo button
+  crearBtn.addEventListener('click',function(){
+    if(!cMonto)return;
+    closeModal();
+    showNewLoan({monto:cMonto,int_socio:cIs/100,int_propio:cIp/100});
+  });
+
+  calcular(); // initial render
+  showModal(m);
+  // Focus monto on open (slight delay for modal animation)
+  setTimeout(function(){montoIn.focus();},120);
+}
+
+// ── RENDER ──
+var curTab='cobros';
+// New order: Cobros → Resumen → Préstamos → Socios → Clientes
+var TABS=[
+  {id:'cobros',ico:'💰',lbl:'Cobros'},
+  {id:'dashboard',ico:'📊',lbl:'Resumen'},
+  {id:'loans',ico:'📋',lbl:'Préstamos'},
+  {id:'socios',ico:'👥',lbl:'Socios'},
+  {id:'clientes',ico:'👤',lbl:'Clientes'}
+];
+function renderNavbar(){
+  var nb=document.getElementById('navbar');nb.innerHTML='';
+  for(var i=0;i<TABS.length;i++){
+    (function(t){
+      var b=document.createElement('button');b.className='nbtn'+(t.id===curTab?' on':'');
+      var ico=document.createElement('span');ico.className='ico';ico.textContent=t.ico;
+      b.appendChild(ico);b.appendChild(document.createTextNode(t.lbl));
+      b.addEventListener('click',function(){curTab=t.id;renderNavbar();renderContent();});
+      nb.appendChild(b);
+    })(TABS[i]);
+  }
+}
+function renderContent(){
+  var ct=document.getElementById('content');ct.innerHTML='';
+  var views={cobros:vCobros,dashboard:vDashboard,loans:vLoans,socios:vSocios,clientes:vClientes};
+  // Sumbar applies to tabs with a scope (cobros, socios). On other tabs, hide.
+  var bar=document.getElementById('sumbar');
+  if(bar){
+    if(SUM_STATE[curTab])sumRefreshBar();
+    else{bar.classList.remove('on');ct.style.paddingBottom='';var cb=document.getElementById('btn-calc');if(cb)cb.classList.remove('raised');}
+  }
+  try{
+    ct.appendChild(views[curTab]());
+  }catch(e){
+    var errBox=D(null,{padding:'20px',textAlign:'center'},null);
+    var errIco=D(null,{fontSize:'32px',marginBottom:'8px'},null);errIco.textContent='⚠️';
+    var errTtl=D(null,{color:'var(--red)',fontWeight:'700',marginBottom:'6px'},null);errTtl.textContent='Error en pestaña "'+curTab+'"';
+    var errMsg=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'14px',fontFamily:'monospace',wordBreak:'break-word'},null);errMsg.textContent=e.message;
+    var errBtn=BTN('bh','🔄 Recargar',function(){window.location.reload();},{width:'100%'});
+    errBox.appendChild(errIco);errBox.appendChild(errTtl);errBox.appendChild(errMsg);errBox.appendChild(errBtn);
+    ct.appendChild(errBox);
+    console.error('[JiTel] Error en '+curTab+':',e);
+  }
+}
+function renderApp(){
+  var active=0,totCap=0,i;
+  for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active'){active++;totCap+=ST.loans[i].monto;}}
+  document.getElementById('tsub').textContent=active+' activos · '+COP(totCap);
+  // Update bell badge — reuse active count already computed above, alerts only re-evals pagos
+  var alBtn=document.getElementById('btn-alerts');
+  if(alBtn){
+    var als=getAlerts();
+    var urgents=als.filter(function(a){return a.type==='hoy'||a.type==='vencido';});
+    alBtn.textContent=urgents.length>0?'🔔 '+urgents.length:'🔔';
+  }
+  renderContent();
+}
+
+// ── BOOT ──
+document.getElementById('btn-new').addEventListener('click',showNewLoan);
+document.getElementById('btn-alerts').addEventListener('click',showAlertsModal);
+document.getElementById('btn-calc').addEventListener('click',showCalculadora);
+document.getElementById('sb-clear').addEventListener('click',sumClear);
+try{
+  var saved=loadST();
+  if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
+  else{ST=mkInit();saveST();}
+}catch(e){
+  // If boot fails (corrupt storage), wipe and start fresh rather than showing blank screen
+  try{localStorage.removeItem(LSK);}catch(le){}
+  ST=mkInit();
+}
+renderNavbar();
+renderApp();
+</script>
+</body>
+</html>
