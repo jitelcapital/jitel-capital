@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -901,10 +902,23 @@ function sumCheckbox(loanId){
 
 // ── VIEW: COBROS ──
 function vCobros(){
-  var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
+  var active=[],i;
+  // Filter: only loans whose start month (mes_comienzo) is <= current month appear in Cobros.
+  // mes_comienzo is stored as 'YYYY-MM' so string comparison works correctly.
+  // Loans created today with a future start month are excluded from this view ONLY.
+  // The active count in the topbar header (renderApp) is unaffected — it uses ST.loans directly.
+  for(i=0;i<ST.loans.length;i++){
+    var l0=ST.loans[i];
+    if(l0.status!=='active')continue;
+    if(l0.mes_comienzo&&l0.mes_comienzo>CURR_MK)continue; // not yet started
+    active.push(l0);
+  }
   var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
   var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
-  var tm=0,tc=0;for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
+  var tm=0,tc=0,myPending=0;
+  for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
+  // MI PENDIENTE: sum of IP (interés propio only — excludes socios cut) for unpaid loans this month.
+  for(i=0;i<active.length;i++){if(!paidMth(active[i]))myPending+=IP(active[i]);}
   var pct=tm>0?Math.round(tc/tm*100):0;
 
   // helper: urgency class for a day group
@@ -921,9 +935,13 @@ function vCobros(){
 
   var w=D(null,null,null);
   var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:12px';h2.textContent='Cobros del mes';w.appendChild(h2);
-  var kg=D('g2',{marginBottom:'10px'},null);
-  function mkKpi(l,v,vc,sub){var k=D('kpi',null,null);var kl=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'15px',fontWeight:'700',color:vc||'var(--acc)'},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'11px',color:'var(--mut)'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
-  kg.appendChild(mkKpi('TOTAL MES',COP(tm),'var(--acc)',null));kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));w.appendChild(kg);
+  // 3-column KPI grid: TOTAL MES / COBRADO / MI PENDIENTE
+  var kg=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'10px'},null);
+  function mkKpi(l,v,vc,sub){var k=D('kpi',{padding:'10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:vc||'var(--acc)',lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'2px'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
+  kg.appendChild(mkKpi('TOTAL MES',COP(tm),'var(--acc)',null));
+  kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));
+  kg.appendChild(mkKpi('MI PENDIENTE',COP(myPending),'var(--pur)','Solo interés propio'));
+  w.appendChild(kg);
   var bw=D(null,{marginBottom:'14px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
   // Today's summary banner
   for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'#1a2a00',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IM(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
@@ -2242,5 +2260,6 @@ try{
 renderNavbar();
 renderApp();
 </script>
+
 </body>
 </html>
