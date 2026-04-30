@@ -113,9 +113,8 @@ select option{background:var(--card)}
 <div id="modals"></div>
 <button id="btn-calc" title="Calculadora de préstamo">🧮</button>
 <div id="sumbar">
-  <div class="sb-info">
-    <span class="sb-count"><span id="sb-label">Total</span> · <span id="sb-count">0 seleccionados</span></span>
-    <span class="sb-total" id="sb-total">$0</span>
+  <div class="sb-info" id="sb-info">
+    <!-- Filled dynamically by sumRefreshBar — single or multi-line -->
   </div>
   <button class="sb-clear" id="sb-clear">✕ Limpiar</button>
 </div>
@@ -837,13 +836,42 @@ function showExport(){
 }
 
 // ── SUMADOR TEMPORAL (scoped per tab) ──
-// Each scope keeps its own selection and uses its own calculation:
-//   cobros → IM (total cobrado al cliente)
-//   socios → IS (cuota socio — solo su porción del interés)
+// Each scope returns a summary structure from its selected loans:
+//   { kind:'single', label, total }                    — one-line bar
+//   { kind:'multi',  title, lines:[{lbl,val,color?}] } — multi-line bar (tappable for desglose)
 // Selections persist across re-renders within the same session; reset on reload.
 var SUM_STATE={
-  cobros:{ids:{},calc:IM,label:'Total a cobrar'},
-  socios:{ids:{},calc:IS,label:'Total interés socio'}
+  cobros:{ids:{},summary:function(loans){
+    var t=0,i;for(i=0;i<loans.length;i++)t+=IM(loans[i]);
+    return{kind:'single',label:'Total a cobrar',total:t};
+  }},
+  socios:{ids:{},summary:function(loans){
+    var julians=[],others=[],i;
+    for(i=0;i<loans.length;i++){if(isJulianLoan(loans[i]))julians.push(loans[i]);else others.push(loans[i]);}
+    var ipJ=0,isS=0;
+    for(i=0;i<julians.length;i++)ipJ+=IP(julians[i]);
+    for(i=0;i<others.length;i++)isS+=IS(others[i]);
+    if(julians.length>0&&others.length===0){
+      return{kind:'single',label:'MI GANANCIA',total:ipJ};
+    }
+    if(others.length>0&&julians.length===0){
+      return{kind:'single',label:'INTERÉS SOCIO',total:isS};
+    }
+    // Mixed
+    return{kind:'multi',title:'RESUMEN MIXTO',lines:[
+      {lbl:'MI GANANCIA ('+julians.length+')',val:COP(Math.round(ipJ)),color:'var(--grn)'},
+      {lbl:'INTERÉS SOCIO ('+others.length+')',val:COP(Math.round(isS)),color:'var(--red)'}
+    ]};
+  }},
+  loans:{ids:{},summary:function(loans){
+    var ip=0,is=0,im=0,i;
+    for(i=0;i<loans.length;i++){ip+=IP(loans[i]);is+=IS(loans[i]);im+=IM(loans[i]);}
+    return{kind:'multi',title:'GANANCIA SELECCIONADA',expandable:true,lines:[
+      {lbl:'MI GANANCIA',val:COP(Math.round(ip)),color:'var(--grn)'},
+      {lbl:'Interés socios',val:COP(Math.round(is)),color:'var(--red)'},
+      {lbl:'Cobro total',val:COP(Math.round(im)),color:'var(--acc)'}
+    ]};
+  }}
 };
 function sumScope(){return SUM_STATE[curTab]||null;}
 function sumToggle(loanId){
@@ -859,6 +887,12 @@ function sumClear(){
   var btns=document.querySelectorAll('.chk.on');
   for(var i=0;i<btns.length;i++){btns[i].classList.remove('on');btns[i].textContent='＋';}
 }
+// Resolve selected ids to actual loan objects (skips deleted)
+function sumGetLoans(){
+  var sc=sumScope();if(!sc)return[];
+  var out=[],i;for(i=0;i<ST.loans.length;i++){if(sc.ids[ST.loans[i].id])out.push(ST.loans[i]);}
+  return out;
+}
 function sumRefreshBar(){
   var bar=document.getElementById('sumbar');if(!bar)return;
   var sc=sumScope();
@@ -870,25 +904,95 @@ function sumRefreshBar(){
     if(calcBtn)calcBtn.classList.remove('raised');
     return;
   }
-  var n=Object.keys(sc.ids).length,total=0,i;
-  for(i=0;i<ST.loans.length;i++){if(sc.ids[ST.loans[i].id])total+=sc.calc(ST.loans[i]);}
+  var sel=sumGetLoans();var n=sel.length;
   if(n===0){
     bar.classList.remove('on');
     if(ct)ct.style.paddingBottom='';
     if(calcBtn)calcBtn.classList.remove('raised');
     return;
   }
+  var summary=sc.summary(sel);
   bar.classList.add('on');
-  // Content padding = bottom navbar (~50) + sumbar (~60) + buffer — keeps last row visible above sumbar
-  if(ct)ct.style.paddingBottom='160px';
-  if(calcBtn)calcBtn.classList.add('raised'); // lift the 🧮 button above the sumbar
-  // Update label per scope + count + total
-  var lblEl=document.getElementById('sb-label');
-  var cEl=document.getElementById('sb-count');
-  var tEl=document.getElementById('sb-total');
-  if(lblEl)lblEl.textContent=sc.label;
-  if(cEl)cEl.textContent=n+' seleccionado'+(n!==1?'s':'');
-  if(tEl)tEl.textContent=COP(Math.round(total));
+  if(ct)ct.style.paddingBottom=summary.kind==='multi'?'200px':'160px';
+  if(calcBtn)calcBtn.classList.add('raised');
+  // Render content into #sb-info
+  var info=document.getElementById('sb-info');if(!info)return;
+  info.innerHTML='';
+  // Make bar tappable to open desglose modal when expandable
+  bar.style.cursor=summary.expandable?'pointer':'default';
+  bar.onclick=summary.expandable?function(e){
+    if(e.target.id==='sb-clear')return; // don't open modal when tapping clear button
+    sumShowDesglose();
+  }:null;
+  if(summary.kind==='single'){
+    var topRow=document.createElement('span');topRow.className='sb-count';
+    topRow.innerHTML='<span style="color:#9bc4e8">'+summary.label+'</span> · '+n+' seleccionado'+(n!==1?'s':'');
+    var totEl=document.createElement('span');totEl.className='sb-total';totEl.textContent=COP(Math.round(summary.total));
+    info.appendChild(topRow);info.appendChild(totEl);
+  }else{
+    // Multi-line: header (title + count + tap hint) + each line
+    var hdr=document.createElement('div');
+    hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#9bc4e8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px';
+    var hl=document.createElement('span');hl.textContent=summary.title+' · '+n+' sel.';
+    var hr=document.createElement('span');
+    if(summary.expandable){hr.style.cssText='font-size:10px;color:#7da8d4;font-weight:600';hr.textContent='ver detalle ▸';}
+    hdr.appendChild(hl);hdr.appendChild(hr);
+    info.appendChild(hdr);
+    for(var li=0;li<summary.lines.length;li++){
+      var line=summary.lines[li];
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:1px 0';
+      var lblEl=document.createElement('span');lblEl.style.cssText='font-size:11px;color:#cde0f0';lblEl.textContent=line.lbl;
+      var valEl=document.createElement('span');
+      valEl.style.cssText='font-family:Courier New,monospace;font-weight:700;font-size:'+(li===0?'15px':'12px')+';color:'+(line.color||'#fff');
+      valEl.textContent=line.val;
+      row.appendChild(lblEl);row.appendChild(valEl);info.appendChild(row);
+    }
+  }
+}
+// Modal con desglose por préstamo (cuando summary.expandable === true)
+function sumShowDesglose(){
+  var sel=sumGetLoans();if(sel.length===0)return;
+  // Sort by socio then dia for readability
+  sel.sort(function(a,b){var s=(a.socio||'').localeCompare(b.socio||'');return s!==0?s:a.dia-b.dia;});
+  var m=D('modal',null,null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='Detalle de selección';
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);
+  sub.textContent=sel.length+' préstamo'+(sel.length!==1?'s':'')+' seleccionado'+(sel.length!==1?'s':'');
+  m.appendChild(sub);
+  // Per-loan rows
+  var box=D(null,{background:'var(--c2)',borderRadius:'10px',overflow:'hidden',marginBottom:'12px',maxHeight:'45vh',overflowY:'auto'},null);
+  var totIp=0,totIs=0,totIm=0,k;
+  for(k=0;k<sel.length;k++){
+    var ln=sel[k];
+    totIp+=IP(ln);totIs+=IS(ln);totIm+=IM(ln);
+    var row=D(null,{padding:'10px 12px',borderBottom:k<sel.length-1?'1px solid var(--bor)':'none'},null);
+    var rh=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'4px'},null);
+    var rhl=D(null,null,null);
+    var rsoc=S(null,{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);rsoc.textContent=ln.socio||'—';
+    var rcli=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);rcli.textContent='· '+ln.responsable+' · D'+ln.dia;
+    rhl.appendChild(rsoc);rhl.appendChild(rcli);
+    var rim=S('mn',{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);rim.textContent=COP(Math.round(IM(ln)));
+    rh.appendChild(rhl);rh.appendChild(rim);row.appendChild(rh);
+    var rd=D(null,{display:'flex',gap:'12px',fontSize:'11px',color:'var(--mut)'},null);
+    var rd1=S(null,{color:'var(--grn)'},null);rd1.textContent='Mi: '+COP(Math.round(IP(ln)));
+    var rd2=S(null,{color:isJulianLoan(ln)?'var(--grn)':'var(--red)'},null);rd2.textContent=isJulianLoan(ln)?'Directo':'Socio: '+COP(Math.round(IS(ln)));
+    rd.appendChild(rd1);rd.appendChild(rd2);row.appendChild(rd);
+    box.appendChild(row);
+  }
+  m.appendChild(box);
+  // Totals footer
+  var tot=D(null,{background:'#0a1f0a',border:'1px solid #1a4a1a',borderRadius:'10px',padding:'12px'},null);
+  var tt=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'.5px'},null);tt.textContent='Totales';
+  tot.appendChild(tt);
+  function tline(lbl,val,col){var r=D(null,{display:'flex',justifyContent:'space-between',padding:'3px 0'},null);var l=S(null,{fontSize:'12px',color:'var(--mut)'},null);l.textContent=lbl;var v=S('mn',{fontWeight:'700',color:col,fontSize:'13px'},null);v.textContent=COP(Math.round(val));r.appendChild(l);r.appendChild(v);return r;}
+  tot.appendChild(tline('MI GANANCIA',totIp,'var(--grn)'));
+  tot.appendChild(tline('Interés socios',totIs,'var(--red)'));
+  tot.appendChild(tline('Cobro total',totIm,'var(--acc)'));
+  m.appendChild(tot);
+  showModal(m);
 }
 // Creates a checkbox button wired to sumToggle. Initial state read from current scope.
 function sumCheckbox(loanId){
@@ -1193,8 +1297,11 @@ function vLoans(){
     for(j=0;j<filtered.length;j++){
       (function(l){
         var r=D('lrow',null,null);
+        // Top bar: checkbox (stopPropagation) + Socio/Cliente header (tappable for detail)
+        var topWrap=D(null,{display:'flex',alignItems:'flex-start',gap:'10px',marginBottom:'8px'},null);
+        topWrap.appendChild(sumCheckbox(l.id));
         // Header: Socio prominent (top) + Cliente secondary (below) — Socio more relevant visually
-        var top=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'8px',cursor:'pointer'},null);
+        var top=D(null,{display:'flex',justifyContent:'space-between',cursor:'pointer',flex:'1',minWidth:'0'},null);
         top.addEventListener('click',function(){showLoanDetail(l.id);});
         var tl=D(null,null,null);
         // Socio row — big, bold, accent color
@@ -1211,7 +1318,7 @@ function vLoans(){
         var tr2=D(null,{display:'flex',gap:'6px',alignItems:'center',flexShrink:'0'},null);
         if(l.status==='active'&&paidMth(l)){var pb2=S(null,{fontSize:'10px',color:'var(--grn)',background:'#0e3a1e',padding:'2px 6px',borderRadius:'20px'},null);pb2.textContent='✓ Pagó';tr2.appendChild(pb2);}
         var badge=S(l.status==='active'?'ta':'tp',null,null);badge.textContent=l.status==='active'?'Activo':'Pagado';tr2.appendChild(badge);
-        top.appendChild(tl);top.appendChild(tr2);r.appendChild(top);
+        top.appendChild(tl);top.appendChild(tr2);topWrap.appendChild(top);r.appendChild(topWrap);
         // 5-column grid: Capital | Cobrar | Vence | Int. Socio | Int. Propio
         var bg3=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:'6px',cursor:'pointer'},null);
         bg3.addEventListener('click',function(){showLoanDetail(l.id);});
@@ -1295,7 +1402,12 @@ function vLoans(){
 function vSocios(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
   var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
-  var list=[];var sks=Object.keys(sm);for(i=0;i<sks.length;i++)list.push([sks[i],sm[sks[i]]]);list.sort(function(a,b){return b[1].capital-a[1].capital;});
+  var list=[];var sks=Object.keys(sm);for(i=0;i<sks.length;i++){
+    // Sort each socio's loans by dia asc (consistent ordering: día 1 first, día 31 last)
+    sm[sks[i]].loans.sort(function(a,b){return a.dia-b.dia;});
+    list.push([sks[i],sm[sks[i]]]);
+  }
+  list.sort(function(a,b){return b[1].capital-a[1].capital;});
   var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
   var priv=D(null,{background:'#0d2e10',border:'1px solid #1a5a22',borderRadius:'8px',padding:'10px',marginBottom:'14px',fontSize:'12px',color:'#7dde9a'},null);priv.textContent='🔒 Modo privacidad — no se muestra el nombre del cliente';w.appendChild(priv);
   for(var li=0;li<list.length;li++){
