@@ -1097,6 +1097,112 @@ function sumCheckbox(loanId){
   return b;
 }
 
+// ── PREFERENCES (persistent in localStorage) ──
+var PREFS_KEY='jitel_prefs_v1';
+function loadPrefs(){try{var r=localStorage.getItem(PREFS_KEY);return r?JSON.parse(r):{};}catch(e){return{};}}
+function savePrefs(p){try{localStorage.setItem(PREFS_KEY,JSON.stringify(p));}catch(e){}}
+var PREFS=loadPrefs();
+// Defaults
+if(typeof PREFS.confirmPays!=='boolean')PREFS.confirmPays=false;
+
+// ── TOAST WITH ACTION (sticky version for pay confirmation + WhatsApp) ──
+// Standard showToast(msg) keeps working unchanged. This one accepts an optional action button.
+function showToastAction(msg,actionLbl,actionFn,duration){
+  var t=document.getElementById('toast');
+  if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
+  clearTimeout(t._to);
+  t.innerHTML='';
+  var span=document.createElement('span');span.textContent=msg;t.appendChild(span);
+  if(actionLbl&&actionFn){
+    var b=document.createElement('button');b.type='button';
+    b.style.cssText='margin-left:12px;background:rgba(45,216,122,.25);border:1px solid var(--grn);color:var(--grn);padding:5px 10px;border-radius:14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;touch-action:manipulation';
+    b.textContent=actionLbl;
+    b.addEventListener('click',function(e){e.stopPropagation();actionFn();});
+    t.appendChild(b);
+  }
+  t.className='show';
+  var dur=duration||3500;
+  t._to=setTimeout(function(){t.className='';},dur);
+}
+
+// ── PAGO FLOW ROUTER ──
+// Centralizes the payment logic so all callers (quick-pay, expanded row, batch) share one path.
+// - If PREFS.confirmPays === true → show payment confirm modal (current behavior)
+// - If false (default) → register immediately + show toast with inline WhatsApp action
+function doPagoFlow(loansOrLoan,dia,isBatch){
+  var loans=Array.isArray(loansOrLoan)?loansOrLoan:[loansOrLoan];
+  function commitPayments(){
+    var pids={},li;for(li=0;li<loans.length;li++)pids[loans[li].id]=true;
+    var nl=[],jj;
+    for(jj=0;jj<ST.loans.length;jj++){
+      var x=ST.loans[jj];
+      if(pids[x.id]){
+        var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();
+        c.pagos.push({id:GID(),tipo:'interes',monto:Math.round(IM(x)),fecha:isoToday(),nota:'Interés día '+dia});
+        nl.push(c);
+      }else nl.push(x);
+    }
+    ST.loans=nl;saveST();renderApp();
+  }
+  if(PREFS.confirmPays){
+    // Use existing modal flow — unchanged
+    showPaymentConfirm(loans,dia,function(){
+      commitPayments();
+      var msg=loans.length===1?'✅ Pago registrado — '+(loans[0].socio||loans[0].responsable):'✅ Pagos registrados — día '+dia+' ('+loans.length+')';
+      showToast(msg);
+      showWaModal(loans,dia);
+    });
+  }else{
+    // Fast path: register immediately, then toast with WhatsApp inline action
+    commitPayments();
+    var msg2=loans.length===1?'✅ Pago registrado — '+(loans[0].socio||loans[0].responsable):'✅ Pagos registrados ('+loans.length+')';
+    showToastAction(msg2,'📲 WhatsApp',function(){
+      // Build the same message that showWaModal would produce, then copy + open WhatsApp
+      copyAndOpenWhatsApp(loans,dia);
+    },4000);
+  }
+}
+
+// ── COPY WHATSAPP MESSAGE TO CLIPBOARD ──
+// Reuses the existing waSocioMsg / waClienteMsg templates without opening the modal.
+// Single loan → cliente template. Multiple → grouped per-socio summary.
+function copyAndOpenWhatsApp(loans,dia){
+  var fecha=hoyStr();
+  var text='';
+  if(loans.length===1){
+    var l=loans[0];
+    // Use socio message if has external partner, else a simple receipt
+    if(IS(l)>0){text=waSocioMsg(l.socio,dia,IS(l),fecha);}
+    else{text='✅ PAGO REGISTRADO\nDía '+dia+' · '+fecha+'\n\nCliente: '+l.responsable+'\nCapital: '+COP(l.monto)+'\nInterés: '+COP(IM(l))+'\n\n¡Gracias por tu pago! 😊';}
+  }else{
+    // Multiple — group per socio
+    var sm={},i,total=0;
+    for(i=0;i<loans.length;i++){var ln=loans[i];if(!ln.socio||IS(ln)===0)continue;if(!sm[ln.socio])sm[ln.socio]={total:0,n:0};sm[ln.socio].total+=IS(ln);sm[ln.socio].n++;}
+    for(i=0;i<loans.length;i++)total+=IM(loans[i]);
+    var lines=['✅ PAGOS REGISTRADOS','Día '+dia+' · '+fecha,'','📋 '+loans.length+' préstamos','💵 Total: '+COP(total),''];
+    var sns=Object.keys(sm);
+    for(i=0;i<sns.length;i++){lines.push('• '+sns[i]+': '+COP(sm[sns[i]].total)+' ('+sm[sns[i]].n+' préstamos)');}
+    text=lines.join('\n');
+  }
+  // Copy to clipboard
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      showToast('📋 Mensaje copiado al portapapeles');
+    }).catch(function(){fallbackCopy(text);});
+  }else{fallbackCopy(text);}
+  // Open WhatsApp with text
+  setTimeout(function(){
+    var encoded=encodeURIComponent(text);
+    window.open('https://wa.me/?text='+encoded,'_blank');
+  },200);
+}
+function fallbackCopy(text){
+  var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');showToast('📋 Mensaje copiado');}catch(e){showToast('⚠️ Copia manual');}
+  document.body.removeChild(ta);
+}
+
 // ── VIEW: COBROS ──
 function vCobros(){
   var active=[],i;
@@ -1294,35 +1400,37 @@ function vCobros(){
           var ph=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);ph.textContent='Pendientes';body.appendChild(ph);
           for(var pi2=0;pi2<pend.length;pi2++){
             (function(ln){
-              var row=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px',background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',gap:'8px'},null);
-              // Selector checkbox — leftmost, non-propagating
-              row.appendChild(sumCheckbox(ln.id));
-              var li2=D(null,{flex:'1',cursor:'pointer',minWidth:'0'},null);li2.addEventListener('click',function(){showLoanDetail(ln.id);});
-              // Emphasize Socio (primary), Cliente below
-              var ln1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)'},null);ln1.textContent=ln.socio||'—';
-              var ln2=D(null,{fontSize:'11px',color:'var(--mut)'},null);ln2.textContent='Cliente: '+ln.responsable+' · '+ln.mes_fin;
-              var ln3=D(null,{fontSize:'11px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
-              ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
-              li2.appendChild(ln1);li2.appendChild(ln2);li2.appendChild(ln3);
-              // Capital — visible para identificar qué préstamo es cuando hay varios del mismo socio/cliente
-              var lnCap=D(null,{fontSize:'11px',color:'var(--blu)',marginTop:'2px',fontFamily:'Courier New,monospace'},null);
+              // Wrapper card with explicit zones
+              var row=D(null,{background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',overflow:'hidden'},null);
+              // Top: 2-zone layout (info left | action right)
+              var topZones=D(null,{display:'flex',alignItems:'stretch',padding:'10px',gap:'10px'},null);
+              // Selector checkbox at very leftmost edge
+              topZones.appendChild(sumCheckbox(ln.id));
+              // Zone 1: info (left, flex:1)
+              var zInfo=D(null,{flex:'1',cursor:'pointer',minWidth:'0',display:'flex',flexDirection:'column',justifyContent:'center'},null);
+              zInfo.addEventListener('click',function(){showLoanDetail(ln.id);});
+              var ln1=D(null,{fontWeight:'700',fontSize:'15px',color:'var(--acc)',marginBottom:'1px'},null);ln1.textContent=ln.socio||'—';
+              var ln2=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},null);ln2.textContent=ln.responsable+' · '+ln.mes_fin;
+              var lnCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace',marginBottom:'1px'},null);
               lnCap.textContent='Capital: '+COP(ln.monto);
-              li2.appendChild(lnCap);
-              // Conciliation toggles — visible inline
-              var concilRow=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
+              var ln3=D(null,{fontSize:'10px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
+              ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
+              zInfo.appendChild(ln1);zInfo.appendChild(ln2);zInfo.appendChild(lnCap);zInfo.appendChild(ln3);
+              // Zone 2: action (right, fixed width)
+              var zAction=D(null,{display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',gap:'6px',flexShrink:'0',minWidth:'95px'},null);
+              var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IM(ln));
+              var lpay=BTN('ba','✓ Pagar',function(){
+                doPagoFlow(ln,g.dia);
+              },{fontSize:'12px',padding:'9px 14px',minHeight:'40px'});
+              zAction.appendChild(lamt);zAction.appendChild(lpay);
+              topZones.appendChild(zInfo);topZones.appendChild(zAction);
+              row.appendChild(topZones);
+              // Footer: Recibido / Pagado-socio toggles separated by border
+              var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
               concilRow.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
               if(!isJulianLoan(ln))concilRow.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
-              li2.appendChild(concilRow);
-              var la=D(null,{textAlign:'right',marginLeft:'10px'},null);
-              var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'14px'},null);lamt.textContent=COP(IM(ln));
-              var lpay=BTN('ba','✓ Pagar',function(){
-                showPaymentConfirm([ln],g.dia,function(){
-                  var pago={id:GID(),tipo:'interes',monto:Math.round(IM(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
-                  var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);nl.push(c);}else nl.push(x);}
-                  ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
-                });
-              },{fontSize:'11px',padding:'6px 12px',marginTop:'4px'});
-              la.appendChild(lamt);la.appendChild(lpay);row.appendChild(li2);row.appendChild(la);body.appendChild(row);
+              row.appendChild(concilRow);
+              body.appendChild(row);
             })(pend[pi2]);
           }
           if(pend.length>1){
@@ -1332,12 +1440,8 @@ function vCobros(){
             var bsub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);bsub.textContent='Total: '+COP(pendTot)+(pendSoc>0?'  Socios: '+COP(pendSoc):'  (ganancia directa)');
             bbox.appendChild(btl);bbox.appendChild(bsub);
             bbox.appendChild(BTN('bg','✓ Pagar grupo',function(){
-              showPaymentConfirm(pend,g.dia,function(){
-                var pids={},li3;for(li3=0;li3<pend.length;li3++)pids[pend[li3].id]=true;
-                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(pids[x.id]){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push({id:GID(),tipo:'interes',monto:Math.round(IM(x)),fecha:isoToday(),nota:'Interés día '+g.dia});nl.push(c);}else nl.push(x);}
-                ST.loans=nl;saveST();showToast('✅ Pagos registrados — día '+g.dia+' ('+pend.length+')');renderApp();showWaModal(pend,g.dia);
-              });
-            },{width:'100%'}));
+              doPagoFlow(pend,g.dia,true);
+            },{width:'100%',minHeight:'40px'}));
             body.appendChild(bbox);
           }
         }
@@ -1345,23 +1449,23 @@ function vCobros(){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
           for(var di2=0;di2<done.length;di2++){
             (function(ln){
-              var drWrap=D(null,{background:'#0a1f0a',border:'1px solid #1a3a1a',borderRadius:'8px',marginBottom:'6px',padding:'8px 10px'},null);
-              var dr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px'},null);
-              dr.appendChild(sumCheckbox(ln.id));
-              var dli=D(null,{flex:'1',cursor:'pointer',minWidth:'0'},null);
-              dli.addEventListener('click',function(){showLoanDetail(ln.id);});
-              var dl1=S(null,{fontWeight:'600'},null);dl1.textContent=ln.responsable;
-              var dl2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);dl2.textContent='vía '+ln.socio;
-              dli.appendChild(dl1);dli.appendChild(dl2);
-              var da2=S('mn',{color:'var(--grn)'},null);da2.textContent=COP(IM(ln));
-              dr.appendChild(dli);dr.appendChild(da2);
-              drWrap.appendChild(dr);
-              // Capital — visible para identificar préstamo cuando hay varios del mismo socio/cliente
-              var dCap=D(null,{fontSize:'11px',color:'var(--blu)',marginTop:'4px',fontFamily:'Courier New,monospace'},null);
-              dCap.textContent='Capital: '+COP(ln.monto);
-              drWrap.appendChild(dCap);
-              // Conciliation toggles for done rows too
-              var concilRow2=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
+              var drWrap=D(null,{background:'#0a1f0a',border:'1px solid #1a3a1a',borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
+              // Header zones (same shape as pending, less prominent action)
+              var dzones=D(null,{display:'flex',alignItems:'stretch',padding:'8px 10px',gap:'10px'},null);
+              dzones.appendChild(sumCheckbox(ln.id));
+              var dInfo=D(null,{flex:'1',cursor:'pointer',minWidth:'0',display:'flex',flexDirection:'column',justifyContent:'center'},null);
+              dInfo.addEventListener('click',function(){showLoanDetail(ln.id);});
+              var dl1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)',marginBottom:'1px'},null);dl1.textContent=ln.socio||'—';
+              var dl2=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},null);dl2.textContent=ln.responsable;
+              var dCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace'},null);dCap.textContent='Capital: '+COP(ln.monto);
+              dInfo.appendChild(dl1);dInfo.appendChild(dl2);dInfo.appendChild(dCap);
+              var dAct=D(null,{textAlign:'right',display:'flex',alignItems:'center',flexShrink:'0'},null);
+              var da2=S('mn',{color:'var(--grn)',fontWeight:'700',fontSize:'14px'},null);da2.textContent=COP(IM(ln));
+              dAct.appendChild(da2);
+              dzones.appendChild(dInfo);dzones.appendChild(dAct);
+              drWrap.appendChild(dzones);
+              // Footer toggles
+              var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid #1a3a1a',background:'rgba(0,0,0,.15)'},null);
               concilRow2.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
               if(!isJulianLoan(ln))concilRow2.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
               drWrap.appendChild(concilRow2);
@@ -1436,6 +1540,70 @@ function vDashboard(){
   rfRow.appendChild(kpi2('Margen neto ponderado',PCT(margenPonderado),'var(--pur)','Ponderado por capital'));
   rfSec.appendChild(rfRow);
   w.appendChild(rfSec);
+
+  // ── PREFERENCIAS ──
+  var prefCard=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+  var prefHdr=D(null,{fontSize:'12px',fontWeight:'700',color:'var(--blu)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'.5px'},null);prefHdr.textContent='⚙️ Preferencias';
+  prefCard.appendChild(prefHdr);
+  // Toggle confirmar pagos
+  var togRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px'},null);
+  var togTxt=D(null,{flex:'1',minWidth:'0'},null);
+  var togL=D(null,{fontSize:'13px',fontWeight:'600',color:'var(--txt)'},null);togL.textContent='Confirmar pagos antes de registrar';
+  var togS=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);togS.textContent=PREFS.confirmPays?'ON · pide confirmación al tocar Pagar':'OFF · registra al instante con toast + WhatsApp';
+  togTxt.appendChild(togL);togTxt.appendChild(togS);
+  var togBtn=document.createElement('button');togBtn.type='button';
+  togBtn.style.cssText='border:none;border-radius:14px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;min-height:32px;flex-shrink:0;'+(PREFS.confirmPays?'background:var(--grn);color:#000':'background:var(--bor);color:var(--mut)');
+  togBtn.textContent=PREFS.confirmPays?'ON':'OFF';
+  togBtn.addEventListener('click',function(){
+    PREFS.confirmPays=!PREFS.confirmPays;savePrefs(PREFS);renderApp();
+    showToast(PREFS.confirmPays?'Confirmación de pagos: ON':'Confirmación de pagos: OFF');
+  });
+  togRow.appendChild(togTxt);togRow.appendChild(togBtn);
+  prefCard.appendChild(togRow);
+  w.appendChild(prefCard);
+
+  // ── GOOGLE DRIVE BACKUP ──
+  var gdCard=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+  var gdHdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
+  var gdTtl=D(null,{fontSize:'12px',fontWeight:'700',color:'var(--blu)',textTransform:'uppercase',letterSpacing:'.5px'},null);gdTtl.textContent='☁️ Backup Google Drive';
+  var gdStatus=D(null,{fontSize:'11px',padding:'2px 8px',borderRadius:'12px'},null);
+  if(gdriveIsConnected()){gdStatus.style.background='#0e3a1e';gdStatus.style.color='var(--grn)';gdStatus.textContent='● Conectado';}
+  else{gdStatus.style.background='#3a1e0e';gdStatus.style.color='#f0a020';gdStatus.textContent='○ Desconectado';}
+  gdHdr.appendChild(gdTtl);gdHdr.appendChild(gdStatus);
+  gdCard.appendChild(gdHdr);
+
+  if(gdriveIsConnected()){
+    // Status line
+    var lastIso=gdriveGetLastBackup();
+    var hrs=gdriveHoursSinceLastBackup();
+    var statTxt=D(null,{fontSize:'12px',marginBottom:'10px'},null);
+    if(!lastIso){statTxt.style.color='var(--mut)';statTxt.textContent='☁️ Sin backups aún';}
+    else if(hrs>48){statTxt.style.color='var(--red)';statTxt.textContent='⚠️ Último backup '+gdriveTimeSince(lastIso)+' (atrasado)';}
+    else{statTxt.style.color='var(--mut)';statTxt.textContent='☁️ Último backup Drive: '+gdriveTimeSince(lastIso);}
+    gdCard.appendChild(statTxt);
+    // Buttons
+    var gdBtns=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+    gdBtns.appendChild(BTN('bg','☁️ Subir ahora',gdriveManualBackup,{flex:'1',fontSize:'12px',minHeight:'40px'}));
+    gdBtns.appendChild(BTN('bh','Desconectar',gdriveDisconnect,{fontSize:'12px',minHeight:'40px'}));
+    gdCard.appendChild(gdBtns);
+  }else{
+    var gdSub=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'10px',lineHeight:'1.5'},null);
+    gdSub.textContent='Backup automático diario a Google Drive. Mantiene los últimos 7 archivos.';
+    gdCard.appendChild(gdSub);
+    gdCard.appendChild(BTN('bb','🔗 Conectar Google Drive',gdriveConnect,{width:'100%',fontSize:'12px',minHeight:'40px'}));
+    // Soft reminder once per week
+    try{
+      var lastRem=localStorage.getItem(GDRIVE_LAST_REMINDER_KEY);
+      var shouldRemind=!lastRem||(Date.now()-new Date(lastRem).getTime())>7*24*3600*1000;
+      if(shouldRemind){
+        var rem=D(null,{fontSize:'10px',color:'#f0a020',marginTop:'8px',padding:'6px 8px',background:'#3a2a00',borderRadius:'6px',lineHeight:'1.4'},null);
+        rem.textContent='💡 Conecta Drive para no perder tus datos si limpias el navegador o cambias de dispositivo';
+        gdCard.appendChild(rem);
+        try{localStorage.setItem(GDRIVE_LAST_REMINDER_KEY,new Date().toISOString());}catch(e){}
+      }
+    }catch(e){}
+  }
+  w.appendChild(gdCard);
   // ── Reinicio mensual + Backup (acciones administrativas) ──
   var rc=D('card',null,null);
   var rr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px'},null);
@@ -2567,6 +2735,309 @@ function renderApp(){
   renderContent();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ── GOOGLE DRIVE INTEGRATION ──
+// ═══════════════════════════════════════════════════════════════════════════
+// Auto-backup CSV to Google Drive using Google Identity Services (GIS) + Drive API v3.
+// Scope: drive.file (access only files created by this app — privacy-safe).
+//
+// SETUP REQUIRED (one time, do this in your Google Cloud Console):
+// 1. Go to https://console.cloud.google.com/ and create a project
+// 2. APIs & Services → Library → enable "Google Drive API"
+// 3. APIs & Services → Credentials → Create Credentials → OAuth client ID
+//    - Type: Web application
+//    - Authorized JavaScript origins: https://julianjimenez91.github.io
+//    - Authorized redirect URIs: (not needed for GIS)
+// 4. Copy the Client ID and paste below replacing the placeholder
+// 5. OAuth consent screen: External, fill basics, scopes: ../auth/drive.file
+//    Add your email as Test User (until verified)
+// ═══════════════════════════════════════════════════════════════════════════
+var GDRIVE_CLIENT_ID='REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com';
+var GDRIVE_SCOPE='https://www.googleapis.com/auth/drive.file';
+var GDRIVE_TOKEN_KEY='gdrive_token_v1';        // {access_token, expires_at}
+var GDRIVE_LAST_BACKUP_KEY='gdrive_last_backup_v1'; // ISO timestamp
+var GDRIVE_LAST_REMINDER_KEY='gdrive_last_reminder_v1';
+var GDRIVE_FOLDER_NAME='JiTel Capital';
+var GDRIVE_SUBFOLDER='backups';
+var GDRIVE_MAX_BACKUPS=7;
+
+var gdriveState={
+  gisLoaded:false,
+  tokenClient:null,
+  folderId:null,           // cached id of JiTel Capital/backups
+  inflightAuth:false
+};
+
+// ── Helpers ──
+function gdriveGetToken(){try{var r=localStorage.getItem(GDRIVE_TOKEN_KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+function gdriveSetToken(t){try{localStorage.setItem(GDRIVE_TOKEN_KEY,JSON.stringify(t));}catch(e){}}
+function gdriveClearToken(){try{localStorage.removeItem(GDRIVE_TOKEN_KEY);}catch(e){}}
+function gdriveIsConnected(){var t=gdriveGetToken();return!!(t&&t.access_token&&t.expires_at>Date.now()+5000);}
+function gdriveGetLastBackup(){try{return localStorage.getItem(GDRIVE_LAST_BACKUP_KEY)||null;}catch(e){return null;}}
+function gdriveSetLastBackup(iso){try{localStorage.setItem(GDRIVE_LAST_BACKUP_KEY,iso);}catch(e){}}
+
+// ── Load Google Identity Services script (lazy, only when user clicks connect) ──
+function gdriveLoadGIS(){
+  return new Promise(function(resolve,reject){
+    if(gdriveState.gisLoaded&&window.google&&window.google.accounts)return resolve();
+    var existing=document.querySelector('script[data-gis]');
+    if(existing){existing.addEventListener('load',function(){gdriveState.gisLoaded=true;resolve();});return;}
+    var s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client';
+    s.async=true;s.defer=true;
+    s.setAttribute('data-gis','1');
+    s.onload=function(){gdriveState.gisLoaded=true;resolve();};
+    s.onerror=function(){reject(new Error('No se pudo cargar Google Identity Services'));};
+    document.head.appendChild(s);
+  });
+}
+
+// ── Initialize TokenClient (must be called after GIS script loaded) ──
+function gdriveInitClient(){
+  if(gdriveState.tokenClient)return gdriveState.tokenClient;
+  if(!window.google||!google.accounts||!google.accounts.oauth2)return null;
+  if(GDRIVE_CLIENT_ID.indexOf('REPLACE_WITH_YOUR')===0){
+    alert('⚠️ Configuración pendiente\n\nDebes reemplazar GDRIVE_CLIENT_ID en el código con tu Client ID de Google Cloud Console.\n\nVer instrucciones en el comentario al inicio del módulo Google Drive.');
+    return null;
+  }
+  gdriveState.tokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:GDRIVE_CLIENT_ID,
+    scope:GDRIVE_SCOPE,
+    prompt:'',  // empty = use cached consent when possible (silent renewal)
+    callback:function(resp){
+      if(resp.error){
+        console.error('[GDrive] Auth error:',resp);
+        gdriveState.inflightAuth=false;
+        if(gdriveState.pendingResolve)gdriveState.pendingReject(new Error(resp.error_description||resp.error));
+        return;
+      }
+      var token={access_token:resp.access_token,expires_at:Date.now()+((resp.expires_in||3600)*1000)};
+      gdriveSetToken(token);
+      gdriveState.inflightAuth=false;
+      if(gdriveState.pendingResolve)gdriveState.pendingResolve(token);
+    }
+  });
+  return gdriveState.tokenClient;
+}
+
+// ── Request a fresh access token (uses cached consent silently when possible) ──
+function gdriveRequestToken(forcePrompt){
+  return new Promise(function(resolve,reject){
+    var client=gdriveInitClient();
+    if(!client)return reject(new Error('Cliente OAuth no inicializado'));
+    gdriveState.pendingResolve=resolve;
+    gdriveState.pendingReject=reject;
+    gdriveState.inflightAuth=true;
+    try{
+      client.requestAccessToken({prompt:forcePrompt?'consent':''});
+    }catch(e){
+      gdriveState.inflightAuth=false;reject(e);
+    }
+  });
+}
+
+// ── Ensure a valid token, renewing silently if expired ──
+function gdriveEnsureToken(){
+  var existing=gdriveGetToken();
+  if(existing&&existing.access_token&&existing.expires_at>Date.now()+5000){
+    return Promise.resolve(existing);
+  }
+  // Need new token — try silent first
+  return gdriveLoadGIS().then(function(){return gdriveRequestToken(false);});
+}
+
+// ── Public: user clicks "Connect Google Drive" (first time, needs consent) ──
+function gdriveConnect(){
+  showToast('🔗 Conectando con Google Drive...');
+  gdriveLoadGIS().then(function(){
+    return gdriveRequestToken(true);  // force consent prompt on first connect
+  }).then(function(){
+    showToast('✅ Google Drive conectado');
+    renderApp();
+  }).catch(function(err){
+    alert('❌ Error al conectar con Google Drive:\n\n'+err.message+'\n\nVerifica que el Client ID esté configurado correctamente.');
+  });
+}
+
+// ── Public: disconnect ──
+function gdriveDisconnect(){
+  showConfirm({
+    title:'¿Desconectar Google Drive?',
+    msg:'Se detendrá el backup automático. Los archivos ya subidos no se borrarán de Drive.',
+    confirmLbl:'Sí, desconectar',
+    danger:true,
+    onConfirm:function(){
+      var t=gdriveGetToken();
+      if(t&&t.access_token&&window.google&&google.accounts&&google.accounts.oauth2){
+        try{google.accounts.oauth2.revoke(t.access_token,function(){});}catch(e){}
+      }
+      gdriveClearToken();
+      gdriveState.folderId=null;
+      showToast('Google Drive desconectado');
+      renderApp();
+    }
+  });
+}
+
+// ── API call helper with auto-retry on 401 ──
+function gdriveFetch(url,opts){
+  return gdriveEnsureToken().then(function(token){
+    opts=opts||{};opts.headers=opts.headers||{};
+    opts.headers['Authorization']='Bearer '+token.access_token;
+    return fetch(url,opts).then(function(r){
+      if(r.status===401){
+        // Token rejected — clear and retry once
+        gdriveClearToken();
+        return gdriveEnsureToken().then(function(t2){
+          opts.headers['Authorization']='Bearer '+t2.access_token;
+          return fetch(url,opts);
+        });
+      }
+      return r;
+    });
+  });
+}
+
+// ── Find or create the "JiTel Capital/backups" folder ──
+function gdriveGetFolder(){
+  if(gdriveState.folderId)return Promise.resolve(gdriveState.folderId);
+  // Step 1: find or create root folder
+  function findOrCreate(name,parentId){
+    var q="name='"+name.replace(/'/g,"\\'")+"' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    if(parentId)q+=" and '"+parentId+"' in parents";
+    var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name)&spaces=drive';
+    return gdriveFetch(url).then(function(r){return r.json();}).then(function(data){
+      if(data.files&&data.files.length>0)return data.files[0].id;
+      // Create
+      var body={name:name,mimeType:'application/vnd.google-apps.folder'};
+      if(parentId)body.parents=[parentId];
+      return gdriveFetch('https://www.googleapis.com/drive/v3/files',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)
+      }).then(function(r){return r.json();}).then(function(d){return d.id;});
+    });
+  }
+  return findOrCreate(GDRIVE_FOLDER_NAME,null).then(function(rootId){
+    return findOrCreate(GDRIVE_SUBFOLDER,rootId);
+  }).then(function(subId){
+    gdriveState.folderId=subId;
+    return subId;
+  });
+}
+
+// ── Build the CSV string (reuses logic from exportBackupCSV without triggering download) ──
+function gdriveBuildCSV(){
+  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
+  var i,j;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    function esc(v){var s=String(v===undefined||v===null?'':v);return s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0?'"'+s.replace(/"/g,'""')+'"':s;}
+    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0'].map(esc).join(',');
+    var pagos=l.pagos||[];
+    if(pagos.length===0){lines.push(base+',,,,,');}
+    else{for(j=0;j<pagos.length;j++){var p=pagos[j];lines.push(base+','+ [p.id,p.tipo,p.monto,p.fecha,p.nota||''].map(esc).join(','));}}
+  }
+  var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
+  lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
+  return lines.join('\n');
+}
+
+// ── Upload current state as CSV to Drive ──
+function gdriveUploadBackup(){
+  if(!gdriveIsConnected())return Promise.reject(new Error('Drive no conectado'));
+  var csv=gdriveBuildCSV();
+  var d=new Date();
+  var dateStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  var filename='jitel_backup_'+dateStr+'.csv';
+  return gdriveGetFolder().then(function(folderId){
+    // Multipart upload
+    var boundary='-------jitel-boundary-'+Date.now();
+    var metadata={name:filename,parents:[folderId],mimeType:'text/csv'};
+    var body=
+      '--'+boundary+'\r\n'+
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n'+
+      JSON.stringify(metadata)+'\r\n'+
+      '--'+boundary+'\r\n'+
+      'Content-Type: text/csv; charset=UTF-8\r\n\r\n'+
+      csv+'\r\n'+
+      '--'+boundary+'--';
+    return gdriveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',{
+      method:'POST',
+      headers:{'Content-Type':'multipart/related; boundary='+boundary},
+      body:body
+    }).then(function(r){
+      if(!r.ok)return r.text().then(function(t){throw new Error('Upload failed '+r.status+': '+t);});
+      return r.json();
+    }).then(function(uploaded){
+      gdriveSetLastBackup(new Date().toISOString());
+      return gdrivePruneOldBackups().then(function(){return uploaded;});
+    });
+  });
+}
+
+// ── Delete oldest backups beyond GDRIVE_MAX_BACKUPS ──
+function gdrivePruneOldBackups(){
+  if(!gdriveState.folderId)return Promise.resolve();
+  var q="'"+gdriveState.folderId+"' in parents and name contains 'jitel_backup_' and trashed=false";
+  var url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,createdTime)&orderBy=createdTime desc&spaces=drive';
+  return gdriveFetch(url).then(function(r){return r.json();}).then(function(data){
+    var files=data.files||[];
+    if(files.length<=GDRIVE_MAX_BACKUPS)return;
+    var toDelete=files.slice(GDRIVE_MAX_BACKUPS);
+    return Promise.all(toDelete.map(function(f){
+      return gdriveFetch('https://www.googleapis.com/drive/v3/files/'+f.id,{method:'DELETE'}).catch(function(e){console.warn('[GDrive] Could not delete',f.name,e);});
+    }));
+  }).catch(function(e){console.warn('[GDrive] Prune failed (non-fatal):',e);});
+}
+
+// ── Auto-backup check on app load ──
+function gdriveMaybeAutoBackup(){
+  if(!gdriveIsConnected())return;
+  var last=gdriveGetLastBackup();
+  if(last){
+    var elapsed=Date.now()-new Date(last).getTime();
+    if(elapsed<24*3600*1000)return; // < 24h since last backup
+  }
+  gdriveUploadBackup().then(function(){
+    showToast('💾 Backup subido a Google Drive');
+  }).catch(function(err){
+    console.warn('[GDrive] Auto-backup failed:',err);
+    // Don't spam alerts on every load — set a flag the UI can read
+    showToast('⚠️ Backup pendiente — revisa conexión Drive');
+  });
+}
+
+// ── Manual upload trigger (button in vDashboard) ──
+function gdriveManualBackup(){
+  if(!gdriveIsConnected()){
+    return alert('Primero conecta Google Drive desde Resumen.');
+  }
+  showToast('☁️ Subiendo a Drive...');
+  gdriveUploadBackup().then(function(){
+    showToast('✅ Backup subido a Google Drive');
+    renderApp();
+  }).catch(function(err){
+    alert('❌ Error subiendo backup:\n\n'+err.message);
+  });
+}
+
+// ── Format "hace X horas" ──
+function gdriveTimeSince(iso){
+  if(!iso)return null;
+  var ms=Date.now()-new Date(iso).getTime();
+  var h=Math.floor(ms/3600000);
+  if(h<1)return'hace minutos';
+  if(h<24)return'hace '+h+'h';
+  var d=Math.floor(h/24);
+  return'hace '+d+'d';
+}
+function gdriveHoursSinceLastBackup(){
+  var last=gdriveGetLastBackup();
+  if(!last)return null;
+  return(Date.now()-new Date(last).getTime())/3600000;
+}
+
 // ── BOOT ──
 document.getElementById('btn-new').addEventListener('click',showNewLoan);
 document.getElementById('btn-alerts').addEventListener('click',showAlertsModal);
@@ -2583,6 +3054,8 @@ try{
 }
 renderNavbar();
 renderApp();
+// Auto-backup check (delayed so initial render isn't blocked by network)
+setTimeout(gdriveMaybeAutoBackup,3000);
 </script>
 
 </body>
