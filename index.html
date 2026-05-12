@@ -1240,6 +1240,10 @@ function vCobros(){
               var ln3=D(null,{fontSize:'11px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
               ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
               li2.appendChild(ln1);li2.appendChild(ln2);li2.appendChild(ln3);
+              // Capital — visible para identificar qué préstamo es cuando hay varios del mismo socio/cliente
+              var lnCap=D(null,{fontSize:'11px',color:'var(--blu)',marginTop:'2px',fontFamily:'Courier New,monospace'},null);
+              lnCap.textContent='Capital: '+COP(ln.monto);
+              li2.appendChild(lnCap);
               // Conciliation toggles — visible inline
               var concilRow=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
               concilRow.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
@@ -1288,6 +1292,10 @@ function vCobros(){
               var da2=S('mn',{color:'var(--grn)'},null);da2.textContent=COP(IM(ln));
               dr.appendChild(dli);dr.appendChild(da2);
               drWrap.appendChild(dr);
+              // Capital — visible para identificar préstamo cuando hay varios del mismo socio/cliente
+              var dCap=D(null,{fontSize:'11px',color:'var(--blu)',marginTop:'4px',fontFamily:'Courier New,monospace'},null);
+              dCap.textContent='Capital: '+COP(ln.monto);
+              drWrap.appendChild(dCap);
               // Conciliation toggles for done rows too
               var concilRow2=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
               concilRow2.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
