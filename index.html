@@ -326,6 +326,9 @@ function loadST(){
       if(typeof l.int_propio!=='number')l.int_propio=parseFloat(l.int_propio)||0;
       if(typeof l.dia!=='number')l.dia=parseInt(l.dia)||1;
       if(!l.status)l.status='active';
+      // Conciliation flags — default false if absent (backward compat with older saves)
+      if(typeof l.recibido!=='boolean')l.recibido=!!l.recibido;
+      if(typeof l.pagado_socio!=='boolean')l.pagado_socio=!!l.pagado_socio;
     }
     return p;
   }catch(e){return null;}
@@ -778,9 +781,10 @@ function showReset(){
         var arc={},j;for(j=0;j<ST.loans.length;j++)arc[ST.loans[j].id]=(ST.loans[j].pagos||[]).slice();
         if(!ST.archives)ST.archives={};ST.archives[CURR_MK]=arc;
         // Only clear pagos on ACTIVE loans — paid/closed loans keep their full history
+        // Also reset conciliation flags (recibido / pagado_socio) for active loans.
         var nl=[];for(j=0;j<ST.loans.length;j++){
           var c={};for(var k in ST.loans[j])c[k]=ST.loans[j][k];
-          if(c.status==='active')c.pagos=[];
+          if(c.status==='active'){c.pagos=[];c.recibido=false;c.pagado_socio=false;}
           // paid loans: keep pagos untouched so history is preserved
           nl.push(c);
         }
@@ -994,6 +998,31 @@ function sumShowDesglose(){
   m.appendChild(tot);
   showModal(m);
 }
+// ── CONCILIACIÓN: dos toggles independientes por préstamo (recibido / pagado_socio) ──
+// Estos campos viven en cada loan como booleans simples; se persisten en localStorage
+// y se incluyen en export/import CSV. NO afectan el array `pagos` ni la lógica de pagos.
+function toggleConcil(loanId,field){
+  var nl=[],i;
+  for(i=0;i<ST.loans.length;i++){
+    var x=ST.loans[i];
+    if(x.id===loanId){var c={};for(var k in x)c[k]=x[k];c[field]=!c[field];nl.push(c);}
+    else nl.push(x);
+  }
+  ST.loans=nl;saveST();renderApp();
+}
+// Toggle button pill — green when active, gray when pending. Auto-hides "pagado_socio" for Julian.
+function conciliBtn(ln,field,iconLbl){
+  var active=!!ln[field];
+  var b=document.createElement('button');b.type='button';
+  b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
+    (active
+      ? 'background:#0e3a1e;color:var(--grn);border:1px solid #1a5a2a'
+      : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
+  b.textContent=(active?'✓ ':'○ ')+iconLbl;
+  b.addEventListener('click',function(e){e.stopPropagation();toggleConcil(ln.id,field);});
+  return b;
+}
+
 // Creates a checkbox button wired to sumToggle. Initial state read from current scope.
 function sumCheckbox(loanId){
   var sc=sumScope();
@@ -1046,6 +1075,76 @@ function vCobros(){
   kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));
   kg.appendChild(mkKpi('MI PENDIENTE',COP(myPending),'var(--pur)','Solo interés propio'));
   w.appendChild(kg);
+
+  // ── PANEL CONCILIACIÓN (collapsible) ─────────────────────────────────────
+  // "Me deben": clientes que aún no marcan recibido (suma IM por cliente)
+  // "Yo debo":  préstamos cuyo socio no he pagado aún (suma IS)
+  // Independiente del flujo de pagos — solo refleja los toggles recibido / pagado_socio.
+  (function(){
+    // Aggregate per cliente (responsable) and global
+    var meD={},yoD=0,meDTotal=0;
+    for(var ci=0;ci<active.length;ci++){
+      var lc=active[ci];
+      if(!lc.recibido){
+        if(!meD[lc.responsable])meD[lc.responsable]=0;
+        meD[lc.responsable]+=IM(lc);
+        meDTotal+=IM(lc);
+      }
+      // Solo cuento "yo debo" si NO es Julián (no hay socio externo a quien pagar)
+      // y si el cliente ya pagó (si no, lógicamente no debo nada todavía).
+      if(!isJulianLoan(lc)&&!lc.pagado_socio&&lc.recibido){
+        yoD+=IS(lc);
+      }
+    }
+    var clientesMe=Object.keys(meD).sort();
+    if(clientesMe.length===0&&yoD===0)return; // nothing pending → don't render
+
+    var panel=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',marginBottom:'12px',overflow:'hidden'},null);
+    var open=false;
+    function rebuildPanel(){
+      panel.innerHTML='';
+      // Header — always visible, tappable
+      var ph=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer'},null);
+      ph.addEventListener('click',function(){open=!open;rebuildPanel();});
+      var phl=D(null,{display:'flex',alignItems:'center',gap:'8px',flex:'1',minWidth:'0'},null);
+      var phIcon=S(null,{fontSize:'10px',color:'var(--mut)',flexShrink:'0'},null);phIcon.textContent=open?'▼':'▶';
+      var phT=S(null,{fontWeight:'700',fontSize:'13px',color:'var(--blu)'},null);phT.textContent='📊 Conciliación';
+      phl.appendChild(phIcon);phl.appendChild(phT);
+      var phr=D(null,{textAlign:'right',display:'flex',gap:'10px'},null);
+      var pmeD=S(null,{fontSize:'11px',color:'var(--red)'},null);pmeD.textContent='Me deben '+COP(Math.round(meDTotal));
+      var pyoD=S(null,{fontSize:'11px',color:'var(--acc)'},null);pyoD.textContent='Yo debo '+COP(Math.round(yoD));
+      phr.appendChild(pmeD);phr.appendChild(pyoD);
+      ph.appendChild(phl);ph.appendChild(phr);
+      panel.appendChild(ph);
+      if(open){
+        var body=D(null,{padding:'4px 12px 12px',borderTop:'1px solid var(--bor)'},null);
+        // Per-cliente "Me deben"
+        if(clientesMe.length>0){
+          var sec1=D(null,{marginTop:'8px',marginBottom:'8px'},null);
+          var s1l=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'},null);s1l.textContent='Pendiente de recibir';
+          sec1.appendChild(s1l);
+          for(var ki=0;ki<clientesMe.length;ki++){
+            var cn=clientesMe[ki];
+            var crow=D(null,{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:'12px'},null);
+            var cnEl=S(null,{color:'var(--txt)'},null);cnEl.textContent=cn;
+            var cvEl=S('mn',{color:'var(--red)',fontWeight:'700'},null);cvEl.textContent=COP(Math.round(meD[cn]));
+            crow.appendChild(cnEl);crow.appendChild(cvEl);sec1.appendChild(crow);
+          }
+          body.appendChild(sec1);
+        }
+        // Totals
+        var totRow=D(null,{display:'flex',justifyContent:'space-between',padding:'8px 0 0',borderTop:'1px solid var(--bor)',marginTop:'4px'},null);
+        var totL=D(null,{fontSize:'11px',color:'var(--mut)'},null);totL.textContent='Saldo neto a favor:';
+        var neto=meDTotal-yoD;
+        var totV=S('mn',{fontWeight:'700',color:neto>=0?'var(--grn)':'var(--red)',fontSize:'13px'},null);
+        totV.textContent=(neto>=0?'+':'')+COP(Math.round(neto));
+        totRow.appendChild(totL);totRow.appendChild(totV);body.appendChild(totRow);
+        panel.appendChild(body);
+      }
+    }
+    rebuildPanel();
+    w.appendChild(panel);
+  })();
   var bw=D(null,{marginBottom:'14px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
   // Today's summary banner
   for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'#1a2a00',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IM(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
@@ -1141,6 +1240,11 @@ function vCobros(){
               var ln3=D(null,{fontSize:'11px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
               ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
               li2.appendChild(ln1);li2.appendChild(ln2);li2.appendChild(ln3);
+              // Conciliation toggles — visible inline
+              var concilRow=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
+              concilRow.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
+              if(!isJulianLoan(ln))concilRow.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
+              li2.appendChild(concilRow);
               var la=D(null,{textAlign:'right',marginLeft:'10px'},null);
               var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'14px'},null);lamt.textContent=COP(IM(ln));
               var lpay=BTN('ba','✓ Pagar',function(){
@@ -1173,7 +1277,8 @@ function vCobros(){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
           for(var di2=0;di2<done.length;di2++){
             (function(ln){
-              var dr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',background:'#0a1f0a',border:'1px solid #1a3a1a',borderRadius:'8px',marginBottom:'6px',gap:'8px'},null);
+              var drWrap=D(null,{background:'#0a1f0a',border:'1px solid #1a3a1a',borderRadius:'8px',marginBottom:'6px',padding:'8px 10px'},null);
+              var dr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px'},null);
               dr.appendChild(sumCheckbox(ln.id));
               var dli=D(null,{flex:'1',cursor:'pointer',minWidth:'0'},null);
               dli.addEventListener('click',function(){showLoanDetail(ln.id);});
@@ -1182,7 +1287,13 @@ function vCobros(){
               dli.appendChild(dl1);dli.appendChild(dl2);
               var da2=S('mn',{color:'var(--grn)'},null);da2.textContent=COP(IM(ln));
               dr.appendChild(dli);dr.appendChild(da2);
-              body.appendChild(dr);
+              drWrap.appendChild(dr);
+              // Conciliation toggles for done rows too
+              var concilRow2=D(null,{display:'flex',gap:'5px',marginTop:'6px'},null);
+              concilRow2.appendChild(conciliBtn(ln,'recibido','💰 Recibí'));
+              if(!isJulianLoan(ln))concilRow2.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
+              drWrap.appendChild(concilRow2);
+              body.appendChild(drWrap);
             })(done[di2]);
           }
           body.appendChild(BTN('bh','📋 Ver notificaciones',function(){showWaModal(done,g.dia);},{width:'100%',fontSize:'12px',marginTop:'6px'}));
@@ -1422,6 +1533,25 @@ function vSocios(){
         var ht=D(null,null,null);var hn=D(null,{fontWeight:'700',fontSize:'16px'},null);hn.textContent=name;
         if(isJulian){var jt=S(null,{fontSize:'11px',background:'#1a2a10',color:'#7dde9a',padding:'2px 6px',borderRadius:'20px',marginLeft:'8px'},null);jt.textContent='directo';hn.appendChild(jt);}
         var hs=D(null,{fontSize:'12px',color:'var(--mut)'},null);hs.textContent=st2.count+' préstamos · '+COP(st2.capital);ht.appendChild(hn);ht.appendChild(hs);
+        // ── Conciliation pendings — skip Julian (no external partner) ──
+        if(!isJulian){
+          var pendPagar=0,pendCobrar=0,lpi;
+          for(lpi=0;lpi<st2.loans.length;lpi++){
+            var ln_c=st2.loans[lpi];
+            if(ln_c.recibido && !ln_c.pagado_socio)pendPagar+=IS(ln_c);   // cliente pagó, yo aún no le pago al socio
+            if(!ln_c.recibido)pendCobrar+=IS(ln_c);                       // cliente aún no me paga
+          }
+          if(pendPagar>0){
+            var pp=D(null,{fontSize:'11px',color:'var(--red)',marginTop:'2px'},null);
+            pp.textContent='⏳ Pendiente de pagarle: '+COP(Math.round(pendPagar));
+            ht.appendChild(pp);
+          }
+          if(pendCobrar>0){
+            var pc=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);
+            pc.textContent='📥 Por cobrar antes de pagar: '+COP(Math.round(pendCobrar));
+            ht.appendChild(pc);
+          }
+        }
         var hv=D('mn',{fontWeight:'700',color:isJulian?'var(--grn)':'var(--red)'},null);
         hv.textContent=isJulian?'→ dueño directo':('−'+COP(st2.intS)+'/mes');
         hdr2.appendChild(ht);hdr2.appendChild(hv);card.appendChild(hdr2);
@@ -1496,19 +1626,20 @@ function showSocioExport(name,st2){
 // ── BACKUP: Export CSV / Import CSV ──
 function exportBackupCSV(){
   // Flatten all loans + their payments into rows
-  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
+  // Columns: 13 loan + 2 concil + 5 pago = 20 total
+  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
   var i,j;
   for(i=0;i<ST.loans.length;i++){
     var l=ST.loans[i];
     function esc(v){var s=String(v===undefined||v===null?'':v);return s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0?'"'+s.replace(/"/g,'""')+'"':s;}
-    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||''].map(esc).join(',');
+    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0'].map(esc).join(',');
     var pagos=l.pagos||[];
     if(pagos.length===0){lines.push(base+',,,,,');}
     else{for(j=0;j<pagos.length;j++){var p=pagos[j];lines.push(base+','+ [p.id,p.tipo,p.monto,p.fecha,p.nota||''].map(esc).join(','));}}
   }
   // Also store full JSON of archives as last special row for lossless restore
   var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
-  lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,');
+  lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
   var csv=lines.join('\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
@@ -1551,7 +1682,14 @@ function importBackupCSV(file,onDone){
       var rows=parseCSV(raw);
       if(rows.length<2){alert('No se encontraron datos en el archivo');return;}
 
-      var EXPECTED_COLS=18; // as defined in exportBackupCSV header
+      // Header-based column mapping — supports both old (18-col) and new (20-col with recibido/pagado_socio) CSVs.
+      var header=rows[0]||[];
+      var col={};for(var hi=0;hi<header.length;hi++)col[(header[hi]||'').trim()]=hi;
+      function g(row,name){var idx=col[name];return idx!==undefined?(row[idx]||''):'';}
+      function gNum(row,name){return parseFloat(g(row,name))||0;}
+      function gInt(row,name){return parseInt(g(row,name))||0;}
+      function gBool(row,name){var v=g(row,name);return v==='1'||v==='true';}
+
       var loansMap={},archives={},skipped=0;
       for(var ri=1;ri<rows.length;ri++){
         var row=rows[ri];
@@ -1562,39 +1700,41 @@ function importBackupCSV(file,onDone){
         }
         // Validate minimum column count — skip malformed rows with a counter
         if(row.length<13){skipped++;continue;}
-        var lid=row[0].trim();
+        var lid=(g(row,'id')||row[0]).trim();
         if(!lid)continue;
         if(!loansMap[lid]){
           loansMap[lid]={
             id:lid,
-            año:parseInt(row[1])||0,
-            dia:parseInt(row[2])||1,
-            mes_fin:(row[3]||'').trim(),
-            monto:parseFloat(row[4])||0,
-            socio:(row[5]||'').trim(),
-            int_socio:parseFloat(row[6])||0,
-            int_propio:parseFloat(row[7])||0,
-            responsable:(row[8]||'').trim(),
-            mes_comienzo:(row[9]||'').trim(),
-            status:(row[10]||'active').trim(),
-            nota:(row[11]||'').trim(),
-            created_at:(row[12]||'').trim(),
+            año:gInt(row,'año'),
+            dia:gInt(row,'dia')||1,
+            mes_fin:g(row,'mes_fin').trim(),
+            monto:gNum(row,'monto'),
+            socio:g(row,'socio').trim(),
+            int_socio:gNum(row,'int_socio'),
+            int_propio:gNum(row,'int_propio'),
+            responsable:g(row,'responsable').trim(),
+            mes_comienzo:g(row,'mes_comienzo').trim(),
+            status:(g(row,'status')||'active').trim(),
+            nota:g(row,'nota').trim(),
+            created_at:g(row,'created_at').trim(),
+            // New conciliation fields — default to false if absent in old CSVs
+            recibido:gBool(row,'recibido'),
+            pagado_socio:gBool(row,'pagado_socio'),
             pagos:[]
           };
         }
-        // Add pago if present (row[13] = pago_id)
-        if(row.length>=17&&row[13]&&row[13].trim()){
-          var pid=row[13].trim();
-          // Avoid duplicate pagos in case of re-import
+        // Add pago if present
+        var pagoId=g(row,'pago_id').trim();
+        if(pagoId){
           var already=false;
-          for(var pi=0;pi<loansMap[lid].pagos.length;pi++){if(loansMap[lid].pagos[pi].id===pid){already=true;break;}}
+          for(var pi=0;pi<loansMap[lid].pagos.length;pi++){if(loansMap[lid].pagos[pi].id===pagoId){already=true;break;}}
           if(!already){
             loansMap[lid].pagos.push({
-              id:pid,
-              tipo:(row[14]||'interes').trim(),
-              monto:parseFloat(row[15])||0,
-              fecha:(row[16]||isoToday()).trim(),
-              nota:(row[17]||'').trim()
+              id:pagoId,
+              tipo:(g(row,'pago_tipo')||'interes').trim(),
+              monto:gNum(row,'pago_monto'),
+              fecha:(g(row,'pago_fecha')||isoToday()).trim(),
+              nota:g(row,'pago_nota').trim()
             });
           }
         }
