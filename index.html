@@ -366,7 +366,7 @@ function showImageViewer(dataUrl){
 function buildSocioImage(name,st,onDone){
   var cvs=document.getElementById('cvs');
   var loans=st.loans.slice().sort(function(a,b){return a.dia-b.dia;});
-  var MAX_ROWS=18;
+  var MAX_ROWS=10;
   var sc=Math.min(window.innerWidth,540)*2/480;
   var rH=Math.round(44*sc),hdH=Math.round(140*sc),pad=Math.round(22*sc);
   var cW=[Math.round(55*sc),Math.round(105*sc),Math.round(120*sc),Math.round(120*sc)];
@@ -1065,12 +1065,26 @@ function toggleConcil(loanId,field){
 function conciliBtn(ln,field,iconLbl){
   var active=!!ln[field];
   var b=document.createElement('button');b.type='button';
-  b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
-    (active
-      ? 'background:#0e3a1e;color:var(--grn);border:1px solid #1a5a2a'
-      : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
-  b.textContent=(active?'✓ ':'○ ')+iconLbl;
-  b.addEventListener('click',function(e){e.stopPropagation();toggleConcil(ln.id,field);});
+  function applyStyle(){
+    b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
+      (active
+        ? 'background:#0e3a1e;color:var(--grn);border:1px solid #1a5a2a'
+        : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
+    b.textContent=(active?'✓ ':'○ ')+iconLbl;
+  }
+  applyStyle();
+  b.addEventListener('click',function(e){
+    e.stopPropagation();
+    var nl=[],i;
+    for(i=0;i<ST.loans.length;i++){
+      var x=ST.loans[i];
+      if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c[field]=!c[field];nl.push(c);ln=c;}
+      else nl.push(x);
+    }
+    ST.loans=nl;saveST();
+    active=!!ln[field];
+    applyStyle();
+  });
   return b;
 }
 
@@ -1550,7 +1564,7 @@ function vDashboard(){
   var tlbl=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px'},null);tlbl.textContent='Capital activo';
   var tval=D('mn',{fontSize:'28px',fontWeight:'700',color:'var(--acc)',lineHeight:'1.1'},null);tval.textContent=COP(totCap);
   ttxt.appendChild(tlbl);ttxt.appendChild(tval);
-  trow.appendChild(ttxt);trow.appendChild(BTN('ba','+ Nuevo',showNewLoan,{fontSize:'12px',padding:'7px 13px'}));
+  trow.appendChild(ttxt);
   w.appendChild(trow);
   // ── 4 KPIs de Resumen (sin duplicar capital — ya está arriba) ──
   function bigKpi(lbl,val,vc,sub,icon){
@@ -1775,7 +1789,7 @@ function vLoans(){
   var si=document.createElement('input');si.type='search';si.placeholder='Buscar...';si.style.flex='1';
   si.addEventListener('input',function(e){srch=e.target.value;renderList();});
   si.addEventListener('search',function(e){srch=e.target.value;renderList();});
-  var tbar=D(null,{display:'flex',gap:'8px',marginBottom:'10px'},null);tbar.appendChild(si);tbar.appendChild(BTN('ba','+',showNewLoan,{padding:'9px 14px',flexShrink:'0'}));w.appendChild(tbar);
+  var tbar=D(null,{display:'flex',gap:'8px',marginBottom:'10px'},null);tbar.appendChild(si);w.appendChild(tbar);
   var stDiv=D(null,{display:'flex',gap:'6px',marginBottom:'10px',flexWrap:'wrap'},null);
   var stBtns={};var stOpts=[['active','Activos'],['paid','Pagados'],['','Todos']];
   for(var si2=0;si2<stOpts.length;si2++){
@@ -1805,7 +1819,6 @@ function vSocios(){
   }
   list.sort(function(a,b){return b[1].capital-a[1].capital;});
   var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
-  var priv=D(null,{background:'#0d2e10',border:'1px solid #1a5a22',borderRadius:'8px',padding:'10px',marginBottom:'14px',fontSize:'12px',color:'#7dde9a'},null);priv.textContent='🔒 Modo privacidad — no se muestra el nombre del cliente';w.appendChild(priv);
   for(var li=0;li<list.length;li++){
     (function(name,st2){
       var exp=false,pv=false;
@@ -2167,7 +2180,7 @@ function buildClienteImage(name, loans, onDone) {
   var cvs = document.getElementById('cvs');
   var sl = loans.slice().sort(function(a,b){ return a.año!==b.año ? a.año-b.año : a.dia-b.dia; });
 
-  var MAX_ROWS = 18;
+  var MAX_ROWS = 10;
   var SCALE = 2; // retina
   var PW = 480; // logical px
   var pw = PW * SCALE; // canvas px
