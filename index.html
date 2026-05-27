@@ -1543,6 +1543,150 @@ function vCobros(){
   return w;
 }
 
+// ── CHART: EVOLUCIÓN DE LA CARTERA ──
+function vEvolucion(){
+  // Build monthly data from ST.archives + current month
+  var archKeys=Object.keys(ST.archives||{}).sort();
+  var allMonths=archKeys.slice();
+  if(allMonths.indexOf(CURR_MK)<0)allMonths.push(CURR_MK);
+  allMonths.sort();
+  var months=allMonths.slice(-6);
+  var mNames=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  var loanById={},i,j,k;
+  for(i=0;i<ST.loans.length;i++)loanById[ST.loans[i].id]=ST.loans[i];
+  var data=[];
+  for(var mi=0;mi<months.length;mi++){
+    var mk=months[mi];var totalIP=0,totalCap=0,cnt=0;
+    if(mk===CURR_MK){
+      for(j=0;j<ST.loans.length;j++){var l=ST.loans[j];if(l.status==='active'){totalIP+=IP(l);totalCap+=l.monto;cnt++;}}
+    }else{
+      var arc=ST.archives[mk]||{};var lids=Object.keys(arc);
+      for(k=0;k<lids.length;k++){
+        var lid=lids[k];var pagos=arc[lid]||[];var hasInt=false;
+        for(var p=0;p<pagos.length;p++){if(pagos[p].tipo==='interes'){hasInt=true;break;}}
+        if(!hasInt)continue;
+        var loan=loanById[lid];if(!loan)continue;
+        totalIP+=IP(loan);totalCap+=loan.monto;cnt++;
+      }
+    }
+    var mIdx=parseInt(mk.split('-')[1])-1;
+    data.push({mk:mk,label:mNames[mIdx]||mk,ip:totalIP,capital:totalCap,count:cnt});
+  }
+  // New loans per month by mes_comienzo
+  var newByMk={};
+  for(i=0;i<ST.loans.length;i++){var lmc=ST.loans[i].mes_comienzo;if(lmc)newByMk[lmc]=(newByMk[lmc]||0)+1;}
+
+  var sec=D(null,{background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'12px',padding:'14px',marginBottom:'16px'},null);
+  var h3=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)',marginBottom:'10px'},null);
+  h3.textContent='📈 Evolución de la cartera';sec.appendChild(h3);
+  if(data.length<2){
+    var msgEl=D(null,{fontSize:'13px',color:'var(--mut)',textAlign:'center',padding:'30px 0'},null);
+    msgEl.textContent='Disponible desde el segundo mes de uso';sec.appendChild(msgEl);return sec;
+  }
+
+  function getField(tab){return tab==='ganancia'?'ip':tab==='capital'?'capital':'count';}
+  function fmtVal(v,tab){
+    if(tab==='prestamos')return String(v||0);
+    if(!v)return '$0';
+    if(v>=1000000)return '$'+(v/1000000).toFixed(1)+'M';
+    if(v>=1000)return '$'+Math.round(v/1000)+'K';
+    return '$'+Math.round(v);
+  }
+
+  function buildChart(tab){
+    var field=getField(tab);
+    var values=[],ii;for(ii=0;ii<data.length;ii++)values.push(data[ii][field]||0);
+    var maxVal=Math.max.apply(null,values)||1;
+    var VW=400,VH=200,chartTop=14,chartBot=162,labelY=182;
+    var n=data.length,slotW=VW/n,barW=Math.round(slotW*0.55);
+    var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 '+VW+' '+VH);
+    svg.setAttribute('preserveAspectRatio','none');
+    svg.style.cssText='width:100%;height:200px;display:block';
+    var base=document.createElementNS('http://www.w3.org/2000/svg','line');
+    base.setAttribute('x1','0');base.setAttribute('y1',String(chartBot));
+    base.setAttribute('x2',String(VW));base.setAttribute('y2',String(chartBot));
+    base.setAttribute('stroke','#1c3455');base.setAttribute('stroke-width','1');svg.appendChild(base);
+    for(var bi=0;bi<data.length;bi++){
+      var d=data[bi],val=d[field]||0,isCurr=(d.mk===CURR_MK);
+      var barColor=isCurr?'#e9a020':'#4a9eff';
+      var valColor=isCurr?'#e9a020':'#9bc4e8';
+      var lblColor=isCurr?'#e9a020':'#5a7a9a';
+      var barH=Math.max(Math.round((val/maxVal)*(chartBot-chartTop-4)),2);
+      var bx=Math.round(bi*slotW+(slotW-barW)/2),by=chartBot-barH;
+      var rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x',String(bx));rect.setAttribute('y',String(by));
+      rect.setAttribute('width',String(barW));rect.setAttribute('height',String(barH));
+      rect.setAttribute('rx','3');rect.setAttribute('fill',barColor);rect.setAttribute('opacity','0.9');
+      svg.appendChild(rect);
+      var vt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      vt.setAttribute('x',String(bx+barW/2));vt.setAttribute('y',String(by-3));
+      vt.setAttribute('text-anchor','middle');vt.setAttribute('font-size','9');
+      vt.setAttribute('fill',valColor);vt.setAttribute('font-weight','bold');
+      vt.textContent=fmtVal(val,tab);svg.appendChild(vt);
+      var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lt.setAttribute('x',String(bx+barW/2));lt.setAttribute('y',String(labelY));
+      lt.setAttribute('text-anchor','middle');lt.setAttribute('font-size','9');
+      lt.setAttribute('fill',lblColor);lt.textContent=d.label;svg.appendChild(lt);
+    }
+    return svg;
+  }
+
+  function buildIndicators(tab){
+    var field=getField(tab);
+    var wrap=D(null,{display:'flex',flexDirection:'column',gap:'6px'},null);
+    var currIdx=-1,ii;
+    for(ii=0;ii<data.length;ii++){if(data[ii].mk===CURR_MK){currIdx=ii;break;}}
+    if(currIdx<0)currIdx=data.length-1;
+    var currVal=(data[currIdx]?data[currIdx][field]:0)||0;
+    var prevVal=(currIdx>0?data[currIdx-1][field]:0)||0;
+    var diff=currVal-prevVal;
+    var varRow=D(null,{fontSize:'12px'},null);
+    if(diff>=0){varRow.style.color='var(--grn)';varRow.textContent='↑ +'+fmtVal(diff,tab)+' vs mes anterior';}
+    else{varRow.style.color='var(--red)';varRow.textContent='↓ -'+fmtVal(Math.abs(diff),tab)+' vs mes anterior';}
+    wrap.appendChild(varRow);
+    var bestIdx=0,jj;
+    for(jj=1;jj<data.length;jj++){if((data[jj][field]||0)>(data[bestIdx][field]||0))bestIdx=jj;}
+    var bestRow=D(null,{fontSize:'12px',color:'var(--mut)'},null);
+    bestRow.textContent='🏆 Mejor mes: '+data[bestIdx].label+' con '+fmtVal(data[bestIdx][field]||0,tab);
+    wrap.appendChild(bestRow);
+    var currNew=newByMk[CURR_MK]||0,prevMk=currIdx>0?data[currIdx-1].mk:null,prevNew=prevMk?(newByMk[prevMk]||0):0;
+    var newRow=D(null,{fontSize:'12px',color:'var(--mut)'},null);
+    newRow.textContent='🆕 Nuevos este mes: '+currNew+(prevMk?' · mes anterior: '+prevNew:'');
+    wrap.appendChild(newRow);
+    return wrap;
+  }
+
+  var activeTab='ganancia';
+  var tabBtns={};
+  var tabBar=D(null,{display:'flex',gap:'6px',marginBottom:'12px'},null);
+  var chartWrap=D(null,null,null);
+  var indicatorsWrap=D(null,{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid var(--bor)'},null);
+
+  function refreshChart(tab){
+    var tn;for(tn in tabBtns){var tb=tabBtns[tn];if(tn===tab){tb.style.background='var(--acc)';tb.style.color='#000';tb.style.borderColor='var(--acc)';}else{tb.style.background='var(--c2)';tb.style.color='var(--mut)';tb.style.borderColor='var(--bor)';}}
+    while(chartWrap.firstChild)chartWrap.removeChild(chartWrap.firstChild);
+    chartWrap.appendChild(buildChart(tab));
+    while(indicatorsWrap.firstChild)indicatorsWrap.removeChild(indicatorsWrap.firstChild);
+    indicatorsWrap.appendChild(buildIndicators(tab));
+  }
+
+  var tabDefs=[['ganancia','Ganancia'],['capital','Capital'],['prestamos','Préstamos']];
+  for(var ti=0;ti<tabDefs.length;ti++){
+    (function(tabKey,tabLabel){
+      var tb=document.createElement('button');tb.type='button';
+      tb.style.cssText='flex:1;border:1px solid var(--bor);border-radius:8px;padding:8px 6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;min-height:40px;background:var(--c2);color:var(--mut);touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s';
+      tb.textContent=tabLabel;tabBtns[tabKey]=tb;
+      tb.addEventListener('click',function(){activeTab=tabKey;refreshChart(activeTab);});
+      tabBar.appendChild(tb);
+    })(tabDefs[ti][0],tabDefs[ti][1]);
+  }
+
+  sec.appendChild(tabBar);sec.appendChild(chartWrap);sec.appendChild(indicatorsWrap);
+  refreshChart(activeTab);
+  return sec;
+}
+
 // ── VIEW: DASHBOARD ──
 function vDashboard(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
@@ -1599,6 +1743,7 @@ function vDashboard(){
   rfRow.appendChild(kpi2('Margen neto ponderado',PCT(margenPonderado),'var(--pur)','Ponderado por capital'));
   rfSec.appendChild(rfRow);
   w.appendChild(rfSec);
+  w.appendChild(vEvolucion());
 
   // ── PREFERENCIAS ──
   var prefCard=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
