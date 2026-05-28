@@ -270,6 +270,7 @@ function doCopy(msg,btn){
   function fb(){var ta=document.createElement('textarea');ta.value=msg;ta.style.cssText='position:fixed;top:-9999px;left:-9999px';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');ok();}catch(e){alert('Mantén presionado para copiar.');}document.body.removeChild(ta);}
 }
 function mkCpBtn(msg){var b=mk('button','cp',null,null);b.textContent='📋 Copiar';b.addEventListener('click',function(){doCopy(msg,b);});return b;}
+function mkWaBtn(msg,css){return BTN('bw','📲 WhatsApp',function(){window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');},css||null);}
 
 // ── MESSAGES ──
 function waSocioMsg(name,dia,amt,fecha){
@@ -536,7 +537,7 @@ function showWaModal(paidLoans,dia){
           var scnt=D(null,{fontSize:'11px',color:'var(--mut)'},null);scnt.textContent=sv.loans.length+' préstamo'+(sv.loans.length!==1?'s':'');
           stxt.appendChild(sname);stxt.appendChild(samt);stxt.appendChild(scnt);
           srow.appendChild(stxt);
-          srow.appendChild(mkCpBtn(msg));
+          var waSocRow=D(null,{display:'flex',gap:'6px'},null);waSocRow.appendChild(mkWaBtn(msg));waSocRow.appendChild(mkCpBtn(msg));srow.appendChild(waSocRow);
           box.appendChild(srow);
           var pvk='s_'+sn;
           var pvBtn=BTN('bh',pvS[pvk]?'Ocultar':'👁 Ver mensaje',function(){pvS[pvk]=!pvS[pvk];refresh();},{width:'100%',fontSize:'12px',marginTop:'4px'});
@@ -554,6 +555,7 @@ function showWaModal(paidLoans,dia){
     rb.appendChild(rttl);rb.appendChild(rsub);
     var rrow=D(null,{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'},null);
     rrow.appendChild(BTN('bh',pvS.reg?'Ocultar':'👁 Ver',function(){pvS.reg=!pvS.reg;refresh();},{flex:'1'}));
+    rrow.appendChild(mkWaBtn(regMsg));
     rrow.appendChild(mkCpBtn(regMsg));
     rb.appendChild(rrow);
     if(pvS.reg){var rpvb=D('pvb',null,null);rpvb.textContent=regMsg;rb.appendChild(rpvb);}
@@ -1255,7 +1257,10 @@ function showMensajeMultidia(groups){
     m.appendChild(BTN('ba','🔄 Generar mensaje',function(){genMsg=calcMsg();refresh();},{width:'100%',marginBottom:'10px'}));
     if(genMsg){
       var pvb=D('pvb',null,null);pvb.textContent=genMsg;m.appendChild(pvb);
-      var cpBtn=mk('button','cp',{marginTop:'8px'},null);cpBtn.textContent='📋 Copiar';cpBtn.addEventListener('click',function(){doCopy(genMsg,cpBtn);});m.appendChild(cpBtn);
+      var mdBtnRow=D(null,{display:'flex',gap:'6px',marginTop:'8px'},null);
+      mdBtnRow.appendChild(mkWaBtn(genMsg,{flex:'1'}));
+      var cpBtn=mk('button','cp',null,null);cpBtn.textContent='📋 Copiar';cpBtn.addEventListener('click',function(){doCopy(genMsg,cpBtn);});
+      mdBtnRow.appendChild(cpBtn);m.appendChild(mdBtnRow);
     }
     return m;
   }
@@ -2027,6 +2032,7 @@ function vSocios(){
           card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           if(!isJulian){
             var brow=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+            brow.appendChild(mkWaBtn(msg));
             brow.appendChild(mkCpBtn(msg));
             brow.appendChild(BTN('bh',pv?'Ocultar':'👁 Ver',function(){pv=!pv;rebuild();},{flex:'1'}));
             card.appendChild(brow);
@@ -2758,6 +2764,7 @@ function vClientes(){
           var ftv=S('mn',{fontWeight:'700',color:'var(--blu)'},null);ftv.textContent=COP(st2.intT);
           ftl.textContent='Total mes: ';ftl.appendChild(ftv);
           var fbtns=D(null,{display:'flex',gap:'6px'},null);
+          fbtns.appendChild(mkWaBtn(msg,{fontSize:'11px',padding:'5px 8px'}));
           fbtns.appendChild(mkCpBtn(msg));
           fbtns.appendChild(BTN('bh',pv?'Ocultar msg':'👁 Msg',function(){pv=!pv;rebuild();},{fontSize:'11px',padding:'5px 8px'}));
           fbtns.appendChild(BTN('bb','🖼️',function(e){e.stopPropagation();showExportModal('cli_'+name);},{fontSize:'11px',padding:'5px 8px',title:'Generar imagen'}));
