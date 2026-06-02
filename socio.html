@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>JiTel Capital — Portal Socio</title>
+<style>
+:root{--bg:#07111e;--card:#0d1e33;--c2:#112240;--bor:#1c3455;--acc:#e9a020;--txt:#d8e8f5;--mut:#5a7a9a;--grn:#2dd87a;--red:#f04f70;--blu:#4a9eff;--pur:#9b6dff;
+--c-suc-bg:#0a1f0a;--c-suc-bor:#1a4a1a;--c-warn-bg:#3a1e0e;--c-day-bg:#1a2a00;--c-amber-txt:#f0a020}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;min-height:100%}
+#app{max-width:600px;margin:0 auto;padding:14px 14px 40px}
+#topbar{background:linear-gradient(135deg,#0d1e33 0%,#0a1a2e 100%);border:1px solid var(--bor);border-radius:14px;padding:16px 14px;margin-bottom:16px;text-align:center}
+#topbar .brand{font-weight:700;font-size:17px;color:var(--acc);letter-spacing:.3px;line-height:1.4}
+#topbar .sub{font-size:12px;color:var(--mut);margin-top:4px}
+.card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px;margin-bottom:14px}
+.sec-title{font-size:13px;font-weight:700;color:var(--acc);margin-bottom:12px}
+.mn{font-family:'Courier New',monospace}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.kpi{background:var(--c2);border:1px solid var(--bor);border-radius:10px;padding:12px;text-align:center}
+.kpi .kl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.kpi .kv{font-size:16px;font-weight:700;line-height:1.2}
+.pbar{background:var(--c2);border-radius:20px;height:12px;overflow:hidden;margin:10px 0 8px}
+.pf{background:var(--grn);height:100%;border-radius:20px;transition:width .4s}
+.estado-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.estado-lbl{font-size:13px;color:var(--mut)}
+.lrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--bor)}
+.lrow:last-child{border-bottom:none}
+.lrow .ldia{width:46px;flex-shrink:0;text-align:center;background:var(--c2);border:1px solid var(--bor);border-radius:8px;padding:6px 0;font-weight:700;font-size:15px;color:var(--acc)}
+.lrow .linfo{flex:1;min-width:0}
+.lrow .lcap{font-weight:700;font-size:14px}
+.lrow .lint{font-size:12px;color:var(--red);margin-top:2px}
+.lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap}
+.lest.ok{color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor)}
+.lest.pend{color:var(--amber,#f0a020);background:var(--c-day-bg);border:1px solid var(--acc)}
+.venc-item{display:flex;justify-content:space-between;align-items:center;background:var(--c-warn-bg);border:1px solid var(--acc);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.venc-item:last-child{margin-bottom:0}
+.venc-left{font-size:13px}
+.venc-day{font-weight:700;color:var(--acc)}
+.venc-amt{font-weight:700;font-family:'Courier New',monospace;color:var(--red)}
+.footer{font-size:11px;color:var(--mut);text-align:center;line-height:1.6;margin-top:20px;padding:0 8px}
+.err{text-align:center;padding:40px 20px;color:var(--mut)}
+.err .err-ico{font-size:42px;margin-bottom:12px}
+.err .err-ttl{font-size:16px;font-weight:700;color:var(--txt);margin-bottom:8px}
+@media(prefers-color-scheme:light){
+  :root{--bg:#f0f4f8;--card:#ffffff;--c2:#e8ecf2;--bor:#d0d8e4;--txt:#1a2a3a;--mut:#6a7a8a;--grn:#18a858;--red:#d03055;--blu:#1a6fd0;--pur:#7744ee;
+  --c-suc-bg:#e8f8ed;--c-suc-bor:#7ae0aa;--c-warn-bg:#fff0e8;--c-day-bg:#fef8e0;--c-amber-txt:#9a6000}
+  #topbar{background:linear-gradient(135deg,#ffffff 0%,#f0f4f8 100%)}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ── socio.html — Portal de solo lectura para socios inversores ──
+// Lee datos codificados en la URL (?d=) generados por index.html. No usa localStorage. ES5 estricto.
+(function(){
+  var COP=function(n){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);};
+  var app=document.getElementById('app');
+
+  function el(tag,cls,css,txt){
+    var e=document.createElement(tag);
+    if(cls)e.className=cls;
+    if(css){var ks=Object.keys(css);for(var i=0;i<ks.length;i++)e.style[ks[i]]=css[ks[i]];}
+    if(txt!=null)e.textContent=String(txt);
+    return e;
+  }
+
+  function showError(msg){
+    app.innerHTML='';
+    var box=el('div','err',null,null);
+    box.appendChild(el('div','err-ico',null,'🔒'));
+    box.appendChild(el('div','err-ttl',null,'No se pudo cargar el portal'));
+    box.appendChild(el('div',null,{fontSize:'13px',lineHeight:'1.6'},msg));
+    app.appendChild(box);
+  }
+
+  // ── Parse URL ──
+  var data=null;
+  try{
+    var params=new URLSearchParams(window.location.search);
+    var d=params.get('d');
+    if(!d){showError('Link inválido o incompleto. Solicita un nuevo link a tu administrador.');return;}
+    data=JSON.parse(decodeURIComponent(atob(d)));
+  }catch(e){
+    showError('El link está dañado o expiró. Solicita un nuevo link a tu administrador.');
+    return;
+  }
+  if(!data||!data.prestamos||!data.prestamos.length){
+    showError('Este portal no tiene préstamos para mostrar. Solicita un nuevo link a tu administrador.');
+    return;
+  }
+
+  var nombre=data.nombre||'Socio';
+  var mesLabel=data.mes||'';
+  var prestamos=data.prestamos.slice().sort(function(a,b){return a.dia-b.dia;});
+
+  // ── Totales ──
+  var totalCount=prestamos.length,totalCapital=0,totalInt=0,cobrado=0,pendiente=0,i,p;
+  for(i=0;i<prestamos.length;i++){
+    p=prestamos[i];
+    totalCapital+=(p.capital||0);
+    totalInt+=(p.intSocio||0);
+    if(p.pagado)cobrado+=(p.intSocio||0);
+    else pendiente+=(p.intSocio||0);
+  }
+  var pct=totalInt>0?Math.round((cobrado/totalInt)*100):0;
+  var mesActual=(mesLabel.split(' ')[0]||'').toUpperCase();
+
+  // ── HEADER ──
+  var top=el('div',null,null,null);top.id='topbar';
+  top.appendChild(el('div','brand',null,'🏦 JiTel Capital — Portal '+nombre));
+  if(mesLabel)top.appendChild(el('div','sub',null,mesLabel));
+  app.appendChild(top);
+
+  // ── 1. TU CARTERA ──
+  var c1=el('div','card',null,null);
+  c1.appendChild(el('div','sec-title',null,'💼 Tu cartera'));
+  var g1=el('div','g3',null,null);
+  function kpi(lbl,val,color){
+    var k=el('div','kpi',null,null);
+    k.appendChild(el('div','kl',null,lbl));
+    k.appendChild(el('div','kv mn',color?{color:color}:null,val));
+    return k;
+  }
+  g1.appendChild(kpi('Préstamos',String(totalCount),'var(--blu)'));
+  g1.appendChild(kpi('Capital total',COP(totalCapital),'var(--acc)'));
+  g1.appendChild(kpi('Interés/mes',COP(totalInt),'var(--grn)'));
+  c1.appendChild(g1);
+  app.appendChild(c1);
+
+  // ── 2. ESTADO DEL MES ──
+  var c2=el('div','card',null,null);
+  c2.appendChild(el('div','sec-title',null,'📊 Estado del mes'));
+  var er1=el('div','estado-row',null,null);
+  er1.appendChild(el('div','estado-lbl',null,'✅ Cobrado'));
+  er1.appendChild(el('div','mn',{color:'var(--grn)',fontWeight:'700'},COP(cobrado)));
+  c2.appendChild(er1);
+  var bar=el('div','pbar',null,null);var fill=el('div','pf',{width:pct+'%'},null);bar.appendChild(fill);c2.appendChild(bar);
+  var er2=el('div','estado-row',null,null);
+  er2.appendChild(el('div','estado-lbl',null,'⏳ Pendiente'));
+  er2.appendChild(el('div','mn',{color:'var(--red)',fontWeight:'700'},COP(pendiente)));
+  c2.appendChild(er2);
+  var pctTxt=el('div',null,{fontSize:'12px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},pct+'% cobrado de '+COP(totalInt));
+  c2.appendChild(pctTxt);
+  app.appendChild(c2);
+
+  // ── 3. PRÓXIMOS A VENCER ESTE MES ──
+  var vencen=[];
+  for(i=0;i<prestamos.length;i++){
+    if((prestamos[i].mesFin||'').toUpperCase()===mesActual)vencen.push(prestamos[i]);
+  }
+  if(vencen.length>0){
+    var c3=el('div','card',null,null);
+    c3.appendChild(el('div','sec-title',null,'⚠️ Próximos a vencer este mes'));
+    for(i=0;i<vencen.length;i++){
+      p=vencen[i];
+      var vi=el('div','venc-item',null,null);
+      var vl=el('div','venc-left',null,null);
+      vl.appendChild(el('span','venc-day',null,'Día '+p.dia));
+      vl.appendChild(el('span',null,{color:'var(--mut)',marginLeft:'8px'},'Capital '+COP(p.capital)));
+      vi.appendChild(vl);
+      vi.appendChild(el('div','venc-amt',null,COP(p.intSocio)));
+      c3.appendChild(vi);
+    }
+    app.appendChild(c3);
+  }
+
+  // ── 4. TUS PRÉSTAMOS ──
+  var c4=el('div','card',null,null);
+  c4.appendChild(el('div','sec-title',null,'📋 Tus préstamos'));
+  for(i=0;i<prestamos.length;i++){
+    p=prestamos[i];
+    var row=el('div','lrow',null,null);
+    row.appendChild(el('div','ldia',null,String(p.dia)));
+    var info=el('div','linfo',null,null);
+    info.appendChild(el('div','lcap mn',null,'Capital: '+COP(p.capital)));
+    info.appendChild(el('div','lint mn',null,'Interés socio/mes: '+COP(p.intSocio)));
+    row.appendChild(info);
+    var est=el('div','lest '+(p.pagado?'ok':'pend'),null,p.pagado?'✅ Cobrado':'⏳ Pendiente');
+    row.appendChild(est);
+    c4.appendChild(row);
+  }
+  app.appendChild(c4);
+
+  // ── FOOTER ──
+  var fecha=data.fecha||new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
+  var ft=el('div','footer',null,null);
+  ft.appendChild(el('div',null,null,'Información generada el '+fecha+'.'));
+  ft.appendChild(el('div',null,null,'Para datos actualizados solicita un nuevo link.'));
+  app.appendChild(ft);
+})();
+</script>
+</body>
+</html>
