@@ -451,9 +451,19 @@ function buildSocioImage(name,st,onDone){
       var vals=[String(l.dia),l.mes_fin,COP(l.monto),COP(IS(l))];
       cx=pad;
       for(cIdx=0;cIdx<vals.length;cIdx++){
-        ctx.font=(cIdx>=2?'bold ':'')+fs+'px -apple-system,sans-serif';
-        ctx.fillStyle=cIdx===3?'#f04f70':'#d8e8f5';ctx.textAlign='center';
-        ctx.fillText(vals[cIdx],cx+cW[cIdx]/2,rY+rH*0.65);cx+=cW[cIdx];
+        ctx.textAlign='center';
+        if(cIdx===3){
+          // Línea 1: valor en pesos (INT. SOCIO/MES)
+          ctx.font='bold '+fs+'px -apple-system,sans-serif';ctx.fillStyle='#f04f70';
+          ctx.fillText(vals[cIdx],cx+cW[cIdx]/2,rY+rH*0.44);
+          // Línea 2: porcentaje en texto pequeño gris
+          ctx.font=Math.round(10*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
+          ctx.fillText('('+(l.int_socio*100).toFixed(1)+'%)',cx+cW[cIdx]/2,rY+rH*0.78);
+        }else{
+          ctx.font=(cIdx>=2?'bold ':'')+fs+'px -apple-system,sans-serif';
+          ctx.fillStyle='#d8e8f5';ctx.fillText(vals[cIdx],cx+cW[cIdx]/2,rY+rH*0.65);
+        }
+        cx+=cW[cIdx];
       }
     }
     // Total row — solo en la última página
