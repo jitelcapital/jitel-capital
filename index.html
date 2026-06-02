@@ -440,7 +440,7 @@ function buildSocioImage(name,st,onDone){
     // Table header
     var tY=hdH;
     ctx.fillStyle='#112240';ctx.fillRect(0,tY,tW,rH);
-    var hcols=['DÍA','MES FIN','CAPITAL','INT/MES'],cx=pad,cIdx;
+    var hcols=['DÍA','MES FIN','CAPITAL','INT. SOCIO/MES'],cx=pad,cIdx;
     ctx.font='bold '+fsS+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';ctx.textAlign='center';
     for(cIdx=0;cIdx<hcols.length;cIdx++){ctx.fillText(hcols[cIdx],cx+cW[cIdx]/2,tY+rH*0.65);cx+=cW[cIdx];}
     // Data rows para esta página
@@ -610,7 +610,7 @@ function showLoanDetail(lid){
     if(!loan)return D(null,null,null);
     var iS=IS(loan),iP=IP(loan),iM=IM(loan);
     var ab=0;var pg=loan.pagos||[];for(i=0;i<pg.length;i++){if(pg[i].tipo!=='interes')ab+=pg[i].monto;}
-    if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:''};initE=true;}
+    if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:'',int_socio:loan.int_socio,int_propio:loan.int_propio};initE=true;}
     if(!pm)pm=String(Math.round(iM));
     var m=D('modal',null,null);
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
@@ -665,6 +665,18 @@ function showLoanDetail(lid){
       var socIn=INP({type:'text',value:ed.socio||loan.socio||'',placeholder:'Socio'});
       socIn.setAttribute('list',dlSocEd.id);socIn.addEventListener('input',function(e){ed.socio=e.target.value;});
       ediv.appendChild(FLD('Socio (fuente)',socIn));
+      // ── Campos de tasas editables ──
+      var isIn=INP({type:'number',step:'0.001',min:'0',max:'1',value:String(ed.int_socio)});
+      var ipIn=INP({type:'number',step:'0.001',min:'0',max:'1',value:String(ed.int_propio)});
+      var ratePreview=D(null,{fontSize:'12px',color:'var(--mut)',background:'var(--bg)',borderRadius:'6px',padding:'8px 10px',marginTop:'6px',lineHeight:'1.6'},null);
+      function updateRatePreview(){
+        var is2=parseFloat(isIn.value)||0,ip2=parseFloat(ipIn.value)||0;
+        ratePreview.textContent='Socio: '+COP(loan.monto*is2)+' · Propio: '+COP(loan.monto*ip2)+' · Total cliente: '+COP(loan.monto*(is2+ip2));
+      }
+      isIn.addEventListener('input',function(e){ed.int_socio=parseFloat(e.target.value)||0;updateRatePreview();});
+      ipIn.addEventListener('input',function(e){ed.int_propio=parseFloat(e.target.value)||0;updateRatePreview();});
+      ediv.appendChild(R2(FLD('Int. Socio (e.g. 0.035)',isIn),FLD('Int. Propio (e.g. 0.015)',ipIn)));
+      updateRatePreview();ediv.appendChild(ratePreview);
       var nIn=INP({type:'text',placeholder:'Motivo...',value:ed.nota||''});nIn.addEventListener('input',function(e){ed.nota=e.target.value;});
       ediv.appendChild(FLD('Motivo',nIn));
       ediv.appendChild(BTN('bb','Confirmar cambios',function(){
@@ -672,6 +684,8 @@ function showLoanDetail(lid){
           var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){
             var noteParts=['Plazo → día '+ed.dia+' '+ed.mes+' '+ed.año];
             if(newSocio&&newSocio!==x.socio)noteParts.push('Socio: '+x.socio+' → '+newSocio);
+            if(newIs!==null&&newIs!==undefined&&Math.abs(newIs-x.int_socio)>0.00001)noteParts.push('Socio %: '+(x.int_socio*100).toFixed(1)+'% → '+(newIs*100).toFixed(1)+'%');
+            if(newIp!==null&&newIp!==undefined&&Math.abs(newIp-x.int_propio)>0.00001)noteParts.push('Propio %: '+(x.int_propio*100).toFixed(1)+'% → '+(newIp*100).toFixed(1)+'%');
             if(ed.nota)noteParts.push('('+ed.nota+')');
             var note=noteParts.join(' | ');
             var c={};for(var k in x)c[k]=x[k];
@@ -684,14 +698,22 @@ function showLoanDetail(lid){
           ST.loans=nl;saveST();sext=false;refresh();renderApp();
         }
         var newSocio=(ed.socio||'').trim();
-        if(newSocio&&newSocio!==loan.socio){
-          // Calcular tasas promedio del nuevo socio
+        var socioChanged=(newSocio&&newSocio!==loan.socio);
+        var ratesChanged=(Math.abs(ed.int_socio-loan.int_socio)>0.00001)||(Math.abs(ed.int_propio-loan.int_propio)>0.00001);
+        // Calcular tasas promedio del nuevo socio (solo si socio cambia y no hay override manual)
+        var newIs=null,newIp=null;
+        if(socioChanged&&!ratesChanged){
           var loans2=[],si3;for(si3=0;si3<ST.loans.length;si3++){var ll=ST.loans[si3];if(ll.status==='active'&&ll.socio===newSocio&&ll.id!==lid)loans2.push(ll);}
-          var newIs=null,newIp=null;
           if(loans2.length>0){var sIs=0,sIp=0;for(si3=0;si3<loans2.length;si3++){sIs+=loans2[si3].int_socio;sIp+=loans2[si3].int_propio;}newIs=sIs/loans2.length;newIp=sIp/loans2.length;}
-          var rateInfo=newIs!==null?' Tasas recalculadas: '+(newIs*100).toFixed(1)+'% / '+(newIp*100).toFixed(1)+'%':' (sin otros préstamos de ese socio — tasas actuales se mantienen)';
-          showConfirm({title:'¿Cambiar socio?',msg:'¿Cambiar socio de "'+(loan.socio||'—')+'" a "'+newSocio+'"?'+rateInfo,danger:false,confirmLbl:'Sí, cambiar',
-            onConfirm:function(){doSave(newSocio,newIs,newIp);},
+        }
+        // Las tasas manuales tienen prioridad sobre el promedio del socio
+        if(ratesChanged){newIs=ed.int_socio;newIp=ed.int_propio;}
+        if(socioChanged||ratesChanged){
+          var msgs=[];
+          if(socioChanged)msgs.push('Socio: "'+(loan.socio||'—')+'" → "'+newSocio+'"');
+          if(ratesChanged)msgs.push('Socio: '+(loan.int_socio*100).toFixed(1)+'% → '+(ed.int_socio*100).toFixed(1)+'%, Propio: '+(loan.int_propio*100).toFixed(1)+'% → '+(ed.int_propio*100).toFixed(1)+'%');
+          showConfirm({title:'¿Actualizar tasas?',msg:msgs.join(' | '),danger:false,confirmLbl:'Sí, actualizar',
+            onConfirm:function(){doSave(socioChanged?newSocio:null,newIs,newIp);},
             onCancel:function(){doSave(null,null,null);}});
         }else{doSave(null,null,null);}
       },{width:'100%'}));
