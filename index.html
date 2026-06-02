@@ -1397,6 +1397,78 @@ function showMensajeMultidia(groups){
   refresh();
 }
 
+// ── RESUMEN DE COBROS POR CLIENTE (WhatsApp) ──
+// Construye el mensaje WA para un cliente según pagos del día.
+function buildResumenCobrosMsg(c,dia){
+  var complete=(c.pend.length===0);
+  var lines=['Hola '+c.name+' ✅','Pagos recibidos día '+dia+':'],i;
+  for(i=0;i<c.paid.length;i++)lines.push('• '+COP(IM(c.paid[i]))+' ✓');
+  if(complete){
+    lines.push('Total recibido día '+dia+': '+COP(c.totalPaid));
+    lines.push('Día '+dia+' completo 🎉');
+  }else{
+    lines.push('Total recibido: '+COP(c.totalPaid));
+    lines.push('Pendiente día '+dia+': '+COP(c.totalPend));
+  }
+  lines.push('');
+  lines.push('Gracias 🤝');
+  return lines.join('\n');
+}
+// Modal selector de clientes con pagos registrados ese día.
+function showResumenCobrosCliente(g){
+  // Agrupar préstamos del día por cliente (responsable)
+  var byCli={},order=[],i,l,r;
+  for(i=0;i<g.loans.length;i++){
+    l=g.loans[i];r=l.responsable||'—';
+    if(!byCli[r]){byCli[r]={name:r,loans:[],paid:[],pend:[],totalPaid:0,totalPend:0};order.push(r);}
+    byCli[r].loans.push(l);
+    if(paidMth(l)){byCli[r].paid.push(l);byCli[r].totalPaid+=IM(l);}
+    else{byCli[r].pend.push(l);byCli[r].totalPend+=IM(l);}
+  }
+  // Solo clientes con al menos 1 pago registrado ese día
+  var clients=[];
+  for(i=0;i<order.length;i++){if(byCli[order[i]].paid.length>0)clients.push(byCli[order[i]]);}
+  clients.sort(function(a,b){return a.name.localeCompare(b.name);});
+
+  var m=D('modal',null,null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--grn);font-size:17px';h2.textContent='📲 Resumen de cobros — Día '+g.dia;
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'14px'},null);
+  sub.textContent='Selecciona un cliente para enviar su resumen por WhatsApp';m.appendChild(sub);
+
+  if(clients.length===0){
+    var none=D(null,{fontSize:'13px',color:'var(--mut)',textAlign:'center',padding:'20px 0'},null);
+    none.textContent='No hay pagos registrados este día.';m.appendChild(none);
+    showModal(m);return;
+  }
+
+  // Lista — ~10 visibles, scroll si hay más; funciona con 1 o 20 clientes
+  var listWrap=D(null,{maxHeight:'440px',overflowY:'auto'},null);
+  for(var ci=0;ci<clients.length;ci++){
+    (function(c){
+      var complete=(c.pend.length===0);
+      var card=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'10px',background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'11px 12px',marginBottom:'8px',cursor:'pointer',minHeight:'44px',touchAction:'manipulation'},null);
+      var left=D(null,{flex:'1',minWidth:'0'},null);
+      var nm=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--txt)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);nm.textContent=c.name;
+      var amt=D('mn',{fontSize:'12px',color:'var(--grn)',marginTop:'2px'},null);amt.textContent='Recibido: '+COP(c.totalPaid);
+      left.appendChild(nm);left.appendChild(amt);
+      var badge=S(null,null,null);
+      if(complete){badge.style.cssText='font-size:11px;font-weight:700;color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0';badge.textContent='✓ Completo';}
+      else{badge.style.cssText='font-size:11px;font-weight:700;color:var(--acc);background:var(--c-day-bg);border:1px solid var(--acc);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0';badge.textContent='⏳ Parcial';}
+      card.appendChild(left);card.appendChild(badge);
+      card.addEventListener('click',function(){
+        var msg=buildResumenCobrosMsg(c,g.dia);
+        window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+        closeModal();
+      });
+      listWrap.appendChild(card);
+    })(clients[ci]);
+  }
+  m.appendChild(listWrap);
+  showModal(m);
+}
+
 // ── VIEW: COBROS ──
 function vCobros(){
   var active=[],i;
@@ -1638,6 +1710,10 @@ function vCobros(){
             },{width:'100%',minHeight:'40px'}));
             body.appendChild(bbox);
           }
+        }
+        // 📲 Enviar resumen de cobros — visible solo si hay al menos 1 pago registrado ese día
+        if(done.length>0){
+          body.appendChild(BTN('bb','📲 Enviar resumen de cobros',function(){showResumenCobrosCliente(g);},{width:'100%',minHeight:'40px',marginBottom:'4px'}));
         }
         if(done.length>0){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
