@@ -180,26 +180,36 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   showLoading('Verificando acceso…');
 
   // ── Boot: gateado por onAuthStateChanged ──
+  // getToken(false) actúa como barrier: resuelve en <1ms si el token ya existe (recargas
+  // posteriores) o espera el fetch reCAPTCHA inicial — evita que la primera llamada
+  // Firestore salga sin token cuando hay sesión cacheada (race con activate()).
+  function waitForAppCheckToken(cb){
+    if(typeof firebase.appCheck!=='function'){cb();return;}
+    firebase.appCheck().getToken(false).then(function(){cb();}).catch(function(){cb();});
+  }
+
   auth.onAuthStateChanged(function(user){
-    if(user){
-      // Ya autenticado — verificar que el link le corresponde y cargar datos
-      checkLinkAndLoad(user);
-    }else{
-      // No autenticado — validar código antes de mostrar login
-      db.collection('socios').doc(CODE).get()
-        .then(function(doc){
-          if(!doc.exists){
-            showError('Link inválido — el código “'+CODE+'” no está registrado. Solicita el link correcto a Julián.');
-            return;
-          }
-          showLogin(doc.data());
-        })
-        .catch(function(){
-          // Probablemente reglas de Firestore aún no configuradas o sin conexión
-          // Mostrar login sin pre-llenado; la verificación ocurre post-login
-          showLogin(null);
-        });
-    }
+    waitForAppCheckToken(function(){
+      if(user){
+        // Ya autenticado — verificar que el link le corresponde y cargar datos
+        checkLinkAndLoad(user);
+      }else{
+        // No autenticado — validar código antes de mostrar login
+        db.collection('socios').doc(CODE).get()
+          .then(function(doc){
+            if(!doc.exists){
+              showError('Link inválido — el código “'+CODE+'” no está registrado. Solicita el link correcto a Julián.');
+              return;
+            }
+            showLogin(doc.data());
+          })
+          .catch(function(){
+            // Probablemente reglas de Firestore aún no configuradas o sin conexión
+            // Mostrar login sin pre-llenado; la verificación ocurre post-login
+            showLogin(null);
+          });
+      }
+    });
   });
 
   function checkLinkAndLoad(user){

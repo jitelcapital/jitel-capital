@@ -3465,6 +3465,13 @@ function fbInit(){
   }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
 }
 function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
+// activate() inicia el fetch del token reCAPTCHA de forma asíncrona; onAuthStateChanged puede
+// dispararse antes de que el token esté listo si hay sesión cacheada. getToken() actúa como
+// barrier: resuelve inmediatamente si el token ya existe, o espera a que llegue.
+function waitForAppCheckToken(cb){
+  if(typeof firebase.appCheck!=='function'){cb();return;}
+  firebase.appCheck().getToken(false).then(function(){cb();}).catch(function(){cb();});
+}
 
 // Traduce errores de Firebase Auth a mensajes claros en español.
 function fbErrMsg(e){
@@ -3760,9 +3767,11 @@ function bootLegacyLocal(){
   FB.auth.onAuthStateChanged(function(user){
     FB.user=user||null;
     if(user){
-      loadProfile(user.uid,function(){
-        if(isAdmin())bootData();          // admin → app completa (datos Firestore/localStorage)
-        else showSocioPlaceholder();       // socio / sin perfil → placeholder (vista socio en Día 2)
+      waitForAppCheckToken(function(){
+        loadProfile(user.uid,function(){
+          if(isAdmin())bootData();          // admin → app completa (datos Firestore/localStorage)
+          else showSocioPlaceholder();       // socio / sin perfil → placeholder (vista socio en Día 2)
+        });
       });
     }else{
       FB.perfil=null;
