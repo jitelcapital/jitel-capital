@@ -143,6 +143,7 @@ select option{background:var(--card)}
       <div id="tsub" style="font-size:11px;color:var(--mut)">Cargando...</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
+    <span id="sync-ind" title="Modo local" style="font-size:13px;opacity:.55;cursor:default;transition:opacity .3s">💾</span>
     <button class="btn bh" id="btn-alerts" style="font-size:16px;padding:6px 10px;position:relative">🔔</button>
     <button class="btn ba" id="btn-new" style="font-size:12px;padding:7px 13px">+ Nuevo</button>
   </div>
@@ -3507,11 +3508,12 @@ function loadFromFirestore(cb){
 }
 // Carga ST: Firestore si tiene datos, si no localStorage, si no semilla inicial.
 // Retorna una Promise (resuelve con ST). Acepta un cb opcional por compatibilidad.
-// Al completar actualiza ST y refresca la UI con renderApp().
+// Carga ST desde Firestore (si tiene datos) o localStorage. Llama cb() al terminar.
+// renderApp() lo invoca startApp() desde el cb — no se llama aquí para evitar render prematuro.
 function loadSTAsync(cb){
   return new Promise(function(resolve){
     function finish(){
-      if(typeof renderApp==='function')renderApp();
+      // No llamar renderApp() aquí — startApp() (el cb) lo hace después de remover el overlay.
       if(typeof cb==='function')cb();
       resolve(ST);
     }
@@ -3519,11 +3521,12 @@ function loadSTAsync(cb){
       var local=null;try{local=loadST();}catch(le){local=null;}
       if(local&&local.loans&&local.loans.length>0){ST=local;}
       else{ST=mkInit();saveLocalOnly();}
+      syncInd('local');
       finish();
     }
     if(FB.ready&&FB.db){
       loadFromFirestore(function(data){
-        if(data&&data.loans&&data.loans.length>0){ST=data;finish();}
+        if(data&&data.loans&&data.loans.length>0){ST=data;syncInd('cloud');finish();}
         else useLocal();
       });
     }else useLocal();
@@ -3536,6 +3539,7 @@ function loanToDoc(l){var c={},k;for(k in l){if(l.hasOwnProperty(k))c[k]=l[k];}r
 var _fbSyncTimer=null;
 function fbSyncDebounced(){
   if(!FB.ready||!FB.db||!isAdmin())return;
+  syncInd('syncing');
   if(_fbSyncTimer)clearTimeout(_fbSyncTimer);
   _fbSyncTimer=setTimeout(fbPushAll,1500);
 }
@@ -3549,11 +3553,14 @@ function fbPushAll(){
       var end=Math.min(start+chunk,loans.length),n;
       for(n=start;n<end;n++){var l=loans[n];if(!l.id)l.id=GID();batch.set(FB.db.collection('prestamos').doc(l.id),loanToDoc(l));}
       if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()});
-      batch.commit().then(function(){if(end<loans.length)pushChunk(end);}).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);});
+      batch.commit().then(function(){
+        if(end<loans.length){pushChunk(end);}
+        else{syncInd('cloud');}
+      }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');});
     }
-    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).catch(function(){});}
+    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');});}
     else pushChunk(0);
-  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);}
+  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');}
 }
 
 // ── Helper de arranque: crea el perfil admin para el usuario actual (uso único) ──
@@ -3600,6 +3607,14 @@ function migrarAFirebase(){
   if(total===0)finish();else next();
 }
 try{window.migrarAFirebase=migrarAFirebase;window.jitelBootstrapAdmin=jitelBootstrapAdmin;window.jitelLogout=jitelLogout;}catch(e){}
+
+// ── Indicador de sincronización en topbar (☁️ Firestore / 🔄 Sincronizando / 💾 Local) ──
+function syncInd(state){
+  var el=document.getElementById('sync-ind');if(!el)return;
+  if(state==='cloud'){el.textContent='☁️';el.title='Sincronizado con Firestore';el.style.opacity='.65';}
+  else if(state==='syncing'){el.textContent='🔄';el.title='Sincronizando con Firestore…';el.style.opacity='.8';}
+  else{el.textContent='💾';el.title='Modo local — sin sincronización en la nube';el.style.opacity='.45';}
+}
 
 // ── UI: overlays de carga / login / placeholder socio ──
 function setChrome(show){
@@ -3709,6 +3724,7 @@ function bootLegacyLocal(){
     if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
     else{ST=mkInit();saveLocalOnly();}
   }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST=mkInit();}
+  syncInd('local');
   startApp();
 }
 
