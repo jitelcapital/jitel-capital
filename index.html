@@ -126,7 +126,14 @@ select option{background:var(--card)}
   #sumbar .sb-total{color:var(--txt)}
   #sumbar .sb-clear{background:rgba(26,111,208,.1);border-color:rgba(26,111,208,.3);color:var(--txt)}
 }
+/* ── Login / Firebase overlays ── */
+#login,#fb-loading{font-family:-apple-system,'Segoe UI',system-ui,sans-serif}
+#login input{margin-bottom:2px}
 </style>
+<!-- ── Firebase SDK (compat builds, ES5-friendly) ── -->
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="app">
@@ -367,7 +374,25 @@ function loadST(){
     return p;
   }catch(e){return null;}
 }
-function saveST(){try{localStorage.setItem(LSK,JSON.stringify(ST));}catch(e){}}
+// Always-on local write (the safety net — never removed during the Firebase transition).
+function saveLocalOnly(){try{localStorage.setItem(LSK,JSON.stringify(ST));}catch(e){}}
+// saveST keeps writing localStorage AND triggers a best-effort Firestore sync (admin only).
+// Firestore sync never blocks the UI and never throws — if it fails, localStorage still has everything.
+function saveST(){saveLocalOnly();if(typeof fbSyncDebounced==='function')fbSyncDebounced();}
+// Sanitize a loan object loaded from any source (Firestore or localStorage) so the app's
+// synchronous code can rely on numeric/boolean field types.
+function sanitizeLoan(l){
+  if(!l.id)l.id=GID();
+  if(!Array.isArray(l.pagos))l.pagos=[];
+  if(typeof l.monto!=='number')l.monto=parseFloat(l.monto)||0;
+  if(typeof l.int_socio!=='number')l.int_socio=parseFloat(l.int_socio)||0;
+  if(typeof l.int_propio!=='number')l.int_propio=parseFloat(l.int_propio)||0;
+  if(typeof l.dia!=='number')l.dia=parseInt(l.dia)||1;
+  if(!l.status)l.status='active';
+  if(typeof l.recibido!=='boolean')l.recibido=!!l.recibido;
+  if(typeof l.pagado_socio!=='boolean')l.pagado_socio=!!l.pagado_socio;
+  return l;
+}
 
 // ── MODAL ──
 var MC=document.getElementById('modals');
@@ -3392,26 +3417,314 @@ function gdriveHoursSinceLastBackup(){
   return(Date.now()-new Date(last).getTime())/3600000;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ── FIREBASE INTEGRATION (Día 1: integración base + migración) ──
+// ═══════════════════════════════════════════════════════════════════════════
+// Estrategia segura: Firebase gatea (login) y sincroniza, pero localStorage
+// permanece como red de seguridad. Si el SDK no carga o Firestore falla, la app
+// sigue funcionando con localStorage. Ninguna operación Firebase bloquea la UI.
+//
+// CONFIGURACIÓN REQUERIDA EN FIREBASE CONSOLE (una sola vez):
+// 1. Authentication → Sign-in method → habilitar "Correo/contraseña".
+// 2. Authentication → Settings → Authorized domains → agregar
+//    "julianjimenez91.github.io" (y "localhost" para pruebas).
+// 3. Firestore Database → crear base de datos.
+// 4. Crear los usuarios (Julián los crea aquí; no hay registro en la app).
+// 5. Reglas de Firestore: restringir lectura/escritura por rol (ver Día 2).
+// 6. Crear el perfil admin: doc usuarios/{uid} = { perfil:{ nombre, rol:'admin' } }.
+//    (Alternativa de arranque: jitelBootstrapAdmin('Julián') en la consola.)
+var FIREBASE_CONFIG={
+  apiKey:"AIzaSyAWxcYHpJjuFhP3pl2YIa6yjOrBL7Bd9K8",
+  authDomain:"jitel-capital.firebaseapp.com",
+  projectId:"jitel-capital",
+  storageBucket:"jitel-capital.firebasestorage.app",
+  messagingSenderId:"656658891595",
+  appId:"1:656658891595:web:77eac4631631d7e0941ece"
+};
+var FB={ready:false,app:null,auth:null,db:null,user:null,perfil:null};
+
+function fbInit(){
+  if(FB.ready)return true;
+  try{
+    FB.app=firebase.initializeApp(FIREBASE_CONFIG);
+    FB.auth=firebase.auth();
+    FB.db=firebase.firestore();
+    // Evita que un campo undefined accidental rompa una escritura.
+    try{FB.db.settings({ignoreUndefinedProperties:true});}catch(se){}
+    FB.ready=true;
+    return true;
+  }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
+}
+function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
+
+// Traduce errores de Firebase Auth a mensajes claros en español.
+function fbErrMsg(e){
+  var code=(e&&e.code)?e.code:'';
+  if(code.indexOf('wrong-password')>=0||code.indexOf('invalid-credential')>=0||code.indexOf('user-not-found')>=0)return 'Correo o contraseña incorrectos.';
+  if(code.indexOf('invalid-email')>=0)return 'El correo no es válido.';
+  if(code.indexOf('too-many-requests')>=0)return 'Demasiados intentos. Espera un momento e intenta de nuevo.';
+  if(code.indexOf('network')>=0)return 'Sin conexión. Verifica tu internet.';
+  return 'No se pudo iniciar sesión.';
+}
+
+// ── Auth ──
+function fbLogin(email,pass,onErr){
+  if(!FB.ready){onErr('Firebase no está disponible.');return;}
+  FB.auth.signInWithEmailAndPassword(email,pass).catch(function(e){onErr(fbErrMsg(e));});
+  // El éxito lo maneja onAuthStateChanged.
+}
+function jitelLogout(){if(FB.ready&&FB.auth)FB.auth.signOut();}
+
+// Lee el perfil del usuario (usuarios/{uid}); soporta {perfil:{...}} o campos planos.
+function loadProfile(uid,cb){
+  if(!FB.ready){cb();return;}
+  FB.db.collection('usuarios').doc(uid).get().then(function(doc){
+    if(doc.exists){var d=doc.data();FB.perfil=d&&d.perfil?d.perfil:d;}
+    else FB.perfil=null;
+    cb();
+  }).catch(function(e){console.warn('[Firebase] No se pudo leer el perfil:',e&&e.message);FB.perfil=null;cb();});
+}
+
+// ── Lectura de datos (Fase 5): Firestore primero, localStorage como fallback ──
+function loadFromFirestore(cb){
+  if(!FB.ready){cb(null);return;}
+  var result={loans:[],archives:{}};
+  FB.db.collection('prestamos').get().then(function(snap){
+    snap.forEach(function(doc){
+      var l=doc.data()||{};
+      if(!l.id)l.id=doc.id;
+      sanitizeLoan(l);
+      result.loans.push(l);
+    });
+    return FB.db.collection('config').doc('global').get();
+  }).then(function(cfg){
+    if(cfg&&cfg.exists){var c=cfg.data()||{};if(c.archives&&typeof c.archives==='object')result.archives=c.archives;}
+    cb(result);
+  }).catch(function(e){
+    console.warn('[Firebase] Error leyendo Firestore — usando localStorage:',e&&e.message);
+    cb(null);
+  });
+}
+// Carga ST: Firestore si tiene datos, si no localStorage, si no semilla inicial.
+function loadSTAsync(cb){
+  function useLocal(){
+    var local=null;try{local=loadST();}catch(le){local=null;}
+    if(local&&local.loans&&local.loans.length>0){ST=local;}
+    else{ST=mkInit();saveLocalOnly();}
+    cb();
+  }
+  if(FB.ready&&FB.db){
+    loadFromFirestore(function(data){
+      if(data&&data.loans&&data.loans.length>0){ST=data;cb();}
+      else useLocal();
+    });
+  }else useLocal();
+}
+
+// ── Escritura: sync best-effort a Firestore (Fase 5) ──
+// Convierte un loan a documento plano JSON (incluye el array pagos — "todos los campos").
+function loanToDoc(l){var c={},k;for(k in l){if(l.hasOwnProperty(k))c[k]=l[k];}return c;}
+var _fbSyncTimer=null;
+function fbSyncDebounced(){
+  if(!FB.ready||!FB.db||!isAdmin())return;
+  if(_fbSyncTimer)clearTimeout(_fbSyncTimer);
+  _fbSyncTimer=setTimeout(fbPushAll,1500);
+}
+function fbPushAll(){
+  if(!FB.ready||!FB.db||!isAdmin())return;
+  try{
+    var loans=ST.loans||[],i,chunk=400;
+    // Escribe en lotes (límite Firestore 500 ops/batch).
+    function pushChunk(start){
+      var batch=FB.db.batch();
+      var end=Math.min(start+chunk,loans.length),n;
+      for(n=start;n<end;n++){var l=loans[n];if(!l.id)l.id=GID();batch.set(FB.db.collection('prestamos').doc(l.id),loanToDoc(l));}
+      if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()});
+      batch.commit().then(function(){if(end<loans.length)pushChunk(end);}).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);});
+    }
+    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).catch(function(){});}
+    else pushChunk(0);
+  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);}
+}
+
+// ── Helper de arranque: crea el perfil admin para el usuario actual (uso único) ──
+function jitelBootstrapAdmin(nombre){
+  if(!FB.ready||!FB.db){console.error('Firebase no está inicializado.');return;}
+  if(!FB.user){console.error('Inicia sesión primero.');return;}
+  var perfil={nombre:nombre||FB.user.email||'Admin',rol:'admin',socioNombre:null};
+  FB.db.collection('usuarios').doc(FB.user.uid).set({perfil:perfil}).then(function(){
+    FB.perfil=perfil;
+    console.log('✅ Perfil admin creado para '+FB.user.email+'. Recarga la página.');
+  }).catch(function(e){console.error('No se pudo crear el perfil admin:',e&&e.message);});
+}
+
+// ── MIGRACIÓN (Fase 4): localStorage → Firestore. Solo admin. Usar desde consola. ──
+function migrarAFirebase(){
+  if(!FB.ready||!FB.db){console.error('❌ Firebase no está inicializado.');return;}
+  if(!FB.user){console.error('❌ Debes iniciar sesión primero.');return;}
+  if(!isAdmin()){
+    console.error('❌ Solo un usuario con rol "admin" puede migrar.');
+    console.info('ℹ️ Si eres el administrador y aún no tienes perfil, ejecuta: jitelBootstrapAdmin("Julián")');
+    return;
+  }
+  var loans=ST.loans||[];var total=loans.length;
+  console.log('🚀 Iniciando migración de '+total+' préstamos a Firestore...');
+  var idx=0;
+  function finish(){
+    FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},migratedAt:Date.now()}).then(function(){
+      console.log('✅ Migración completa — '+total+' préstamos migrados');
+      if(typeof showToast==='function')showToast('✅ Migración completa — '+total+' préstamos');
+    }).catch(function(e){console.error('Error guardando config:',e&&e.message);});
+  }
+  function next(){
+    if(idx>=total){finish();return;}
+    var l=loans[idx];if(!l.id)l.id=GID();
+    console.log('Migrando préstamo '+(idx+1)+' de '+total+'...');
+    FB.db.collection('prestamos').doc(l.id).set(loanToDoc(l)).then(function(){
+      var pagos=l.pagos||[];
+      if(pagos.length===0){idx++;next();return;}
+      var pbatch=FB.db.batch();
+      for(var pi=0;pi<pagos.length;pi++){var pg=pagos[pi];if(!pg.id)pg.id=GID();pbatch.set(FB.db.collection('pagos').doc(l.id).collection('pagos').doc(pg.id),pg);}
+      pbatch.commit().then(function(){idx++;next();}).catch(function(e){console.error('Error en pagos del préstamo '+l.id+':',e&&e.message);idx++;next();});
+    }).catch(function(e){console.error('Error migrando préstamo '+l.id+':',e&&e.message);idx++;next();});
+  }
+  if(total===0)finish();else next();
+}
+try{window.migrarAFirebase=migrarAFirebase;window.jitelBootstrapAdmin=jitelBootstrapAdmin;window.jitelLogout=jitelLogout;}catch(e){}
+
+// ── UI: overlays de carga / login / placeholder socio ──
+function setChrome(show){
+  var ids=['app','btn-calc'],i;
+  for(i=0;i<ids.length;i++){var e=document.getElementById(ids[i]);if(e)e.style.display=show?'':'none';}
+}
+function showLoading(){
+  if(document.getElementById('fb-loading'))return;
+  var ov=document.createElement('div');ov.id='fb-loading';
+  ov.style.cssText='position:fixed;inset:0;z-index:480;background:var(--bg);display:flex;align-items:center;justify-content:center';
+  var t=D(null,{color:'var(--mut)',fontSize:'14px'},null);t.textContent='Cargando…';ov.appendChild(t);
+  document.body.appendChild(ov);
+}
+function removeLoading(){var e=document.getElementById('fb-loading');if(e)e.remove();}
+function removeLoginScreen(){var e=document.getElementById('login');if(e)e.remove();}
+
+function showLoginScreen(errMsg){
+  removeLoading();setChrome(false);
+  removeLoginScreen();
+  var ov=document.createElement('div');ov.id='login';
+  ov.style.cssText='position:fixed;inset:0;z-index:500;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  var box=D(null,{width:'100%',maxWidth:'360px'},null);
+  var logo=D(null,{textAlign:'center',marginBottom:'22px'},null);
+  var lt=D(null,{fontSize:'28px',fontWeight:'700',color:'var(--acc)',letterSpacing:'.3px'},null);lt.textContent='💼 JiTel Capital';
+  var ls=D(null,{fontSize:'13px',color:'var(--mut)',marginTop:'4px'},null);ls.textContent='Portal de gestión';
+  logo.appendChild(lt);logo.appendChild(ls);box.appendChild(logo);
+  var card=D('card',null,null);
+  var emInp=INP({type:'email',placeholder:'tu@correo.com'});emInp.setAttribute('autocomplete','username');
+  var pwInp=INP({type:'password',placeholder:'Contraseña'});pwInp.setAttribute('autocomplete','current-password');
+  card.appendChild(FLD('Correo',emInp));
+  card.appendChild(FLD('Contraseña',pwInp));
+  var err=D(null,{fontSize:'12px',color:'var(--red)',marginBottom:'10px',minHeight:'16px',textAlign:'center'},null);
+  if(errMsg)err.textContent=errMsg;
+  card.appendChild(err);
+  var btn=BTN('ba','Ingresar',null,{width:'100%',minHeight:'46px',fontSize:'15px'});
+  function doSubmit(){
+    var em=(emInp.value||'').trim(),pw=pwInp.value||'';
+    if(!em||!pw){err.textContent='Ingresa correo y contraseña.';return;}
+    err.textContent='';btn.disabled=true;btn.textContent='Ingresando…';btn.style.opacity='.7';
+    fbLogin(em,pw,function(msg){btn.disabled=false;btn.textContent='Ingresar';btn.style.opacity='1';err.textContent=msg;});
+  }
+  btn.addEventListener('click',doSubmit);
+  function onEnter(e){if(e.key==='Enter'||e.keyCode===13)doSubmit();}
+  emInp.addEventListener('keydown',onEnter);pwInp.addEventListener('keydown',onEnter);
+  card.appendChild(btn);
+  box.appendChild(card);
+  var note=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},null);
+  note.textContent='El acceso lo crea el administrador. Si no puedes ingresar, contacta a Julián.';
+  box.appendChild(note);
+  ov.appendChild(box);document.body.appendChild(ov);
+}
+
+// Placeholder para socios (la vista completa de socio llega en el Día 2).
+function showSocioPlaceholder(){
+  removeLoading();removeLoginScreen();setChrome(false);
+  var ov=document.createElement('div');ov.id='login';
+  ov.style.cssText='position:fixed;inset:0;z-index:500;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;text-align:center';
+  var box=D(null,{maxWidth:'340px'},null);
+  box.appendChild(D(null,{fontSize:'42px',marginBottom:'12px'},'🏦'));
+  box.appendChild(D(null,{fontSize:'18px',fontWeight:'700',color:'var(--acc)',marginBottom:'8px'},'Hola'+(FB.perfil&&FB.perfil.nombre?(' '+FB.perfil.nombre):'')));
+  var noProfile=!FB.perfil;
+  var msg=noProfile
+    ? 'No tienes un perfil asignado todavía. Si eres el administrador, abre la consola y ejecuta migrarAFirebase() para completar la configuración inicial.'
+    : 'Tu portal de socio estará disponible muy pronto. Mientras tanto, solicita tu link de resumen a Julián.';
+  box.appendChild(D(null,{fontSize:'13px',color:'var(--mut)',marginBottom:'18px',lineHeight:'1.6'},msg));
+  box.appendChild(BTN('bh','Cerrar sesión',function(){jitelLogout();},{minHeight:'44px'}));
+  ov.appendChild(box);document.body.appendChild(ov);
+}
+
+// Agrega un botón de cierre de sesión en la barra superior (sin tocar el HTML).
+function addLogoutButton(){
+  if(document.getElementById('btn-logout'))return;
+  var nb=document.getElementById('btn-new');if(!nb||!nb.parentNode)return;
+  var b=document.createElement('button');b.id='btn-logout';b.className='btn bh';b.type='button';
+  b.style.cssText='font-size:14px;padding:6px 9px';b.textContent='🚪';
+  b.title='Cerrar sesión'+(FB.perfil&&FB.perfil.nombre?(' ('+FB.perfil.nombre+')'):'');
+  b.addEventListener('click',function(){jitelLogout();});
+  nb.parentNode.insertBefore(b,document.getElementById('btn-alerts'));
+}
+
+// ── ARRANQUE DE LA APP (post-login + datos cargados) ──
+var APP_STARTED=false;
+function startApp(){
+  removeLoading();removeLoginScreen();setChrome(true);
+  if(!APP_STARTED){
+    renderNavbar();
+    if(FB.ready)addLogoutButton();
+    setTimeout(gdriveMaybeAutoBackup,3000);
+    setInterval(gdriveRenewSilent,45*60*1000);
+    APP_STARTED=true;
+  }
+  renderApp();
+}
+function bootData(){loadSTAsync(function(){startApp();});}
+
 // ── BOOT ──
 document.getElementById('btn-new').addEventListener('click',showNewLoan);
 document.getElementById('btn-alerts').addEventListener('click',showAlertsModal);
 document.getElementById('btn-calc').addEventListener('click',showCalculadora);
 document.getElementById('sb-clear').addEventListener('click',sumClear);
-try{
-  var saved=loadST();
-  if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
-  else{ST=mkInit();saveST();}
-}catch(e){
-  // If boot fails (corrupt storage), wipe and start fresh rather than showing blank screen
-  try{localStorage.removeItem(LSK);}catch(le){}
-  ST=mkInit();
+
+// Camino de respaldo: si el SDK de Firebase no está disponible, la app sigue
+// funcionando con localStorage (sin login) — nunca queda inutilizable.
+function bootLegacyLocal(){
+  try{
+    var saved=loadST();
+    if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
+    else{ST=mkInit();saveLocalOnly();}
+  }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST=mkInit();}
+  startApp();
 }
-renderNavbar();
-renderApp();
-// Auto-backup check (delayed so initial render isn't blocked by network)
-setTimeout(gdriveMaybeAutoBackup,3000);
-// Renovación preventiva de token Google Drive cada 45 minutos en background
-setInterval(gdriveRenewSilent,45*60*1000);
+
+(function boot(){
+  if(typeof firebase==='undefined'||!firebase.initializeApp){
+    console.warn('[Firebase] SDK no disponible — modo localStorage (sin login).');
+    bootLegacyLocal();
+    return;
+  }
+  if(!fbInit()){bootLegacyLocal();return;}
+  setChrome(false);showLoading();
+  FB.auth.onAuthStateChanged(function(user){
+    FB.user=user||null;
+    if(user){
+      loadProfile(user.uid,function(){
+        if(isAdmin())bootData();          // admin → app completa (datos Firestore/localStorage)
+        else showSocioPlaceholder();       // socio / sin perfil → placeholder (vista socio en Día 2)
+      });
+    }else{
+      FB.perfil=null;
+      if(APP_STARTED){location.reload();return;} // logout tras usar la app → reinicio limpio
+      showLoginScreen('');
+    }
+  });
+})();
 </script>
 
 </body>

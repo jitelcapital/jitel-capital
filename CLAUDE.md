@@ -12,7 +12,7 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 
 - **Un solo archivo**: `index.html` (~3.300 líneas), sin framework ni build system
 - **JS embebido** en `<script>` al final del HTML; estilo ES5 estricto (sin `const`/`let`, sin arrow functions, sin template literals)
-- **Persistencia**: `localStorage` bajo la clave `jitel_v1` — objeto `ST` serializado como JSON
+- **Persistencia**: en migración a **Firebase** (Auth + Firestore). `localStorage` (`jitel_v1`) se mantiene como red de seguridad / fallback. Ver sección "Firebase" abajo.
 - **Despliegue**: GitHub Pages (rama `main`) — `https://julianjimenez91.github.io/jitel-capital/`
 - **Sin librerías externas**: SVG nativo, Canvas nativo, Google Identity Services vía CDN para OAuth2
 
@@ -135,6 +135,36 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 | **Token Drive** | Renovación proactiva: `setInterval` 45 min + guard <30 min restantes |
 
 ---
+
+## Firebase (migración en curso — Día 1 hecho)
+
+**SDK**: compat v9.0.0 vía CDN (`firebase-app/auth/firestore-compat.js`) cargado en `<head>`. Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
+
+**Objeto global `FB`**: `{ready, app, auth, db, user, perfil}`. `isAdmin()` = `FB.perfil.rol==='admin'`.
+
+**Arranque (boot)**: IIFE al final del script.
+- Si el SDK no carga → `bootLegacyLocal()` (localStorage, sin login — la app nunca queda inutilizable).
+- Si carga → `fbInit()`, gatea con `onAuthStateChanged`: sin sesión → `showLoginScreen()`; admin → `bootData()` (app completa); socio/sin perfil → `showSocioPlaceholder()` (vista de socio es Día 2).
+- `startApp()` corre una sola vez (`APP_STARTED`): navbar, botón logout (🚪 en topbar), timers de Drive, `renderApp()`.
+
+**Lectura (Fase 5)**: `loadSTAsync(cb)` → Firestore primero (`loadFromFirestore`), si vacío/falla usa `loadST()` (localStorage), si nada usa `mkInit()`. `loadST` queda intacto como fallback síncrono.
+
+**Escritura**: `saveST()` = `saveLocalOnly()` (siempre) + `fbSyncDebounced()` (best-effort, solo admin, 1.5s debounce → `fbPushAll()` escribe docs `prestamos/{id}` + `config/global` en lotes). Nunca bloquea ni lanza. `saveLocalOnly()` para sembrado sin tocar Firebase.
+
+**Estructura Firestore**:
+- `usuarios/{uid}` → `{ perfil: { nombre, rol:'admin'|'socio'|'cliente', socioNombre } }`
+- `prestamos/{loanId}` → todos los campos de un loan (incluye array `pagos`)
+- `pagos/{loanId}/pagos/{pagoId}` → copia normalizada (se llena en migración; para vistas de socio en Día 2)
+- `config/global` → `{ currMk, archives, ... }`
+
+**Funciones de consola** (expuestas en `window`):
+- `migrarAFirebase()` — migra localStorage→Firestore con progreso; solo admin.
+- `jitelBootstrapAdmin('Julián')` — crea el perfil admin del usuario actual (arranque inicial, uso único).
+- `jitelLogout()` — cierra sesión.
+
+**Setup en Firebase Console** (no en código): habilitar Auth correo/contraseña; agregar dominio `julianjimenez91.github.io` a Authorized domains; crear Firestore; crear usuarios; configurar reglas de seguridad por rol (Día 2).
+
+**Pendiente Día 2**: vista/portal de socio dentro de la app, reglas de Firestore por rol, sync de subcolección `pagos` en escrituras en vivo.
 
 ## Reglas permanentes
 
