@@ -185,7 +185,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   // Firestore salga sin token cuando hay sesión cacheada (race con activate()).
   function waitForAppCheckToken(cb){
     if(typeof firebase.appCheck!=='function'){cb();return;}
-    firebase.appCheck().getToken(false).then(function(){cb();}).catch(function(){cb();});
+    firebase.appCheck().getToken(false)
+      .then(function(){cb();})
+      .catch(function(e){
+        console.error('[AppCheck] Error en intercambio de token – revisar Firebase Console → App Check:',e&&e.message);
+        cb();
+      });
   }
 
   auth.onAuthStateChanged(function(user){

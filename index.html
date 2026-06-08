@@ -3470,7 +3470,14 @@ function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
 // barrier: resuelve inmediatamente si el token ya existe, o espera a que llegue.
 function waitForAppCheckToken(cb){
   if(typeof firebase.appCheck!=='function'){cb();return;}
-  firebase.appCheck().getToken(false).then(function(){cb();}).catch(function(){cb();});
+  firebase.appCheck().getToken(false)
+    .then(function(){cb();})
+    .catch(function(e){
+      // HTTP 400 aquí = proveedor incorrecto en Firebase Console (Enterprise vs v3)
+      // o Secret Key registrada en lugar de Site Key.
+      console.error('[AppCheck] Error en intercambio de token – revisar Firebase Console → App Check:',e&&e.message);
+      cb();
+    });
 }
 
 // Traduce errores de Firebase Auth a mensajes claros en español.
