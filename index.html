@@ -3570,19 +3570,28 @@ function loadFromFirestore(cb){
   });
 }
 // Carga ST: Firestore si tiene datos, si no localStorage, si no semilla inicial.
+// Retorna una Promise (resuelve con ST). Acepta un cb opcional por compatibilidad.
+// Al completar actualiza ST y refresca la UI con renderApp().
 function loadSTAsync(cb){
-  function useLocal(){
-    var local=null;try{local=loadST();}catch(le){local=null;}
-    if(local&&local.loans&&local.loans.length>0){ST=local;}
-    else{ST=mkInit();saveLocalOnly();}
-    cb();
-  }
-  if(FB.ready&&FB.db){
-    loadFromFirestore(function(data){
-      if(data&&data.loans&&data.loans.length>0){ST=data;cb();}
-      else useLocal();
-    });
-  }else useLocal();
+  return new Promise(function(resolve){
+    function finish(){
+      if(typeof renderApp==='function')renderApp();
+      if(typeof cb==='function')cb();
+      resolve(ST);
+    }
+    function useLocal(){
+      var local=null;try{local=loadST();}catch(le){local=null;}
+      if(local&&local.loans&&local.loans.length>0){ST=local;}
+      else{ST=mkInit();saveLocalOnly();}
+      finish();
+    }
+    if(FB.ready&&FB.db){
+      loadFromFirestore(function(data){
+        if(data&&data.loans&&data.loans.length>0){ST=data;finish();}
+        else useLocal();
+      });
+    }else useLocal();
+  });
 }
 
 // ── Escritura: sync best-effort a Firestore (Fase 5) ──
