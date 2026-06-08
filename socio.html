@@ -360,7 +360,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         var vi=el('div','venc-item',null,null);
         var vl=el('div',null,null,null);
         vl.appendChild(el('span','venc-day',null,'Día '+l.dia));
-        if(l.responsable)vl.appendChild(el('span',null,{color:'var(--mut)',marginLeft:'8px',fontSize:'12px'},l.responsable));
         vl.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',marginTop:'2px'},'Capital '+COP(l.monto)));
         vi.appendChild(vl);
         vi.appendChild(el('div','venc-amt',null,COP(intS)));
@@ -381,7 +380,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         var lrow=el('div','lrow',null,null);
         lrow.appendChild(el('div','ldia',null,String(l.dia||'?')));
         var linfo=el('div','linfo',null,null);
-        if(l.responsable)linfo.appendChild(el('div','lcli',null,l.responsable));
         linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(l.monto)));
         linfo.appendChild(el('div','lint mn',null,'Interés/mes: '+COP(intS)));
         lrow.appendChild(linfo);
