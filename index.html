@@ -134,6 +134,7 @@ select option{background:var(--card)}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script>
 </head>
 <body>
 <div id="app">
@@ -3506,12 +3507,19 @@ var FIREBASE_CONFIG={
   messagingSenderId:"656658891595",
   appId:"1:656658891595:web:77eac4631631d7e0941ece"
 };
+// Reemplazar con la Site Key de reCAPTCHA v3 obtenida en Firebase Console → App Check
+var RECAPTCHA_V3_SITE_KEY='TU_CLAVE_RECAPTCHA_V3';
 var FB={ready:false,app:null,auth:null,db:null,user:null,perfil:null};
 
 function fbInit(){
   if(FB.ready)return true;
   try{
     FB.app=firebase.initializeApp(FIREBASE_CONFIG);
+    // App Check debe activarse antes de auth y firestore
+    if(typeof firebase.appCheck==='function'){
+      try{firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY,true);}
+      catch(ace){console.warn('[AppCheck] No se pudo activar:',ace&&ace.message);}
+    }else{console.warn('[AppCheck] SDK no disponible.');}
     FB.auth=firebase.auth();
     FB.db=firebase.firestore();
     // Evita que un campo undefined accidental rompa una escritura.
