@@ -18,10 +18,10 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px;margin-bottom:14px}
 .sec-title{font-size:13px;font-weight:700;color:var(--acc);margin-bottom:12px}
 .mn{font-family:'Courier New',monospace}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-.kpi{background:var(--c2);border:1px solid var(--bor);border-radius:10px;padding:12px;text-align:center}
-.kpi .kl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.kpi .kv{font-size:15px;font-weight:700;line-height:1.2}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.kpi{background:var(--c2);border:1px solid var(--bor);border-radius:10px;padding:10px 6px;text-align:center}
+.kpi .kl{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+.kpi .kv{font-size:13px;font-weight:700;line-height:1.2;word-break:break-word}
 .pbar{background:var(--c2);border-radius:20px;height:12px;overflow:hidden;margin:10px 0 8px}
 .pf{background:var(--grn);height:100%;border-radius:20px;transition:width .4s}
 .estado-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -32,7 +32,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .lrow .linfo{flex:1;min-width:0}
 .lrow .lcap{font-weight:700;font-size:14px}
 .lrow .lint{font-size:12px;color:var(--red);margin-top:2px}
-.lrow .lcli{font-size:11px;color:var(--mut);margin-bottom:2px}
+.lrow .ldate{font-size:11px;color:var(--mut);margin-top:3px}
 .lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;white-space:nowrap}
 .lest.ok{color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor)}
 .lest.pend{color:#f0a020;background:var(--c-day-bg);border:1px solid var(--acc)}
@@ -71,6 +71,23 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 // Flujo: ?s=victor → Firestore socios/victor → login → carga préstamos. ES5 estricto.
 (function(){
   var MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  var MESES_CORTO=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  function fmtPeriodo(loan){
+    var inicio='',fin='';
+    if(loan.mes_comienzo){
+      var p=(loan.mes_comienzo+'').split('-');
+      var mo=parseInt(p[1]||'0',10)-1;
+      if(mo>=0&&mo<12&&p[0])inicio=MESES_CORTO[mo]+' '+p[0];
+    }
+    if(loan.mes_fin&&loan.año){
+      var idx=MESES.indexOf((loan.mes_fin+'').toUpperCase());
+      if(idx>=0)fin=MESES_CORTO[idx]+' '+loan.año;
+    }
+    if(inicio&&fin)return inicio+' → '+fin;
+    if(fin)return 'Hasta '+fin;
+    if(inicio)return 'Desde '+inicio;
+    return '';
+  }
   var FIREBASE_CONFIG={
     apiKey:'AIzaSyAWxcYHpJjuFhP3pl2YIa6yjOrBL7Bd9K8',
     authDomain:'jitel-capital.firebaseapp.com',
@@ -320,7 +337,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     function kpi(lbl,val,color){
       var k=el('div','kpi',null,null);
       k.appendChild(el('div','kl',null,lbl));
-      k.appendChild(el('div','kv mn',color?{color:color}:null,val));
+      k.appendChild(el('div','kv',color?{color:color}:null,val));
       return k;
     }
     g1.appendChild(kpi('Préstamos',String(loans.length),'var(--blu)'));
@@ -379,9 +396,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         intS=(l.monto||0)*(l.int_socio||0);
         var lrow=el('div','lrow',null,null);
         lrow.appendChild(el('div','ldia',null,String(l.dia||'?')));
+        var tasaPct=parseFloat((Math.round((l.int_socio||0)*10000)/100).toFixed(2));
         var linfo=el('div','linfo',null,null);
         linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(l.monto)));
-        linfo.appendChild(el('div','lint mn',null,'Interés/mes: '+COP(intS)));
+        linfo.appendChild(el('div','lint',null,'Interés/mes: '+COP(intS)+' ('+tasaPct+'%)'));
+        var periodo=fmtPeriodo(l);
+        if(periodo)linfo.appendChild(el('div','ldate',null,periodo));
         lrow.appendChild(linfo);
         var estCls,estTxt;
         if(l.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
