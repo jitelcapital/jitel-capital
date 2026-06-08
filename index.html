@@ -3606,7 +3606,20 @@ function migrarAFirebase(){
   }
   if(total===0)finish();else next();
 }
-try{window.migrarAFirebase=migrarAFirebase;window.jitelBootstrapAdmin=jitelBootstrapAdmin;window.jitelLogout=jitelLogout;}catch(e){}
+// ── Helper de consola: crea/actualiza un documento socios/{code} para el portal de socio ──
+// Uso: jitelSocioAdd('victor', 'socio@ejemplo.com', 'VICTOR')
+function jitelSocioAdd(code,email,nombre){
+  if(!FB.ready||!FB.db){console.error('Firebase no está inicializado.');return;}
+  if(!FB.user){console.error('Inicia sesión primero.');return;}
+  if(!isAdmin()){console.error('Solo admin puede crear socios.');return;}
+  if(!code||!email){console.error('Uso: jitelSocioAdd("codigo","email","NOMBRE")');return;}
+  var doc={email:email,nombre:(nombre||code).toUpperCase(),createdAt:Date.now()};
+  FB.db.collection('socios').doc(code).set(doc).then(function(){
+    console.log('✅ Socio creado: socios/'+code+' → '+email+' (nombre: '+doc.nombre+')');
+    if(typeof showToast==='function')showToast('✅ Socio '+code+' creado');
+  }).catch(function(e){console.error('Error creando socio:',e&&e.message);});
+}
+try{window.migrarAFirebase=migrarAFirebase;window.jitelBootstrapAdmin=jitelBootstrapAdmin;window.jitelLogout=jitelLogout;window.jitelSocioAdd=jitelSocioAdd;}catch(e){}
 
 // ── Indicador de sincronización en topbar (☁️ Firestore / 🔄 Sincronizando / 💾 Local) ──
 function syncInd(state){

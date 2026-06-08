@@ -8,12 +8,12 @@
 <title>JiTel Capital — Portal Socio</title>
 <style>
 :root{--bg:#07111e;--card:#0d1e33;--c2:#112240;--bor:#1c3455;--acc:#e9a020;--txt:#d8e8f5;--mut:#5a7a9a;--grn:#2dd87a;--red:#f04f70;--blu:#4a9eff;--pur:#9b6dff;
---c-suc-bg:#0a1f0a;--c-suc-bor:#1a4a1a;--c-warn-bg:#3a1e0e;--c-day-bg:#1a2a00;--c-amber-txt:#f0a020}
+--c-suc-bg:#0a1f0a;--c-suc-bor:#1a4a1a;--c-warn-bg:#3a1e0e;--c-day-bg:#1a2a00}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;font-size:14px;min-height:100%}
 #app{max-width:600px;margin:0 auto;padding:14px 14px 40px}
-#topbar{background:linear-gradient(135deg,#0d1e33 0%,#0a1a2e 100%);border:1px solid var(--bor);border-radius:14px;padding:16px 14px;margin-bottom:16px;text-align:center}
-#topbar .brand{font-weight:700;font-size:17px;color:var(--acc);letter-spacing:.3px;line-height:1.4}
+#topbar{background:linear-gradient(135deg,#0d1e33 0%,#0a1a2e 100%);border:1px solid var(--bor);border-radius:14px;padding:14px 14px;margin-bottom:16px}
+#topbar .brand{font-weight:700;font-size:16px;color:var(--acc);letter-spacing:.3px;line-height:1.4}
 #topbar .sub{font-size:12px;color:var(--mut);margin-top:4px}
 .card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px;margin-bottom:14px}
 .sec-title{font-size:13px;font-weight:700;color:var(--acc);margin-bottom:12px}
@@ -21,7 +21,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .kpi{background:var(--c2);border:1px solid var(--bor);border-radius:10px;padding:12px;text-align:center}
 .kpi .kl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.kpi .kv{font-size:16px;font-weight:700;line-height:1.2}
+.kpi .kv{font-size:15px;font-weight:700;line-height:1.2}
 .pbar{background:var(--c2);border-radius:20px;height:12px;overflow:hidden;margin:10px 0 8px}
 .pf{background:var(--grn);height:100%;border-radius:20px;transition:width .4s}
 .estado-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -32,34 +32,57 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .lrow .linfo{flex:1;min-width:0}
 .lrow .lcap{font-weight:700;font-size:14px}
 .lrow .lint{font-size:12px;color:var(--red);margin-top:2px}
-.lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap}
+.lrow .lcli{font-size:11px;color:var(--mut);margin-bottom:2px}
+.lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;white-space:nowrap}
 .lest.ok{color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor)}
-.lest.pend{color:var(--amber,#f0a020);background:var(--c-day-bg);border:1px solid var(--acc)}
+.lest.pend{color:#f0a020;background:var(--c-day-bg);border:1px solid var(--acc)}
 .venc-item{display:flex;justify-content:space-between;align-items:center;background:var(--c-warn-bg);border:1px solid var(--acc);border-radius:8px;padding:10px 12px;margin-bottom:8px}
 .venc-item:last-child{margin-bottom:0}
-.venc-left{font-size:13px}
 .venc-day{font-weight:700;color:var(--acc)}
 .venc-amt{font-weight:700;font-family:'Courier New',monospace;color:var(--red)}
 .footer{font-size:11px;color:var(--mut);text-align:center;line-height:1.6;margin-top:20px;padding:0 8px}
 .err{text-align:center;padding:40px 20px;color:var(--mut)}
 .err .err-ico{font-size:42px;margin-bottom:12px}
 .err .err-ttl{font-size:16px;font-weight:700;color:var(--txt);margin-bottom:8px}
+input[type=email],input[type=password]{width:100%;background:var(--c2);border:1px solid var(--bor);border-radius:8px;color:var(--txt);font-family:inherit;font-size:14px;padding:10px 12px;outline:none;-webkit-appearance:none;transition:border-color .15s}
+input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.btn{border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;padding:0 16px;min-height:42px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:opacity .15s}
+.ba{background:linear-gradient(135deg,var(--acc) 0%,#c07010 100%);color:#07111e}
+.bh{background:transparent;border:1px solid var(--bor);color:var(--txt)}
+.btn:disabled{opacity:.5;cursor:default}
+.err-sm{font-size:12px;color:var(--red);min-height:16px;margin-bottom:10px;text-align:center}
 @media(prefers-color-scheme:light){
-  :root{--bg:#f0f4f8;--card:#ffffff;--c2:#e8ecf2;--bor:#d0d8e4;--txt:#1a2a3a;--mut:#6a7a8a;--grn:#18a858;--red:#d03055;--blu:#1a6fd0;--pur:#7744ee;
-  --c-suc-bg:#e8f8ed;--c-suc-bor:#7ae0aa;--c-warn-bg:#fff0e8;--c-day-bg:#fef8e0;--c-amber-txt:#9a6000}
+  :root{--bg:#f0f4f8;--card:#ffffff;--c2:#e8ecf2;--bor:#d0d8e4;--txt:#1a2a3a;--mut:#6a7a8a;--grn:#18a858;--red:#d03055;--blu:#1a6fd0;
+  --c-suc-bg:#e8f8ed;--c-suc-bor:#7ae0aa;--c-warn-bg:#fff0e8;--c-day-bg:#fef8e0}
   #topbar{background:linear-gradient(135deg,#ffffff 0%,#f0f4f8 100%)}
+  input[type=email],input[type=password]{background:#f8fafc}
 }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script>
-// ── socio.html — Portal de solo lectura para socios inversores ──
-// Lee datos codificados en la URL (?d=) generados por index.html. No usa localStorage. ES5 estricto.
+// socio.html — Portal de socio con autenticación Firebase real.
+// Flujo: ?s=victor → Firestore socios/victor → login → carga préstamos. ES5 estricto.
 (function(){
+  var MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  var FIREBASE_CONFIG={
+    apiKey:'AIzaSyAWxcYHpJjuFhP3pl2YIa6yjOrBL7Bd9K8',
+    authDomain:'jitel-capital.firebaseapp.com',
+    projectId:'jitel-capital',
+    storageBucket:'jitel-capital.firebasestorage.app',
+    messagingSenderId:'656658891595',
+    appId:'1:656658891595:web:77eac4631631d7e0941ece'
+  };
   var COP=function(n){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);};
-  var app=document.getElementById('app');
+  var G=document.getElementById('app');
 
+  // ── Helpers DOM ──
   function el(tag,cls,css,txt){
     var e=document.createElement(tag);
     if(cls)e.className=cls;
@@ -67,130 +90,318 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
     if(txt!=null)e.textContent=String(txt);
     return e;
   }
+  function inpEl(type,ph,val){
+    var e=document.createElement('input');
+    e.type=type;if(ph)e.placeholder=ph;if(val)e.value=val;
+    return e;
+  }
+  function fldEl(lbl,input){
+    var w=el('div','fld',null,null);
+    w.appendChild(el('label',null,null,lbl));
+    w.appendChild(input);
+    return w;
+  }
+  function btnEl(cls,txt,fn){
+    var b=el('button','btn '+cls,null,txt);
+    if(fn)b.addEventListener('click',fn);
+    return b;
+  }
 
+  // ── UI de estado ──
+  function showLoading(msg){
+    G.innerHTML='';
+    var box=el('div',null,{textAlign:'center',padding:'80px 20px',color:'var(--mut)',fontSize:'14px'},null);
+    box.textContent=msg||'Cargando…';
+    G.appendChild(box);
+  }
   function showError(msg){
-    app.innerHTML='';
+    G.innerHTML='';
     var box=el('div','err',null,null);
     box.appendChild(el('div','err-ico',null,'🔒'));
-    box.appendChild(el('div','err-ttl',null,'No se pudo cargar el portal'));
-    box.appendChild(el('div',null,{fontSize:'13px',lineHeight:'1.6'},msg));
-    app.appendChild(box);
+    box.appendChild(el('div','err-ttl',null,'Acceso no disponible'));
+    var p=el('div',null,{fontSize:'13px',lineHeight:'1.6',marginTop:'4px',color:'var(--mut)'},null);
+    p.textContent=msg;
+    box.appendChild(p);
+    G.appendChild(box);
+  }
+  function fbErrMsg(e){
+    var code=(e&&e.code)?e.code:'';
+    if(code.indexOf('wrong-password')>=0||code.indexOf('invalid-credential')>=0||code.indexOf('user-not-found')>=0)return 'Correo o contraseña incorrectos.';
+    if(code.indexOf('too-many-requests')>=0)return 'Demasiados intentos. Espera un momento.';
+    if(code.indexOf('network')>=0)return 'Sin conexión. Verifica tu internet.';
+    return 'No se pudo iniciar sesión.';
   }
 
-  // ── Parse URL ──
-  var data=null;
+  // ── Parse código de la URL ──
+  var params=new URLSearchParams(window.location.search);
+  var CODE=(params.get('s')||'').trim().toLowerCase();
+  if(!CODE){
+    showError('Link inválido: falta el código de acceso. Solicita el link correcto a Julián.');
+    return;
+  }
+
+  // ── Inicializar Firebase ──
+  var auth,db;
   try{
-    var params=new URLSearchParams(window.location.search);
-    var d=params.get('d');
-    if(!d){showError('Link inválido o incompleto. Solicita un nuevo link a tu administrador.');return;}
-    data=JSON.parse(decodeURIComponent(atob(d)));
+    firebase.initializeApp(FIREBASE_CONFIG);
+    auth=firebase.auth();
+    db=firebase.firestore();
+    try{db.settings({ignoreUndefinedProperties:true});}catch(se){}
   }catch(e){
-    showError('El link está dañado o expiró. Solicita un nuevo link a tu administrador.');
-    return;
-  }
-  if(!data||!data.prestamos||!data.prestamos.length){
-    showError('Este portal no tiene préstamos para mostrar. Solicita un nuevo link a tu administrador.');
+    showError('Error al inicializar el sistema. Recarga la página.');
     return;
   }
 
-  var nombre=data.nombre||'Socio';
-  var mesLabel=data.mes||'';
-  var prestamos=data.prestamos.slice().sort(function(a,b){return a.dia-b.dia;});
+  showLoading('Verificando acceso…');
 
-  // ── Totales ──
-  var totalCount=prestamos.length,totalCapital=0,totalInt=0,cobrado=0,pendiente=0,i,p;
-  for(i=0;i<prestamos.length;i++){
-    p=prestamos[i];
-    totalCapital+=(p.capital||0);
-    totalInt+=(p.intSocio||0);
-    if(p.pagado)cobrado+=(p.intSocio||0);
-    else pendiente+=(p.intSocio||0);
-  }
-  var pct=totalInt>0?Math.round((cobrado/totalInt)*100):0;
-  var mesActual=(mesLabel.split(' ')[0]||'').toUpperCase();
-
-  // ── HEADER ──
-  var top=el('div',null,null,null);top.id='topbar';
-  top.appendChild(el('div','brand',null,'🏦 JiTel Capital — Portal '+nombre));
-  if(mesLabel)top.appendChild(el('div','sub',null,mesLabel));
-  app.appendChild(top);
-
-  // ── 1. TU CARTERA ──
-  var c1=el('div','card',null,null);
-  c1.appendChild(el('div','sec-title',null,'💼 Tu cartera'));
-  var g1=el('div','g3',null,null);
-  function kpi(lbl,val,color){
-    var k=el('div','kpi',null,null);
-    k.appendChild(el('div','kl',null,lbl));
-    k.appendChild(el('div','kv mn',color?{color:color}:null,val));
-    return k;
-  }
-  g1.appendChild(kpi('Préstamos',String(totalCount),'var(--blu)'));
-  g1.appendChild(kpi('Capital total',COP(totalCapital),'var(--acc)'));
-  g1.appendChild(kpi('Interés/mes',COP(totalInt),'var(--grn)'));
-  c1.appendChild(g1);
-  app.appendChild(c1);
-
-  // ── 2. ESTADO DEL MES ──
-  var c2=el('div','card',null,null);
-  c2.appendChild(el('div','sec-title',null,'📊 Estado del mes'));
-  var er1=el('div','estado-row',null,null);
-  er1.appendChild(el('div','estado-lbl',null,'✅ Cobrado'));
-  er1.appendChild(el('div','mn',{color:'var(--grn)',fontWeight:'700'},COP(cobrado)));
-  c2.appendChild(er1);
-  var bar=el('div','pbar',null,null);var fill=el('div','pf',{width:pct+'%'},null);bar.appendChild(fill);c2.appendChild(bar);
-  var er2=el('div','estado-row',null,null);
-  er2.appendChild(el('div','estado-lbl',null,'⏳ Pendiente'));
-  er2.appendChild(el('div','mn',{color:'var(--red)',fontWeight:'700'},COP(pendiente)));
-  c2.appendChild(er2);
-  var pctTxt=el('div',null,{fontSize:'12px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},pct+'% cobrado de '+COP(totalInt));
-  c2.appendChild(pctTxt);
-  app.appendChild(c2);
-
-  // ── 3. PRÓXIMOS A VENCER ESTE MES ──
-  var vencen=[];
-  for(i=0;i<prestamos.length;i++){
-    if((prestamos[i].mesFin||'').toUpperCase()===mesActual)vencen.push(prestamos[i]);
-  }
-  if(vencen.length>0){
-    var c3=el('div','card',null,null);
-    c3.appendChild(el('div','sec-title',null,'⚠️ Próximos a vencer este mes'));
-    for(i=0;i<vencen.length;i++){
-      p=vencen[i];
-      var vi=el('div','venc-item',null,null);
-      var vl=el('div','venc-left',null,null);
-      vl.appendChild(el('span','venc-day',null,'Día '+p.dia));
-      vl.appendChild(el('span',null,{color:'var(--mut)',marginLeft:'8px'},'Capital '+COP(p.capital)));
-      vi.appendChild(vl);
-      vi.appendChild(el('div','venc-amt',null,COP(p.intSocio)));
-      c3.appendChild(vi);
+  // ── Boot: gateado por onAuthStateChanged ──
+  auth.onAuthStateChanged(function(user){
+    if(user){
+      // Ya autenticado — verificar que el link le corresponde y cargar datos
+      checkLinkAndLoad(user);
+    }else{
+      // No autenticado — validar código antes de mostrar login
+      db.collection('socios').doc(CODE).get()
+        .then(function(doc){
+          if(!doc.exists){
+            showError('Link inválido — el código “'+CODE+'” no está registrado. Solicita el link correcto a Julián.');
+            return;
+          }
+          showLogin(doc.data());
+        })
+        .catch(function(){
+          // Probablemente reglas de Firestore aún no configuradas o sin conexión
+          // Mostrar login sin pre-llenado; la verificación ocurre post-login
+          showLogin(null);
+        });
     }
-    app.appendChild(c3);
+  });
+
+  function checkLinkAndLoad(user){
+    db.collection('socios').doc(CODE).get()
+      .then(function(doc){
+        if(!doc.exists){
+          showError('Link inválido — código no registrado. Contacta a Julián.');
+          auth.signOut();
+          return;
+        }
+        var info=doc.data();
+        // Verificar que la cuenta logueada corresponde al código
+        if(info.email&&(info.email.toLowerCase()!==(user.email||'').toLowerCase())){
+          showError('Este link no corresponde a tu cuenta ('+user.email+'). Contacta a Julián.');
+          auth.signOut();
+          return;
+        }
+        loadLoans(info);
+      })
+      .catch(function(e){
+        showError('Error al verificar acceso: '+(e&&e.message||''));
+      });
   }
 
-  // ── 4. TUS PRÉSTAMOS ──
-  var c4=el('div','card',null,null);
-  c4.appendChild(el('div','sec-title',null,'📋 Tus préstamos'));
-  for(i=0;i<prestamos.length;i++){
-    p=prestamos[i];
-    var row=el('div','lrow',null,null);
-    row.appendChild(el('div','ldia',null,String(p.dia)));
-    var info=el('div','linfo',null,null);
-    info.appendChild(el('div','lcap mn',null,'Capital: '+COP(p.capital)));
-    info.appendChild(el('div','lint mn',null,'Interés socio/mes: '+COP(p.intSocio)));
-    row.appendChild(info);
-    var est=el('div','lest '+(p.pagado?'ok':'pend'),null,p.pagado?'✅ Cobrado':'⏳ Pendiente');
-    row.appendChild(est);
-    c4.appendChild(row);
+  function loadLoans(info){
+    var nombre=(info.nombre||'').toUpperCase();
+    showLoading('Cargando tus préstamos…');
+    db.collection('prestamos').where('socio','==',nombre).get()
+      .then(function(snap){
+        var loans=[];
+        snap.forEach(function(doc){
+          var l=doc.data();
+          if(l.status==='active')loans.push(l);
+        });
+        loans.sort(function(a,b){return (a.dia||0)-(b.dia||0);});
+        renderPortal(info,loans);
+      })
+      .catch(function(e){
+        showError('No se pudieron cargar los préstamos: '+(e&&e.message||''));
+      });
   }
-  app.appendChild(c4);
 
-  // ── FOOTER ──
-  var fecha=data.fecha||new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
-  var ft=el('div','footer',null,null);
-  ft.appendChild(el('div',null,null,'Información generada el '+fecha+'.'));
-  ft.appendChild(el('div',null,null,'Para datos actualizados solicita un nuevo link.'));
-  app.appendChild(ft);
+  // ── Formulario de login ──
+  function showLogin(info){
+    G.innerHTML='';
+    var emailVal=info&&info.email?info.email:'';
+    var nombre=info&&info.nombre?info.nombre:'';
+
+    var wrap=el('div',null,{maxWidth:'400px',margin:'0 auto',paddingTop:'36px'},null);
+
+    // Header
+    var head=el('div',null,{textAlign:'center',marginBottom:'24px'},null);
+    head.appendChild(el('div',null,{fontSize:'38px',marginBottom:'8px'},'🏦'));
+    head.appendChild(el('div',null,{fontSize:'20px',fontWeight:'700',color:'var(--acc)',letterSpacing:'.3px'},'JiTel Capital'));
+    head.appendChild(el('div',null,{fontSize:'13px',color:'var(--mut)',marginTop:'4px'},'Portal Socio'+(nombre?' — '+nombre:'')));
+    wrap.appendChild(head);
+
+    var card=el('div','card',null,null);
+
+    var emInp=inpEl('email','tu@correo.com',emailVal);
+    emInp.setAttribute('autocomplete','username');
+    var pwInp=inpEl('password','Contraseña','');
+    pwInp.setAttribute('autocomplete','current-password');
+    var errEl=el('div','err-sm',null,'');
+    var submitBtn=btnEl('ba','Ingresar',null);
+    submitBtn.style.width='100%';
+    submitBtn.style.minHeight='46px';
+    submitBtn.style.fontSize='15px';
+
+    card.appendChild(fldEl('Correo',emInp));
+    card.appendChild(fldEl('Contraseña',pwInp));
+    card.appendChild(errEl);
+    card.appendChild(submitBtn);
+
+    function doLogin(){
+      var em=(emInp.value||'').trim(),pw=pwInp.value||'';
+      if(!em||!pw){errEl.textContent='Ingresa correo y contraseña.';return;}
+      errEl.textContent='';
+      submitBtn.disabled=true;submitBtn.textContent='Ingresando…';submitBtn.style.opacity='.7';
+      showLoading('Verificando…');
+      auth.signInWithEmailAndPassword(em,pw).catch(function(e){
+        // Restaurar formulario si falla
+        G.innerHTML='';G.appendChild(wrap);
+        submitBtn.disabled=false;submitBtn.textContent='Ingresar';submitBtn.style.opacity='1';
+        errEl.textContent=fbErrMsg(e);
+      });
+      // Éxito lo maneja onAuthStateChanged → checkLinkAndLoad
+    }
+    submitBtn.addEventListener('click',doLogin);
+    function onEnter(e){if(e.key==='Enter'||e.keyCode===13)doLogin();}
+    emInp.addEventListener('keydown',onEnter);
+    pwInp.addEventListener('keydown',onEnter);
+
+    wrap.appendChild(card);
+    wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},'Acceso restringido. Solo para socios registrados por Julián.'));
+    G.appendChild(wrap);
+
+    // Focus automático al campo email si está vacío, si no al password
+    setTimeout(function(){if(!emailVal)emInp.focus();else pwInp.focus();},150);
+  }
+
+  // ── Vista del portal ──
+  function renderPortal(info,loans){
+    G.innerHTML='';
+    var nombre=info.nombre||'Socio';
+    var now=new Date();
+    var mesIdx=now.getMonth();
+    var anio=now.getFullYear();
+    var mesActual=MESES[mesIdx];
+
+    // ── TOPBAR ──
+    var top=el('div',null,null,null);top.id='topbar';
+    var row=el('div',null,{display:'flex',justifyContent:'space-between',alignItems:'center'},null);
+    var left=el('div',null,null,null);
+    left.appendChild(el('div','brand',null,'🏦 JiTel Capital — Portal '+nombre));
+    left.appendChild(el('div','sub',null,mesActual+' '+anio));
+    row.appendChild(left);
+    var logoutBtn=btnEl('bh','Salir',function(){
+      auth.signOut().then(function(){showLoading('Cerrando sesión…');}).catch(function(){showLogin(info);});
+    });
+    logoutBtn.style.fontSize='12px';logoutBtn.style.padding='5px 10px';logoutBtn.style.minHeight='32px';
+    row.appendChild(logoutBtn);
+    top.appendChild(row);
+    G.appendChild(top);
+
+    // ── CÁLCULOS ──
+    var i,l,intS;
+    var totalCapital=0,totalInt=0,cobrado=0,pendiente=0;
+    for(i=0;i<loans.length;i++){
+      l=loans[i];
+      intS=(l.monto||0)*(l.int_socio||0);
+      totalCapital+=(l.monto||0);
+      totalInt+=intS;
+      if(l.pagado_socio){cobrado+=intS;}
+      else{pendiente+=intS;}
+    }
+    var pct=totalInt>0?Math.round((cobrado/totalInt)*100):0;
+
+    // ── KPIs ──
+    var c1=el('div','card',null,null);
+    c1.appendChild(el('div','sec-title',null,'💼 Tu cartera'));
+    var g1=el('div','g3',null,null);
+    function kpi(lbl,val,color){
+      var k=el('div','kpi',null,null);
+      k.appendChild(el('div','kl',null,lbl));
+      k.appendChild(el('div','kv mn',color?{color:color}:null,val));
+      return k;
+    }
+    g1.appendChild(kpi('Préstamos',String(loans.length),'var(--blu)'));
+    g1.appendChild(kpi('Capital',COP(totalCapital),'var(--acc)'));
+    g1.appendChild(kpi('Interés/mes',COP(totalInt),'var(--grn)'));
+    c1.appendChild(g1);
+    G.appendChild(c1);
+
+    // ── ESTADO DEL MES ──
+    var c2=el('div','card',null,null);
+    c2.appendChild(el('div','sec-title',null,'📊 Estado del mes'));
+    var er1=el('div','estado-row',null,null);
+    er1.appendChild(el('div','estado-lbl',null,'✅ Pagado a ti'));
+    er1.appendChild(el('div','mn',{color:'var(--grn)',fontWeight:'700'},COP(cobrado)));
+    c2.appendChild(er1);
+    var bar=el('div','pbar',null,null);
+    bar.appendChild(el('div','pf',{width:pct+'%'},null));
+    c2.appendChild(bar);
+    var er2=el('div','estado-row',null,null);
+    er2.appendChild(el('div','estado-lbl',null,'⏳ Pendiente'));
+    er2.appendChild(el('div','mn',{color:'var(--red)',fontWeight:'700'},COP(pendiente)));
+    c2.appendChild(er2);
+    c2.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},pct+'% cobrado — total mes '+COP(totalInt)));
+    G.appendChild(c2);
+
+    // ── VENCEN ESTE MES ──
+    var vencen=[];
+    for(i=0;i<loans.length;i++){
+      if((loans[i].mes_fin||'').toUpperCase()===mesActual)vencen.push(loans[i]);
+    }
+    if(vencen.length>0){
+      var c3=el('div','card',null,null);
+      c3.appendChild(el('div','sec-title',null,'⚠️ Vencen este mes'));
+      for(i=0;i<vencen.length;i++){
+        l=vencen[i];
+        intS=(l.monto||0)*(l.int_socio||0);
+        var vi=el('div','venc-item',null,null);
+        var vl=el('div',null,null,null);
+        vl.appendChild(el('span','venc-day',null,'Día '+l.dia));
+        if(l.responsable)vl.appendChild(el('span',null,{color:'var(--mut)',marginLeft:'8px',fontSize:'12px'},l.responsable));
+        vl.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',marginTop:'2px'},'Capital '+COP(l.monto)));
+        vi.appendChild(vl);
+        vi.appendChild(el('div','venc-amt',null,COP(intS)));
+        c3.appendChild(vi);
+      }
+      G.appendChild(c3);
+    }
+
+    // ── PRÉSTAMOS ──
+    var c4=el('div','card',null,null);
+    c4.appendChild(el('div','sec-title',null,'📋 Tus préstamos'));
+    if(loans.length===0){
+      c4.appendChild(el('div',null,{color:'var(--mut)',fontSize:'13px',textAlign:'center',padding:'20px 0'},'No hay préstamos activos.'));
+    }else{
+      for(i=0;i<loans.length;i++){
+        l=loans[i];
+        intS=(l.monto||0)*(l.int_socio||0);
+        var lrow=el('div','lrow',null,null);
+        lrow.appendChild(el('div','ldia',null,String(l.dia||'?')));
+        var linfo=el('div','linfo',null,null);
+        if(l.responsable)linfo.appendChild(el('div','lcli',null,l.responsable));
+        linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(l.monto)));
+        linfo.appendChild(el('div','lint mn',null,'Interés/mes: '+COP(intS)));
+        lrow.appendChild(linfo);
+        var estCls,estTxt;
+        if(l.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
+        else if(l.recibido){estCls='pend';estTxt='💰 Recibido';}
+        else{estCls='pend';estTxt='⏳ Pendiente';}
+        lrow.appendChild(el('div','lest '+estCls,null,estTxt));
+        c4.appendChild(lrow);
+      }
+    }
+    G.appendChild(c4);
+
+    // ── FOOTER ──
+    var fechaStr=now.toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
+    var ft=el('div','footer',null,null);
+    ft.appendChild(el('div',null,null,'Datos en tiempo real desde Firestore.'));
+    ft.appendChild(el('div',null,null,'Actualizado: '+fechaStr+'.'));
+    G.appendChild(ft);
+  }
 })();
 </script>
 </body>
