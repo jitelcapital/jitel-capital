@@ -163,7 +163,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     firebase.initializeApp(FIREBASE_CONFIG);
     auth=firebase.auth();
     db=firebase.firestore();
-    try{db.settings({ignoreUndefinedProperties:true});}catch(se){}
+    try{db.settings({ignoreUndefinedProperties:true,merge:true});}catch(se){}
   }catch(e){
     showError('Error al inicializar el sistema. Recarga la página.');
     return;

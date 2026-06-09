@@ -3445,7 +3445,7 @@ function fbInit(){
     FB.auth=firebase.auth();
     FB.db=firebase.firestore();
     // Evita que un campo undefined accidental rompa una escritura.
-    try{FB.db.settings({ignoreUndefinedProperties:true});}catch(se){}
+    try{FB.db.settings({ignoreUndefinedProperties:true,merge:true});}catch(se){}
     FB.ready=true;
     return true;
   }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
