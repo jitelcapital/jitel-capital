@@ -140,7 +140,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 **SDK**: v8.10.1 vía CDN (`firebase-app/auth/firestore.js`, API legacy namespaced) cargado en `<head>`. Se usa v8 en lugar de v9 compat por un bug de CORS/XHR en Safari iOS (`firestore.googleapis.com ... access control checks`). La API `firebase.initializeApp/auth()/firestore()` es idéntica, así que el código no cambia. Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
 
-**Objeto global `FB`**: `{ready, app, auth, db, user, perfil, appCheck}`. `isAdmin()` = `FB.perfil.rol==='admin'`.
+**Objeto global `FB`**: `{ready, app, auth, db, user, perfil}`. `isAdmin()` = `FB.perfil.rol==='admin'`.
 
 **Arranque (boot)**: IIFE al final del script.
 - Si el SDK no carga → `bootLegacyLocal()` (localStorage, sin login — la app nunca queda inutilizable).
@@ -164,12 +164,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 **Setup en Firebase Console** (no en código): habilitar Auth correo/contraseña; agregar dominio `julianjimenez91.github.io` a Authorized domains; crear Firestore; crear usuarios; configurar reglas de seguridad por rol (Día 2).
 
-**App Check (Firebase v8)**:
-- Firebase v8.10.1 SÍ soporta App Check nativamente vía `firebase-app-check.js` (CDN).
-- API correcta para v8: `FB.appCheck = firebase.appCheck(); FB.appCheck.activate(siteKeyString, true)` — pasar el site key como string activa el proveedor reCAPTCHA v3 internamente. No existe `firebase.appCheck.ReCaptchaV3Provider` en v8 (eso es v9 modular).
-- La instancia se guarda en `FB.appCheck` para evitar múltiples llamadas a `firebase.appCheck()`.
-- `waitForAppCheckToken(cb)` tiene timeout de 8 s y flag de sesión `APP_CHECK_FAILED` para no reintentar tras un fallo (evita bloqueos de boot en redes lentas o dominios no autorizados).
-- **Error 400 es configuración externa, no código**. Causas: (1) dominio no registrado en https://www.google.com/recaptcha/admin bajo la site key, (2) Firebase Console → App Check configurado con proveedor "reCAPTCHA Enterprise" en vez de "reCAPTCHA v3", (3) se usó la Secret Key en lugar de la Site Key en el código.
+**App Check**: desactivado intencionalmente. La seguridad se gestiona exclusivamente con reglas de Firestore por rol. App Check con reCAPTCHA v3 requiere Firebase SDK v9+ (modular) para funcionar de forma confiable; en v8 genera errores 400 por incompatibilidades de dominio y proveedor que no se pueden resolver solo desde el código. Mejora futura: migrar a Firebase v9 modular y habilitar App Check con `initializeAppCheck` + `ReCaptchaV3Provider`.
 
 **Pendiente Día 2**: vista/portal de socio dentro de la app, reglas de Firestore por rol, sync de subcolección `pagos` en escrituras en vivo.
 

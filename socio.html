@@ -66,7 +66,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script>
 <script>
 // socio.html — Portal de socio con autenticación Firebase real.
 // Flujo: ?s=victor → Firestore socios/victor → login → carga préstamos. ES5 estricto.
@@ -97,8 +96,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     messagingSenderId:'656658891595',
     appId:'1:656658891595:web:77eac4631631d7e0941ece'
   };
-  // Reemplazar con la Site Key de reCAPTCHA v3 obtenida en Firebase Console → App Check
-  var RECAPTCHA_V3_SITE_KEY='6LeWhhQtAAAAACW045qZyUNxp7o1OAp9vLCgOLih';
   var COP=function(n){return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);};
   var G=document.getElementById('app');
 
@@ -164,11 +161,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   var auth,db;
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
-    // App Check debe activarse antes de auth y firestore
-    if(typeof firebase.appCheck==='function'){
-      try{firebase.appCheck().activate(RECAPTCHA_V3_SITE_KEY,true);}
-      catch(ace){console.warn('[AppCheck] No se pudo activar:',ace&&ace.message);}
-    }else{console.warn('[AppCheck] SDK no disponible.');}
     auth=firebase.auth();
     db=firebase.firestore();
     try{db.settings({ignoreUndefinedProperties:true});}catch(se){}
@@ -180,22 +172,8 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   showLoading('Verificando acceso…');
 
   // ── Boot: gateado por onAuthStateChanged ──
-  // getToken(false) actúa como barrier: resuelve en <1ms si el token ya existe (recargas
-  // posteriores) o espera el fetch reCAPTCHA inicial — evita que la primera llamada
-  // Firestore salga sin token cuando hay sesión cacheada (race con activate()).
-  function waitForAppCheckToken(cb){
-    if(typeof firebase.appCheck!=='function'){cb();return;}
-    firebase.appCheck().getToken(false)
-      .then(function(){cb();})
-      .catch(function(e){
-        console.error('[AppCheck] Error (dominio: '+window.location.hostname+') — verificar en https://www.google.com/recaptcha/admin y Firebase Console → App Check:',e&&e.message);
-        cb();
-      });
-  }
-
   auth.onAuthStateChanged(function(user){
-    waitForAppCheckToken(function(){
-      if(user){
+    if(user){
         // Ya autenticado — verificar que el link le corresponde y cargar datos
         checkLinkAndLoad(user);
       }else{

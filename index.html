@@ -134,7 +134,6 @@ select option{background:var(--card)}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script>
 </head>
 <body>
 <div id="app">
@@ -3437,30 +3436,12 @@ var FIREBASE_CONFIG={
   messagingSenderId:"656658891595",
   appId:"1:656658891595:web:77eac4631631d7e0941ece"
 };
-// Reemplazar con la Site Key de reCAPTCHA v3 obtenida en Firebase Console → App Check
-var RECAPTCHA_V3_SITE_KEY='6LeWhhQtAAAAACW045qZyUNxp7o1OAp9vLCgOLih';
-var FB={ready:false,app:null,auth:null,db:null,user:null,perfil:null,appCheck:null};
-// Flag de sesión: se pone true cuando App Check falla para no reintentar y no bloquear el boot.
-var APP_CHECK_FAILED=false;
+var FB={ready:false,app:null,auth:null,db:null,user:null,perfil:null};
 
 function fbInit(){
   if(FB.ready)return true;
   try{
     FB.app=firebase.initializeApp(FIREBASE_CONFIG);
-    // App Check en Firebase v8: activate(siteKey:string, isTokenAutoRefreshEnabled:bool).
-    // Pasar el site key como string activa el proveedor reCAPTCHA v3 internamente.
-    // Requisito externo: el dominio debe estar en reCAPTCHA Admin Console y en Firebase
-    // Console → App Check con proveedor "reCAPTCHA v3" (no Enterprise).
-    if(typeof firebase.appCheck==='function'){
-      try{
-        FB.appCheck=firebase.appCheck();
-        FB.appCheck.activate(RECAPTCHA_V3_SITE_KEY,true);
-      }catch(ace){
-        console.warn('[AppCheck] No se pudo activar:',ace&&ace.message);
-        FB.appCheck=null;
-        APP_CHECK_FAILED=true;
-      }
-    }else{console.warn('[AppCheck] SDK no disponible (firebase-app-check.js no cargó).');}
     FB.auth=firebase.auth();
     FB.db=firebase.firestore();
     // Evita que un campo undefined accidental rompa una escritura.
@@ -3468,41 +3449,6 @@ function fbInit(){
     FB.ready=true;
     return true;
   }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
-}
-function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
-// activate() inicia el fetch del token reCAPTCHA de forma asíncrona; onAuthStateChanged puede
-// dispararse antes de que el token esté listo si hay sesión cacheada. getToken() actúa como
-// barrier: resuelve inmediatamente si el token ya existe, o espera a que llegue.
-// Si App Check falló en esta sesión, o no hay instancia cacheada, pasa directo sin bloquear.
-function waitForAppCheckToken(cb){
-  if(APP_CHECK_FAILED||!FB.appCheck){cb();return;}
-  var called=false;
-  // Timeout de seguridad: si reCAPTCHA no responde en 8 s (red bloqueada, dominio no autorizado),
-  // no quedamos colgados — continuamos sin token y marcamos App Check como fallido en sesión.
-  var guard=setTimeout(function(){
-    if(called)return;called=true;
-    console.warn('[AppCheck] Timeout esperando token — continuando sin App Check.');
-    APP_CHECK_FAILED=true;
-    cb();
-  },8000);
-  FB.appCheck.getToken(false)
-    .then(function(){
-      if(called)return;called=true;
-      clearTimeout(guard);
-      cb();
-    })
-    .catch(function(e){
-      if(called)return;called=true;
-      clearTimeout(guard);
-      // HTTP 400: dominio no registrado en reCAPTCHA Admin, proveedor Enterprise vs v3,
-      // o Secret Key en Firebase App Check Console en lugar de Site Key de reCAPTCHA v3.
-      console.error('[AppCheck] Error 400 (dominio: '+window.location.hostname+') — verificar:'+
-        ' (1) dominio autorizado en https://www.google.com/recaptcha/admin'+
-        ' (2) Firebase Console → App Check: proveedor = reCAPTCHA v3 (no Enterprise)'+
-        ' (3) Site Key (no Secret Key) usada en el código. Mensaje: '+(e&&e.message));
-      APP_CHECK_FAILED=true;
-      cb();
-    });
 }
 
 // Traduce errores de Firebase Auth a mensajes claros en español.
@@ -3813,11 +3759,9 @@ function bootLegacyLocal(){
   FB.auth.onAuthStateChanged(function(user){
     FB.user=user||null;
     if(user){
-      waitForAppCheckToken(function(){
-        loadProfile(user.uid,function(){
-          if(isAdmin())bootData();          // admin → app completa (datos Firestore/localStorage)
-          else showSocioPlaceholder();       // socio / sin perfil → placeholder (vista socio en Día 2)
-        });
+      loadProfile(user.uid,function(){
+        if(isAdmin())bootData();          // admin → app completa (datos Firestore/localStorage)
+        else showSocioPlaceholder();       // socio / sin perfil → placeholder (vista socio en Día 2)
       });
     }else{
       FB.perfil=null;
