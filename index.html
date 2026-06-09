@@ -2121,7 +2121,12 @@ function vSocios(){
           // Image export button
           card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           // Portal link button — genera URL de solo lectura para el socio
-          card.appendChild(BTN('bp','🔗 Generar link portal',function(){showSocioPortalLink(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
+          card.appendChild(BTN('bp','📋 Copiar link portal',function(){
+            var url='https://jitelcapital.github.io/jitel-capital/socio.html';
+            if(navigator.clipboard&&navigator.clipboard.writeText){
+              navigator.clipboard.writeText(url).then(function(){showToast('Link copiado');}).catch(function(){showToast('No se pudo copiar');});
+            }else{var ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');showToast('Link copiado');}catch(ex){showToast('No se pudo copiar');}document.body.removeChild(ta);}
+          },{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           if(!isJulian){
             var brow=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
             brow.appendChild(mkWaBtn(msg));
@@ -2138,38 +2143,6 @@ function vSocios(){
   return w;
 }
 
-// ── PORTAL DEL SOCIO — genera link de solo lectura (socio.html?d=...) ──
-function showSocioPortalLink(name,st2){
-  var mn=MESES[TODAY.getMonth()];mn=mn.charAt(0)+mn.slice(1).toLowerCase();
-  var mesLabel=mn+' '+TODAY.getFullYear();
-  // st2.loans ya viene ordenado por día asc
-  var prestamos=[],i;
-  for(i=0;i<st2.loans.length;i++){
-    var l=st2.loans[i];
-    prestamos.push({dia:l.dia,capital:l.monto,intSocio:Math.round(IS(l)),mesFin:l.mes_fin,pagado:paidMth(l)});
-  }
-  var data={nombre:name,mes:mesLabel,fecha:hoyStr(),prestamos:prestamos};
-  var encoded=btoa(encodeURIComponent(JSON.stringify(data)));
-  // encodeURIComponent al armar la URL protege los caracteres +,/,= del base64 en transporte;
-  // socio.html los revierte automáticamente vía URLSearchParams.get('d') antes de atob.
-  var url='https://julianjimenez91.github.io/jitel-capital/socio.html?d='+encodeURIComponent(encoded);
-  var waMsg='Hola '+name+' 👋 Aquí puedes ver el resumen de tu inversión en JiTel Capital ('+mesLabel+'):\n'+url;
-
-  var m=D('modal',null,null);
-  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
-  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🔗 Link portal — '+name;
-  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
-  var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'12px',lineHeight:'1.5'},null);
-  sub.textContent='Comparte este link con '+name+'. Muestra su cartera de '+mesLabel+' (solo lectura, sin nombres de clientes).';
-  m.appendChild(sub);
-  var urlBox=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'8px',padding:'10px',marginBottom:'12px',fontSize:'11px',color:'var(--blu)',wordBreak:'break-all',fontFamily:'Courier New,monospace',maxHeight:'100px',overflowY:'auto'},null);
-  urlBox.textContent=url;m.appendChild(urlBox);
-  var brow=D(null,{display:'flex',gap:'8px',flexWrap:'wrap'},null);
-  brow.appendChild(mkCpBtn(url));
-  brow.appendChild(BTN('bw','📲 Compartir por WhatsApp',function(){window.open('https://wa.me/?text='+encodeURIComponent(waMsg),'_blank');},{flex:'1'}));
-  m.appendChild(brow);
-  showModal(m);
-}
 
 function showSocioExport(name,st2){
   var cur=null;var imgPages=null;var generating=false;var viewPage=0;
