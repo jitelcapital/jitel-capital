@@ -1547,7 +1547,7 @@ function vCobros(){
       dh.appendChild(dhr);
       dg.appendChild(dh);
 
-      var exp=urg==='hoy'||urg==='vencido';var bodyEl=null;
+      var exp=g.dia>=TODAY_DIA;var bodyEl=null;
       function buildBody(){
         var body=D('db',null,null);
         if(pend.length>0){
