@@ -75,7 +75,7 @@ select option{background:var(--card)}
 .qpay{border:none;border-radius:8px;cursor:pointer;font-weight:700;padding:10px 14px;font-size:13px;background:var(--acc);color:#000;touch-action:manipulation;font-family:inherit;flex-shrink:0;min-width:72px;-webkit-appearance:none}
 .qpay:active{opacity:.65}
 /* ── Floating calculator button ── */
-#btn-calc{position:fixed;bottom:78px;right:14px;width:50px;height:50px;border-radius:50%;border:none;background:linear-gradient(135deg,#9b6dff 0%,#6a3fbf 100%);color:#fff;font-size:22px;cursor:pointer;z-index:90;box-shadow:0 4px 18px rgba(155,109,255,.5);display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .12s,box-shadow .12s,bottom .2s ease-out;font-family:inherit}
+#btn-calc{position:fixed;bottom:78px;left:14px;width:50px;height:50px;border-radius:50%;border:none;background:linear-gradient(135deg,#9b6dff 0%,#6a3fbf 100%);color:#fff;font-size:22px;cursor:pointer;z-index:90;box-shadow:0 4px 18px rgba(155,109,255,.5);display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .12s,box-shadow .12s,bottom .2s ease-out,opacity .3s;font-family:inherit}
 #btn-calc:active{transform:scale(.86);box-shadow:0 2px 8px rgba(155,109,255,.3)}
 #btn-calc.raised{bottom:140px}
 /* ── Cobros selector: checkbox circular ── */
@@ -3707,6 +3707,18 @@ document.getElementById('btn-new').addEventListener('click',showNewLoan);
 document.getElementById('btn-alerts').addEventListener('click',showAlertsModal);
 document.getElementById('btn-calc').addEventListener('click',showCalculadora);
 document.getElementById('sb-clear').addEventListener('click',sumClear);
+// FAB: semi-transparente al hacer scroll, opaco al detenerse
+(function(){
+  var fab=document.getElementById('btn-calc');
+  var ct=document.getElementById('content');
+  if(!fab||!ct)return;
+  var t=null;
+  ct.addEventListener('scroll',function(){
+    fab.style.opacity='0.2';
+    if(t)clearTimeout(t);
+    t=setTimeout(function(){fab.style.opacity='1';t=null;},600);
+  },false);
+})();
 
 // Camino de respaldo: si el SDK de Firebase no está disponible, la app sigue
 // funcionando con localStorage (sin login) — nunca queda inutilizable.
