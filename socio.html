@@ -67,8 +67,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script>
-// socio.html — Portal de socio con autenticación Firebase real.
-// Flujo: ?s=victor → Firestore socios/victor → login → carga préstamos. ES5 estricto.
+// socio.html — Portal de socio. Login con email/contraseña → busca en socios por email → carga préstamos. ES5 estricto.
 (function(){
   var MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
   var MESES_CORTO=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -149,14 +148,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     return 'No se pudo iniciar sesión.';
   }
 
-  // ── Parse código de la URL ──
-  var params=new URLSearchParams(window.location.search);
-  var CODE=(params.get('s')||'').trim().toLowerCase();
-  if(!CODE){
-    showError('Link inválido: falta el código de acceso. Solicita el link correcto a Julián.');
-    return;
-  }
-
   // ── Inicializar Firebase ──
   var auth,db;
   try{
@@ -171,45 +162,22 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 
   showLoading('Verificando acceso…');
 
-  // ── Boot: gateado por onAuthStateChanged ──
+  // ── Boot ──
   auth.onAuthStateChanged(function(user){
-    if(user){
-        // Ya autenticado — verificar que el link le corresponde y cargar datos
-        checkLinkAndLoad(user);
-      }else{
-        // No autenticado — validar código antes de mostrar login
-        db.collection('socios').doc(CODE).get()
-          .then(function(doc){
-            if(!doc.exists){
-              showError('Link inválido — el código “'+CODE+'” no está registrado. Solicita el link correcto a Julián.');
-              return;
-            }
-            showLogin(doc.data());
-          })
-          .catch(function(){
-            // Probablemente reglas de Firestore aún no configuradas o sin conexión
-            // Mostrar login sin pre-llenado; la verificación ocurre post-login
-            showLogin(null);
-          });
-      }
+    if(user){loadSocioAndLoans(user);}
+    else{showLogin();}
   });
 
-  function checkLinkAndLoad(user){
-    db.collection('socios').doc(CODE).get()
-      .then(function(doc){
-        if(!doc.exists){
-          showError('Link inválido — código no registrado. Contacta a Julián.');
+  function loadSocioAndLoans(user){
+    showLoading('Buscando tu perfil…');
+    db.collection('socios').where('email','==',user.email).get()
+      .then(function(snap){
+        if(snap.empty){
+          showError('No tienes acceso a este portal. Contacta a Julián para registrarte.');
           auth.signOut();
           return;
         }
-        var info=doc.data();
-        // Verificar que la cuenta logueada corresponde al código
-        if(info.email&&(info.email.toLowerCase()!==(user.email||'').toLowerCase())){
-          showError('Este link no corresponde a tu cuenta ('+user.email+'). Contacta a Julián.');
-          auth.signOut();
-          return;
-        }
-        loadLoans(info);
+        loadLoans(snap.docs[0].data());
       })
       .catch(function(e){
         showError('Error al verificar acceso: '+(e&&e.message||''));
@@ -235,23 +203,18 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
 
   // ── Formulario de login ──
-  function showLogin(info){
+  function showLogin(){
     G.innerHTML='';
-    var emailVal=info&&info.email?info.email:'';
-    var nombre=info&&info.nombre?info.nombre:'';
-
     var wrap=el('div',null,{maxWidth:'400px',margin:'0 auto',paddingTop:'36px'},null);
 
-    // Header
     var head=el('div',null,{textAlign:'center',marginBottom:'24px'},null);
     head.appendChild(el('div',null,{fontSize:'38px',marginBottom:'8px'},'🏦'));
     head.appendChild(el('div',null,{fontSize:'20px',fontWeight:'700',color:'var(--acc)',letterSpacing:'.3px'},'JiTel Capital'));
-    head.appendChild(el('div',null,{fontSize:'13px',color:'var(--mut)',marginTop:'4px'},'Portal Socio'+(nombre?' — '+nombre:'')));
+    head.appendChild(el('div',null,{fontSize:'13px',color:'var(--mut)',marginTop:'4px'},'Portal Socio'));
     wrap.appendChild(head);
 
     var card=el('div','card',null,null);
-
-    var emInp=inpEl('email','tu@correo.com',emailVal);
+    var emInp=inpEl('email','tu@correo.com','');
     emInp.setAttribute('autocomplete','username');
     var pwInp=inpEl('password','Contraseña','');
     pwInp.setAttribute('autocomplete','current-password');
@@ -273,12 +236,11 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       submitBtn.disabled=true;submitBtn.textContent='Ingresando…';submitBtn.style.opacity='.7';
       showLoading('Verificando…');
       auth.signInWithEmailAndPassword(em,pw).catch(function(e){
-        // Restaurar formulario si falla
         G.innerHTML='';G.appendChild(wrap);
         submitBtn.disabled=false;submitBtn.textContent='Ingresar';submitBtn.style.opacity='1';
         errEl.textContent=fbErrMsg(e);
       });
-      // Éxito lo maneja onAuthStateChanged → checkLinkAndLoad
+      // Éxito lo maneja onAuthStateChanged → loadSocioAndLoans
     }
     submitBtn.addEventListener('click',doLogin);
     function onEnter(e){if(e.key==='Enter'||e.keyCode===13)doLogin();}
@@ -288,9 +250,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     wrap.appendChild(card);
     wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},'Acceso restringido. Solo para socios registrados por Julián.'));
     G.appendChild(wrap);
-
-    // Focus automático al campo email si está vacío, si no al password
-    setTimeout(function(){if(!emailVal)emInp.focus();else pwInp.focus();},150);
+    setTimeout(function(){emInp.focus();},150);
   }
 
   // ── Vista del portal ──
@@ -310,7 +270,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     left.appendChild(el('div','sub',null,mesActual+' '+anio));
     row.appendChild(left);
     var logoutBtn=btnEl('bh','Salir',function(){
-      auth.signOut().then(function(){showLoading('Cerrando sesión…');}).catch(function(){showLogin(info);});
+      auth.signOut();
     });
     logoutBtn.style.fontSize='12px';logoutBtn.style.padding='5px 10px';logoutBtn.style.minHeight='32px';
     row.appendChild(logoutBtn);
