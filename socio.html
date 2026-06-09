@@ -53,6 +53,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 .bh{background:transparent;border:1px solid var(--bor);color:var(--txt)}
 .btn:disabled{opacity:.5;cursor:default}
 .err-sm{font-size:12px;color:var(--red);min-height:16px;margin-bottom:10px;text-align:center}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:38px}
+.pw-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--mut);padding:4px;line-height:1;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 @media(prefers-color-scheme:light){
   :root{--bg:#f0f4f8;--card:#ffffff;--c2:#e8ecf2;--bor:#d0d8e4;--txt:#1a2a3a;--mut:#6a7a8a;--grn:#18a858;--red:#d03055;--blu:#1a6fd0;
   --c-suc-bg:#e8f8ed;--c-suc-bor:#7ae0aa;--c-warn-bg:#fff0e8;--c-day-bg:#fef8e0}
@@ -115,6 +118,19 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var w=el('div','fld',null,null);
     w.appendChild(el('label',null,null,lbl));
     w.appendChild(input);
+    return w;
+  }
+  function pwFldEl(lbl,inp){
+    var w=el('div','fld',null,null);
+    w.appendChild(el('label',null,null,lbl));
+    var wrap=el('div','pw-wrap',null,null);
+    wrap.appendChild(inp);
+    var eye=el('button','pw-eye',null,'👁');
+    eye.type='button';
+    eye.setAttribute('tabindex','-1');
+    eye.addEventListener('click',function(){inp.type=inp.type==='password'?'text':'password';});
+    wrap.appendChild(eye);
+    w.appendChild(wrap);
     return w;
   }
   function btnEl(cls,txt,fn){
@@ -228,7 +244,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     submitBtn.style.fontSize='15px';
 
     card.appendChild(fldEl('Correo',emInp));
-    card.appendChild(fldEl('Contraseña',pwInp));
+    card.appendChild(pwFldEl('Contraseña',pwInp));
     card.appendChild(errEl);
     card.appendChild(submitBtn);
 
@@ -251,7 +267,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     pwInp.addEventListener('keydown',onEnter);
 
     wrap.appendChild(card);
-    wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},'Acceso restringido. Solo para socios registrados por Julián.'));
+    wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},'Acceso restringido. Solo para socios registrados.'));
     wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'6px',lineHeight:'1.5'},'¿Olvidaste tu contraseña? Contacta al administrador.'));
     G.appendChild(wrap);
     setTimeout(function(){emInp.focus();},150);
@@ -410,8 +426,8 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var backBtn=btnEl('bh','← Volver al portal',function(){if(currentInfo)loadLoans(currentInfo);});
     backBtn.style.width='100%';backBtn.style.marginTop='8px';
 
-    card.appendChild(fldEl('Nueva contraseña',pw1));
-    card.appendChild(fldEl('Confirmar contraseña',pw2));
+    card.appendChild(pwFldEl('Nueva contraseña',pw1));
+    card.appendChild(pwFldEl('Confirmar contraseña',pw2));
     card.appendChild(errEl);
     card.appendChild(okEl);
     card.appendChild(saveBtn);
