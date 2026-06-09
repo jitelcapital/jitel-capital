@@ -340,12 +340,6 @@ function waClienteMsg(name,loans){
   return lines.join('\n');
 }
 
-// ── DATA ──
-// Julian rule applied: int_socio=0 means no partner, int_propio=0.05 (all goes to owner)
-var AR=[];
-var PR=[];
-function mkRow(r,st){return{id:GID(),año:r[0],dia:r[1],mes_fin:r[2].trim(),monto:r[3]||0,socio:r[4]||'',int_socio:r[5]||0,int_propio:r[6]||0,responsable:r[7]||'',mes_comienzo:r[8],status:st,pagos:[],nota:'',created_at:new Date().toISOString()};}
-function mkInit(){var l=[],i;for(i=0;i<AR.length;i++)l.push(mkRow(AR[i],'active'));for(i=0;i<PR.length;i++)l.push(mkRow(PR[i],'paid'));return{loans:l,archives:{}};}
 
 // ── STORAGE ──
 var LSK='jitel_v1';
@@ -3473,9 +3467,9 @@ function waitForAppCheckToken(cb){
   firebase.appCheck().getToken(false)
     .then(function(){cb();})
     .catch(function(e){
-      // HTTP 400 aquí = proveedor incorrecto en Firebase Console (Enterprise vs v3)
-      // o Secret Key registrada en lugar de Site Key.
-      console.error('[AppCheck] Error en intercambio de token – revisar Firebase Console → App Check:',e&&e.message);
+      // HTTP 400: dominio no registrado en reCAPTCHA Admin, proveedor Enterprise vs v3,
+      // o Secret Key en Firebase App Check Console en lugar de Site Key.
+      console.error('[AppCheck] Error (dominio: '+window.location.hostname+') — verificar en https://www.google.com/recaptcha/admin y Firebase Console → App Check:',e&&e.message);
       cb();
     });
 }
@@ -3528,30 +3522,43 @@ function loadFromFirestore(cb){
     cb(null);
   });
 }
-// Carga ST: Firestore si tiene datos, si no localStorage, si no semilla inicial.
-// Retorna una Promise (resuelve con ST). Acepta un cb opcional por compatibilidad.
-// Carga ST desde Firestore (si tiene datos) o localStorage. Llama cb() al terminar.
+// Carga ST desde Firestore con timeout de 8 s y hasta 3 reintentos automáticos.
+// Si todos los intentos fallan cae a localStorage (fallback silencioso).
 // renderApp() lo invoca startApp() desde el cb — no se llama aquí para evitar render prematuro.
 function loadSTAsync(cb){
   return new Promise(function(resolve){
     function finish(){
-      // No llamar renderApp() aquí — startApp() (el cb) lo hace después de remover el overlay.
       if(typeof cb==='function')cb();
       resolve(ST);
     }
     function useLocal(){
       var local=null;try{local=loadST();}catch(le){local=null;}
       if(local&&local.loans&&local.loans.length>0){ST=local;}
-      else{ST=mkInit();saveLocalOnly();}
+      else ST={loans:[],archives:{}};
       syncInd('local');
       finish();
     }
-    if(FB.ready&&FB.db){
+    if(!FB.ready||!FB.db){useLocal();return;}
+    var MAX=3,attempt=0;
+    function tryLoad(){
+      attempt++;
+      if(attempt>1)setLoadingMsg('Reconectando… ('+attempt+'/'+MAX+')');
+      var settled=false;
+      var timer=setTimeout(function(){
+        if(settled)return;settled=true;
+        console.warn('[Firebase] Timeout carga intento '+attempt+'/'+MAX);
+        if(attempt<MAX){tryLoad();}
+        else{console.warn('[Firebase] Sin respuesta tras '+MAX+' intentos — usando localStorage');useLocal();}
+      },8000);
       loadFromFirestore(function(data){
+        if(settled)return;settled=true;
+        clearTimeout(timer);
         if(data&&data.loans&&data.loans.length>0){ST=data;syncInd('cloud');finish();}
-        else useLocal();
+        else if(data===null&&attempt<MAX){tryLoad();}
+        else{useLocal();}
       });
-    }else useLocal();
+    }
+    tryLoad();
   });
 }
 
@@ -3660,10 +3667,11 @@ function showLoading(){
   if(document.getElementById('fb-loading'))return;
   var ov=document.createElement('div');ov.id='fb-loading';
   ov.style.cssText='position:fixed;inset:0;z-index:480;background:var(--bg);display:flex;align-items:center;justify-content:center';
-  var t=D(null,{color:'var(--mut)',fontSize:'14px'},null);t.textContent='Cargando…';ov.appendChild(t);
+  var t=D(null,{color:'var(--mut)',fontSize:'14px'},null);t.id='fb-loading-msg';t.textContent='Cargando…';ov.appendChild(t);
   document.body.appendChild(ov);
 }
 function removeLoading(){var e=document.getElementById('fb-loading');if(e)e.remove();}
+function setLoadingMsg(msg){var t=document.getElementById('fb-loading-msg');if(t)t.textContent=msg;}
 function removeLoginScreen(){var e=document.getElementById('login');if(e)e.remove();}
 
 function showLoginScreen(errMsg){
@@ -3757,8 +3765,8 @@ function bootLegacyLocal(){
   try{
     var saved=loadST();
     if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
-    else{ST=mkInit();saveLocalOnly();}
-  }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST=mkInit();}
+    else ST={loans:[],archives:{}};
+  }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST={loans:[],archives:{}};}
   syncInd('local');
   startApp();
 }

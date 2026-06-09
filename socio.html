@@ -188,7 +188,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     firebase.appCheck().getToken(false)
       .then(function(){cb();})
       .catch(function(e){
-        console.error('[AppCheck] Error en intercambio de token – revisar Firebase Console → App Check:',e&&e.message);
+        console.error('[AppCheck] Error (dominio: '+window.location.hostname+') — verificar en https://www.google.com/recaptcha/admin y Firebase Console → App Check:',e&&e.message);
         cb();
       });
   }
