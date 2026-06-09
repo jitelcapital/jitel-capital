@@ -1986,43 +1986,44 @@ function vLoans(){
         bg3.appendChild(col3('Int.Socio',socVal,socCol));
         bg3.appendChild(col3('Int.Propio',propVal,propCol));
         r.appendChild(bg3);
-        // Action row — only for active loans
+        // ⋮ menu — replaces 4-button action row, added to tr2 (live DOM ref)
         if(l.status==='active'){
-          var actRow=D(null,{display:'flex',gap:'6px',marginTop:'10px',paddingTop:'8px',borderTop:'1px solid var(--bor)'},null);
-          // Extender → opens showLoanDetail with extend mode
-          var extBtn=BTN('bb','📅 Extender',function(e){e.stopPropagation();showLoanDetail(l.id);},{flex:'1',fontSize:'11px',padding:'6px 4px'});
-          // Actualizar → same detail modal (generic entry)
-          var updBtn=BTN('bh','✏️ Actualizar',function(e){e.stopPropagation();showLoanDetail(l.id);},{flex:'1',fontSize:'11px',padding:'6px 4px'});
-          // Cerrar with confirm
-          var closeBtn=BTN('bg','✓ Cerrar',function(e){
+          var menuWrap=D(null,{position:'relative'},null);
+          var menuTrig=document.createElement('button');
+          menuTrig.className='btn bh';menuTrig.textContent='⋮';
+          menuTrig.setAttribute('title','Opciones');
+          menuTrig.style.cssText='font-size:20px;padding:0 9px;min-height:28px;line-height:1;';
+          var menuDrop=null;
+          function closeDrop(){if(menuDrop){menuDrop.remove();menuDrop=null;}document.removeEventListener('click',closeDrop);}
+          menuTrig.addEventListener('click',function(e){
             e.stopPropagation();
-            showConfirm({
-              title:'¿Cerrar préstamo?',
-              msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',
-              confirmLbl:'Sí, cerrar',
-              danger:true,
-              onConfirm:function(){
+            if(menuDrop){closeDrop();return;}
+            menuDrop=D(null,{position:'absolute',right:'0',top:'calc(100% + 4px)',zIndex:'200',background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'10px',minWidth:'170px',padding:'6px',boxShadow:'0 4px 20px rgba(0,0,0,.5)'},null);
+            function mItem(cls,txt,fn){
+              var b=document.createElement('button');b.className='btn '+cls;b.textContent=txt;
+              b.style.cssText='width:100%;text-align:left;margin-bottom:4px;font-size:13px;padding:8px 12px;min-height:36px;border-radius:8px;display:block;';
+              b.addEventListener('click',function(e2){e2.stopPropagation();closeDrop();fn();});
+              return b;
+            }
+            menuDrop.appendChild(mItem('bb','📅 Extender',function(){showLoanDetail(l.id);}));
+            menuDrop.appendChild(mItem('bh','✏️ Actualizar',function(){showLoanDetail(l.id);}));
+            menuDrop.appendChild(mItem('bg','✓ Cerrar',function(){
+              showConfirm({title:'¿Cerrar préstamo?',msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',confirmLbl:'Sí, cerrar',danger:true,onConfirm:function(){
                 var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===l.id){var c={};for(var k in x)c[k]=x[k];c.status='paid';nl.push(c);}else nl.push(x);}
                 ST.loans=nl;saveST();renderApp();showToast('✅ Préstamo cerrado');
-              }
-            });
-          },{flex:'1',fontSize:'11px',padding:'6px 4px'});
-          // Eliminar with confirm
-          var delBtn=BTN('br','🗑',function(e){
-            e.stopPropagation();
-            showConfirm({
-              title:'¿Eliminar préstamo?',
-              msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',
-              confirmLbl:'Sí, eliminar',
-              danger:true,
-              onConfirm:function(){
+              }});
+            }));
+            menuDrop.appendChild(mItem('br','🗑 Eliminar',function(){
+              showConfirm({title:'¿Eliminar préstamo?',msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',confirmLbl:'Sí, eliminar',danger:true,onConfirm:function(){
                 var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id!==l.id)nl.push(ST.loans[jj]);}
                 ST.loans=nl;saveST();renderApp();showToast('🗑 Préstamo eliminado');
-              }
-            });
-          },{fontSize:'11px',padding:'6px 10px',flexShrink:'0'});
-          actRow.appendChild(extBtn);actRow.appendChild(updBtn);actRow.appendChild(closeBtn);actRow.appendChild(delBtn);
-          r.appendChild(actRow);
+              }});
+            }));
+            menuWrap.appendChild(menuDrop);
+            setTimeout(function(){document.addEventListener('click',closeDrop);},0);
+          });
+          menuWrap.appendChild(menuTrig);
+          tr2.appendChild(menuWrap);
         }
         listEl.appendChild(r);
       })(filtered[j]);
