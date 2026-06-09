@@ -3450,6 +3450,7 @@ function fbInit(){
     return true;
   }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
 }
+function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
 
 // Traduce errores de Firebase Auth a mensajes claros en español.
 function fbErrMsg(e){
