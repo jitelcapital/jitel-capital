@@ -891,6 +891,13 @@ function showNewLoan(prefill){
   m.appendChild(BTN('ba','💾 Guardar Préstamo',function(){
     if(!fr||!fs||!fm){alert('Completa cliente, socio y monto');return;}
     var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString()};
+    // Regla de apertura: si el día de cobro ya pasó (o es hoy) y el mes de inicio es
+    // el actual o anterior, marcar este mes como pagado para que el primer cobro real
+    // sea el mes siguiente. Se inserta un pago simbólico que satisface paidMth().
+    if(fd<=TODAY_DIA&&(!fmc||fmc<=CURR_MK)){
+      l.pagos=[{id:GID(),tipo:'interes',monto:Math.round(IM(l)),fecha:isoToday(),nota:'Mes de apertura'}];
+      l.recibido=true;
+    }
     ST.loans.unshift(l);saveST();closeModal();renderApp();
   },{width:'100%'}));
   showModal(m);
