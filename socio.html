@@ -162,6 +162,8 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 
   showLoading('Verificando acceso…');
 
+  var currentInfo=null; // perfil del socio activo, usado por showChangePassword para volver al portal
+
   // ── Boot ──
   auth.onAuthStateChanged(function(user){
     if(user){loadSocioAndLoans(user);}
@@ -185,6 +187,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
 
   function loadLoans(info){
+    currentInfo=info;
     var nombre=(info.nombre||'').toUpperCase();
     showLoading('Cargando tus préstamos…');
     db.collection('prestamos').where('socio','==',nombre).get()
@@ -249,6 +252,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 
     wrap.appendChild(card);
     wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'14px',lineHeight:'1.5'},'Acceso restringido. Solo para socios registrados por Julián.'));
+    wrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'6px',lineHeight:'1.5'},'¿Olvidaste tu contraseña? Contacta al administrador.'));
     G.appendChild(wrap);
     setTimeout(function(){emInp.focus();},150);
   }
@@ -378,7 +382,70 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var ft=el('div','footer',null,null);
     ft.appendChild(el('div',null,null,'Datos en tiempo real desde Firestore.'));
     ft.appendChild(el('div',null,null,'Actualizado: '+fechaStr+'.'));
+    var ftCambiar=el('div',null,{marginTop:'10px',cursor:'pointer',color:'var(--mut)',fontSize:'11px',textDecoration:'underline',display:'inline-block'},'🔑 Cambiar contraseña');
+    ftCambiar.addEventListener('click',showChangePassword);
+    ft.appendChild(ftCambiar);
     G.appendChild(ft);
+  }
+
+  // ── Cambio de contraseña ──
+  function showChangePassword(){
+    G.innerHTML='';
+    var wrap=el('div',null,{maxWidth:'400px',margin:'0 auto',paddingTop:'36px'},null);
+
+    var head=el('div',null,{textAlign:'center',marginBottom:'24px'},null);
+    head.appendChild(el('div',null,{fontSize:'32px',marginBottom:'8px'},'🔑'));
+    head.appendChild(el('div',null,{fontSize:'18px',fontWeight:'700',color:'var(--acc)'},'Cambiar contraseña'));
+    wrap.appendChild(head);
+
+    var card=el('div','card',null,null);
+    var pw1=inpEl('password','Nueva contraseña','');
+    pw1.setAttribute('autocomplete','new-password');
+    var pw2=inpEl('password','Confirmar nueva contraseña','');
+    pw2.setAttribute('autocomplete','new-password');
+    var errEl=el('div','err-sm',null,'');
+    var okEl=el('div',null,{fontSize:'12px',color:'var(--grn)',textAlign:'center',minHeight:'16px',marginBottom:'10px'},'');
+    var saveBtn=btnEl('ba','Guardar',null);
+    saveBtn.style.width='100%';
+    var backBtn=btnEl('bh','← Volver al portal',function(){if(currentInfo)loadLoans(currentInfo);});
+    backBtn.style.width='100%';backBtn.style.marginTop='8px';
+
+    card.appendChild(fldEl('Nueva contraseña',pw1));
+    card.appendChild(fldEl('Confirmar contraseña',pw2));
+    card.appendChild(errEl);
+    card.appendChild(okEl);
+    card.appendChild(saveBtn);
+    card.appendChild(backBtn);
+
+    saveBtn.addEventListener('click',function(){
+      var p1=(pw1.value||'').trim(),p2=(pw2.value||'').trim();
+      errEl.textContent='';okEl.textContent='';
+      if(!p1||!p2){errEl.textContent='Completa ambos campos.';return;}
+      if(p1.length<6){errEl.textContent='Mínimo 6 caracteres.';return;}
+      if(p1!==p2){errEl.textContent='Las contraseñas no coinciden.';return;}
+      saveBtn.disabled=true;saveBtn.textContent='Guardando…';saveBtn.style.opacity='.7';
+      var user=auth.currentUser;
+      if(!user){errEl.textContent='Sesión expirada. Recarga la página.';return;}
+      user.updatePassword(p1)
+        .then(function(){
+          okEl.textContent='✅ Contraseña actualizada correctamente.';
+          saveBtn.disabled=false;saveBtn.textContent='Guardar';saveBtn.style.opacity='1';
+          pw1.value='';pw2.value='';
+        })
+        .catch(function(e){
+          saveBtn.disabled=false;saveBtn.textContent='Guardar';saveBtn.style.opacity='1';
+          var code=(e&&e.code)?e.code:'';
+          if(code.indexOf('requires-recent-login')>=0){
+            errEl.textContent='Por seguridad vuelve a iniciar sesión antes de cambiar la contraseña.';
+          }else{
+            errEl.textContent='Error: '+(e&&e.message||'No se pudo actualizar.');
+          }
+        });
+    });
+
+    wrap.appendChild(card);
+    G.appendChild(wrap);
+    setTimeout(function(){pw1.focus();},150);
   }
 })();
 </script>
