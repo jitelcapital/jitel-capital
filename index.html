@@ -1307,7 +1307,7 @@ function showMensajeMultidia(groups){
   var socios2=[],socSet={},i2,l2;
   for(i2=0;i2<ST.loans.length;i2++){
     l2=ST.loans[i2];
-    if(l2.status==='active'&&(!l2.mes_comienzo||l2.mes_comienzo<=CURR_MK)&&l2.socio&&!isJulianLoan(l2)&&!socSet[l2.socio]){
+    if(l2.status==='active'&&(!l2.mes_comienzo||l2.mes_comienzo<CURR_MK)&&l2.socio&&!isJulianLoan(l2)&&!socSet[l2.socio]){
       socios2.push(l2.socio);socSet[l2.socio]=1;
     }
   }
@@ -1442,7 +1442,7 @@ function vCobros(){
   for(i=0;i<ST.loans.length;i++){
     var l0=ST.loans[i];
     if(l0.status!=='active')continue;
-    if(l0.mes_comienzo&&l0.mes_comienzo>CURR_MK)continue; // not yet started
+    if(l0.mes_comienzo&&l0.mes_comienzo>=CURR_MK)continue; // not yet started; first billing is the month after mes_comienzo
     active.push(l0);
   }
   var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
