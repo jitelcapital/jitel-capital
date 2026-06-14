@@ -281,6 +281,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var mesIdx=now.getMonth();
     var anio=now.getFullYear();
     var mesActual=MESES[mesIdx];
+    var mesNum=mesIdx+1;
+    var CURR_MK=anio+'-'+(mesNum<10?'0'+mesNum:String(mesNum));
+    function isCollectable(loan){return !loan.mes_comienzo||loan.mes_comienzo<CURR_MK;}
 
     // ── TOPBAR ──
     var top=el('div',null,null,null);top.id='topbar';
@@ -302,8 +305,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var totalCapital=0,totalInt=0,cobrado=0,pendiente=0;
     for(i=0;i<loans.length;i++){
       l=loans[i];
-      intS=(l.monto||0)*(l.int_socio||0);
       totalCapital+=(l.monto||0);
+      if(!isCollectable(l))continue;
+      intS=(l.monto||0)*(l.int_socio||0);
       totalInt+=intS;
       if(l.pagado_socio){cobrado+=intS;}
       else{pendiente+=intS;}
@@ -384,8 +388,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         if(periodo)linfo.appendChild(el('div','ldate',null,periodo));
         lrow.appendChild(linfo);
         var estCls,estTxt;
-        if(l.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
-        else if(l.recibido){estCls='pend';estTxt='💰 Recibido';}
+        if(isCollectable(l)&&l.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
         else{estCls='pend';estTxt='⏳ Pendiente';}
         lrow.appendChild(el('div','lest '+estCls,null,estTxt));
         c4.appendChild(lrow);
