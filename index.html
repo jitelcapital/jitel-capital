@@ -1514,7 +1514,8 @@ function vCobros(){
         else if(urg==='pronto')urgLabel=' — pronto';
       }
       var dt=D(null,{fontWeight:'600',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);dt.textContent='Día '+g.dia+urgLabel;
-      var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'');
+      var nCobrados=0,nGirados=0,gcj;for(gcj=0;gcj<g.loans.length;gcj++){if(paidMth(g.loans[gcj]))nCobrados++;if(g.loans[gcj].pagado_socio)nGirados++;}
+      var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'')+' · '+nCobrados+' cobrado'+(nCobrados!==1?'s':'')+' · '+nGirados+' girado'+(nGirados!==1?'s':'');
       diInfo.appendChild(dt);diInfo.appendChild(ds);
       dhl.appendChild(dn);dhl.appendChild(diInfo);
 
@@ -1586,8 +1587,10 @@ function vCobros(){
               zAction.appendChild(lamt);zAction.appendChild(lpay);
               topZones.appendChild(zInfo);topZones.appendChild(zAction);
               row.appendChild(topZones);
-              // Footer: Pagado-socio toggle (recibido se marca automáticamente al registrar pago)
+              // Footer: estado Cobré (solo lectura) + toggle Pagué socio
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
+              var cobreePill=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c2)',color:'var(--mut)',border:'1px solid var(--bor)'},null);cobreePill.textContent='○ Cobré';
+              concilRow.appendChild(cobreePill);
               if(!isJulianLoan(ln))concilRow.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
               row.appendChild(concilRow);
               body.appendChild(row);
@@ -1613,7 +1616,8 @@ function vCobros(){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
           for(var di2=0;di2<done.length;di2++){
             (function(ln){
-              var drWrap=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
+              var needsGiro=!isJulianLoan(ln)&&!ln.pagado_socio;
+              var drWrap=D(null,{background:needsGiro?'rgba(200,148,0,.06)':'var(--c-suc-bg)',border:'1px solid '+(needsGiro?'rgba(200,148,0,.4)':'var(--c-suc-bor)'),borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
               // Header zones (same shape as pending, less prominent action)
               var dzones=D(null,{display:'flex',alignItems:'stretch',padding:'8px 10px',gap:'10px'},null);
               dzones.appendChild(sumCheckbox(ln.id));
@@ -1628,8 +1632,10 @@ function vCobros(){
               dAct.appendChild(da2);
               dzones.appendChild(dInfo);dzones.appendChild(dAct);
               drWrap.appendChild(dzones);
-              // Footer toggles (recibido auto-marcado al pagar; solo queda pagado_socio manual)
-              var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid var(--c-suc-bor)',background:'rgba(0,0,0,.08)'},null);
+              // Footer: estado Cobré (✅ pagado) + toggle Pagué socio
+              var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid '+(needsGiro?'rgba(200,148,0,.3)':'var(--c-suc-bor)'),background:'rgba(0,0,0,.08)'},null);
+              var cobreeDonePill=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c-paid-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor2)'},null);cobreeDonePill.textContent='✓ Cobré';
+              concilRow2.appendChild(cobreeDonePill);
               if(!isJulianLoan(ln))concilRow2.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
               drWrap.appendChild(concilRow2);
               body.appendChild(drWrap);
