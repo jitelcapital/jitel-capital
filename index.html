@@ -1447,10 +1447,10 @@ function vCobros(){
   }
   var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
   var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
-  var tm=0,tc=0,myPending=0;
+  var tm=0,tc=0,myPending=0,myPaid=0;
   for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
-  // MI PENDIENTE: sum of IP (interés propio only — excludes socios cut) for unpaid loans this month.
-  for(i=0;i<active.length;i++){if(!paidMth(active[i]))myPending+=IP(active[i]);}
+  // MI CUENTA: interés propio dividido entre préstamos cobrados y pendientes este mes.
+  for(i=0;i<active.length;i++){if(paidMth(active[i]))myPaid+=IP(active[i]);else myPending+=IP(active[i]);}
   var pct=tm>0?Math.round(tc/tm*100):0;
 
   // helper: urgency class for a day group
@@ -1472,7 +1472,7 @@ function vCobros(){
   function mkKpi(l,v,vc,sub){var k=D('kpi',{padding:'10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:vc||'var(--acc)',lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'2px'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
   kg.appendChild(mkKpi('TOTAL MES',COP(tm),'var(--acc)',null));
   kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));
-  kg.appendChild(mkKpi('MI PENDIENTE',COP(myPending),'var(--pur)','Solo interés propio'));
+  (function(){var k=D('kpi',{padding:'10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'},null);kl.textContent='MI CUENTA';var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:'var(--pur)',lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=COP(myPaid+myPending);k.appendChild(kl);k.appendChild(kv);var s1=D(null,{fontSize:'10px',color:'var(--grn)',marginTop:'2px'},null);s1.textContent='Mi cobrado: '+COP(myPaid);var s2=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'1px'},null);s2.textContent='Mi pendiente: '+COP(myPending);k.appendChild(s1);k.appendChild(s2);kg.appendChild(k);}());
   w.appendChild(kg);
 
   var bw=D(null,{marginBottom:'10px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
