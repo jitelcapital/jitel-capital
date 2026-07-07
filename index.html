@@ -1798,12 +1798,13 @@ function vEvolucion(){
 // ── VIEW: DASHBOARD ──
 function vDashboard(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
-  var totCap=0,totP=0,totSoc=0,mora=0;
+  var totCap=0,totP=0,totSoc=0,mora=0,myPaidR=0,myPendingR=0;
   for(i=0;i<active.length;i++){
     totCap+=active[i].monto;
     totP+=IP(active[i]);
     totSoc+=IS(active[i]);
     if(!paidMth(active[i])&&active[i].dia<TODAY_DIA)mora++;
+    if(paidMth(active[i]))myPaidR+=IP(active[i]);else myPendingR+=IP(active[i]);
   }
   // Margen neto ponderado = Σ(monto_i × int_propio_i) / Σ(monto_i)
   // This IS a weighted average by capital — same as totP/totCap. Explicit here for clarity.
@@ -1832,6 +1833,10 @@ function vDashboard(){
   kg1.appendChild(bigKpi('Ganancia mes',COP(totP),'var(--grn)','Interés propio neto','📈'));
   kg1.appendChild(bigKpi('Préstamos activos',String(active.length),'var(--blu)','Cartera vigente','📋'));
   w.appendChild(kg1);
+  var kgMiCuenta=D('g2',{marginBottom:'10px'},null);
+  kgMiCuenta.appendChild(kpi2('Mi cobrado',COP(myPaidR),'var(--grn)','Interés propio cobrado'));
+  kgMiCuenta.appendChild(kpi2('Mi pendiente',COP(myPendingR),'var(--mut)','Interés propio por cobrar'));
+  w.appendChild(kgMiCuenta);
   var kg2=D('g2',{marginBottom:'18px'},null);
   var moraKpi=bigKpi('En mora',String(mora),'var(--red)',mora===0?'Al día ✓':mora+' sin pagar hoy','⚠️');
   if(mora===0){moraKpi.style.borderColor='var(--c-suc-bor2)';moraKpi.querySelector('.mn').style.color='var(--grn)';}
