@@ -2826,11 +2826,14 @@ function vClientes(){
   var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px;margin-bottom:10px';h2.textContent='Clientes';
   w.appendChild(h2);
   // Summary totals bar
-  var totCap=0,totInt=0;for(i=0;i<list.length;i++){totCap+=list[i][1].capital;totInt+=list[i][1].intT;}
-  var sumBar=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'8px 12px',marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'},null);
-  var sumL=D(null,{fontSize:'12px',color:'var(--mut)'},null);sumL.textContent=list.length+' clientes · '+COP(totCap);
-  var sumR=D('mn',{fontSize:'13px',fontWeight:'700',color:'var(--blu)'},null);sumR.textContent=COP(totInt)+'/mes';
-  sumBar.appendChild(sumL);sumBar.appendChild(sumR);w.appendChild(sumBar);
+  var totCap=0,totInt=0,nAlDia=0,nMora=0;for(i=0;i<list.length;i++){totCap+=list[i][1].capital;totInt+=list[i][1].intT;var s0=clientSemaforo(list[i][1].loans);if(s0.emoji==='🟢')nAlDia++;else nMora++;}
+  function abr(n){var m=n/1000000;if(m>=100)return Math.round(m)+'M';if(m>=1)return m.toFixed(1).replace(/\.0$/,'')+'M';return Math.round(n/1000)+'k';}
+  function mkSumKpi(lbl,val,vc,sub){var k=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'8px 10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'},null);kl.textContent=lbl;var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:vc,lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=val;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'1px'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
+  var sumBar=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginBottom:'10px'},null);
+  sumBar.appendChild(mkSumKpi('Capital total',abr(totCap),'var(--acc)',list.length+' clientes'));
+  sumBar.appendChild(mkSumKpi('Int./mes',abr(totInt)+'/mes','var(--blu)',null));
+  sumBar.appendChild(mkSumKpi('Al día',String(nAlDia),nMora===0?'var(--grn)':'var(--c-sem-partial-txt)',nMora>0?nMora+' en mora':'Todo corriente ✓'));
+  w.appendChild(sumBar);
   for(var li=0;li<list.length;li++){
     (function(name,st2){
       var exp=false,pv=false;
@@ -2850,7 +2853,7 @@ function vClientes(){
         var semEl=S(null,{fontSize:'14px',flexShrink:'0',lineHeight:'1'},null);semEl.textContent=sem.emoji;
         var hn=S(null,{fontWeight:'700',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);hn.textContent=name;
         // Semáforo label badge (small, inline)
-        var semBadge=S(null,{fontSize:'10px',color:sem.color,background:sem.bg,padding:'2px 6px',borderRadius:'20px',flexShrink:'0',fontWeight:'600'},null);semBadge.textContent=sem.label;
+        var semBadge=S(null,{fontSize:'12px',color:sem.color,background:sem.bg,padding:'4px 9px',borderRadius:'20px',flexShrink:'0',fontWeight:'700'},null);semBadge.textContent=sem.label;
         var hs=S(null,{fontSize:'11px',color:'var(--mut)',flexShrink:'0'},null);hs.textContent=st2.count+'p';
         hl.appendChild(arrow);hl.appendChild(semEl);hl.appendChild(hn);hl.appendChild(semBadge);hl.appendChild(hs);
         var hr=D(null,{textAlign:'right',flexShrink:'0',marginLeft:'8px'},null);
@@ -2860,6 +2863,12 @@ function vClientes(){
         hdr2.appendChild(hl);hdr2.appendChild(hr);row.appendChild(hdr2);
         if(exp){
           var body=D(null,{borderTop:'1px solid var(--bor)',padding:'8px 12px'},null);
+          // Mini-resumen: cobrado / pendiente + próximo cobro este mes
+          var cobM=0,pendM=0,nextDiaM=null,pj;for(pj=0;pj<st2.loans.length;pj++){var lj=st2.loans[pj];if(paidMth(lj))cobM+=IM(lj);else{pendM+=IM(lj);if(nextDiaM===null||lj.dia<nextDiaM)nextDiaM=lj.dia;}}
+          var mini=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'10px'},null);
+          var mK1=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'7px',padding:'7px 10px'},null);var mK1l=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'},null);mK1l.textContent='Cobrado mes';var mK1v=D('mn',{fontSize:'14px',fontWeight:'700',color:'var(--grn)'},null);mK1v.textContent=COP(cobM);mK1.appendChild(mK1l);mK1.appendChild(mK1v);
+          var mK2=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'7px',padding:'7px 10px'},null);var mK2l=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'},null);mK2l.textContent='Pendiente mes';var mK2v=D('mn',{fontSize:'14px',fontWeight:'700',color:pendM>0?'var(--acc)':'var(--grn)'},null);mK2v.textContent=COP(pendM);var mK2s=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'2px'},null);mK2s.textContent=nextDiaM?'Próx. día '+nextDiaM:'Al día ✓';mK2.appendChild(mK2l);mK2.appendChild(mK2v);mK2.appendChild(mK2s);
+          mini.appendChild(mK1);mini.appendChild(mK2);body.appendChild(mini);
           for(var pi4=0;pi4<st2.loans.length;pi4++){
             (function(ln,idx){
               var lr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 0',borderBottom:idx<st2.loans.length-1?'1px solid var(--bor)':'none',cursor:'pointer'},null);
