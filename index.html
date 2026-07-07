@@ -1467,12 +1467,13 @@ function vCobros(){
 
   var w=D(null,null,null);
   var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:12px';h2.textContent='Cobros del mes';w.appendChild(h2);
-  // 3-column KPI grid: TOTAL MES / COBRADO / MI PENDIENTE
+  // 3-column KPI grid: TOTAL MES / COBRADO / MI CUENTA
+  function fmtM(n){var m=n/1000000;return m>=1?m.toFixed(2).replace(/\.?0+$/,'')+'M':Math.round(n/1000)+'k';}
   var kg=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'10px'},null);
   function mkKpi(l,v,vc,sub){var k=D('kpi',{padding:'10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'},null);kl.textContent=l;var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:vc||'var(--acc)',lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=v;k.appendChild(kl);k.appendChild(kv);if(sub){var ks=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'2px'},null);ks.textContent=sub;k.appendChild(ks);}return k;}
   kg.appendChild(mkKpi('TOTAL MES',COP(tm),'var(--acc)',null));
   kg.appendChild(mkKpi('COBRADO',COP(tc),'var(--grn)',COP(tm-tc)+' pend.'));
-  (function(){var k=D('kpi',{padding:'10px'},null);var kl=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'3px'},null);kl.textContent='MI CUENTA';var kv=D('mn',{fontSize:'13px',fontWeight:'700',color:'var(--pur)',lineHeight:'1.2',wordBreak:'break-word'},null);kv.textContent=COP(myPaid+myPending);k.appendChild(kl);k.appendChild(kv);var s1=D(null,{fontSize:'10px',color:'var(--grn)',marginTop:'2px'},null);s1.textContent='Mi cobrado: '+COP(myPaid);var s2=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'1px'},null);s2.textContent='Mi pendiente: '+COP(myPending);k.appendChild(s1);k.appendChild(s2);kg.appendChild(k);}());
+  kg.appendChild(mkKpi('MI CUENTA',COP(myPaid+myPending),'var(--pur)','cobrado '+fmtM(myPaid)+' · pend. '+fmtM(myPending)));
   w.appendChild(kg);
 
   var bw=D(null,{marginBottom:'10px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
