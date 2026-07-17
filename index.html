@@ -39,6 +39,7 @@ select option{background:var(--card)}
 .card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px}
 .ta{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e3a1e;color:var(--grn)}
 .tp{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e1e38;color:var(--blu)}
+.tx{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#2a1a4a;color:var(--pur)}
 .mn{font-family:'Courier New',monospace}
 .sep{height:1px;background:var(--bor);margin:10px 0}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -110,6 +111,7 @@ select option{background:var(--card)}
   .bp{background:#f0ebff;color:#5a30c0;border-color:#9b6dff}
   .ta{background:#d0f0dc;color:#1a7a40}
   .tp{background:#d8ecff;color:#1a5aaa}
+  .tx{background:#f0ebff;color:#5a30c0}
   .pvb{background:#f0fff4;border-color:#7ae0aa;color:#1a4a2a}
   .cp.ok{background:#d0f0dc;color:#1a7a40;border-color:var(--grn)}
   #toast{background:#d0f0dc;border-color:var(--grn);color:#1a7a40}
@@ -676,7 +678,13 @@ function showLoanDetail(lid){
     pb.appendChild(pr);
     var pg2=D('g2',null,null);
     var pid=D(null,null,null);var pil=D(null,{fontSize:'11px',color:'var(--mut)'},null);pil.textContent='Inicio';var piv=D(null,{fontWeight:'600'},null);piv.textContent=loan.mes_comienzo||'—';pid.appendChild(pil);pid.appendChild(piv);
-    var pvd=D(null,null,null);var pvl=D(null,{fontSize:'11px',color:'var(--mut)'},null);pvl.textContent='Vence';var pvv=D(null,{fontWeight:'600',color:'var(--acc)'},null);pvv.textContent='Día '+loan.dia+' · '+loan.mes_fin;pvd.appendChild(pvl);pvd.appendChild(pvv);
+    var pvd=D(null,null,null);
+    var pvlRow=D(null,{display:'flex',alignItems:'center',gap:'6px'},null);
+    var pvl=D(null,{fontSize:'11px',color:'var(--mut)'},null);pvl.textContent='Vence';pvlRow.appendChild(pvl);
+    if(loan.veces_extendido>0){var pvx=S('tx',null,null);pvx.textContent='🔄 Extendido '+loan.veces_extendido+'x';pvlRow.appendChild(pvx);}
+    pvd.appendChild(pvlRow);
+    var pvv=D(null,{fontWeight:'600',color:'var(--acc)'},null);pvv.textContent='Día '+loan.dia+' · '+loan.mes_fin;pvd.appendChild(pvv);
+    if(loan.mes_fin_original){var pvo=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);pvo.textContent='Plazo original: '+loan.mes_fin_original;pvd.appendChild(pvo);}
     pg2.appendChild(pid);pg2.appendChild(pvd);pb.appendChild(pg2);
     if(sext){
       var ediv=D(null,{marginTop:'12px',paddingTop:'12px',borderTop:'1px solid var(--bor)'},null);
@@ -719,6 +727,11 @@ function showLoanDetail(lid){
             if(ed.nota)noteParts.push('('+ed.nota+')');
             var note=noteParts.join(' | ');
             var c={};for(var k in x)c[k]=x[k];
+            var plazoChanged=(ed.dia!==x.dia)||(ed.mes!==x.mes_fin)||(ed.año!==x.año);
+            if(plazoChanged){
+              if(!x.mes_fin_original)c.mes_fin_original=x.mes_fin+' '+x.año;
+              c.veces_extendido=(x.veces_extendido||0)+1;
+            }
             c.dia=ed.dia;c.mes_fin=ed.mes;c.año=ed.año;
             if(newSocio)c.socio=newSocio;
             if(newIs!==null&&newIs!==undefined)c.int_socio=newIs;
@@ -1998,7 +2011,7 @@ function vLoans(){
         var propCol='var(--grn)';
         bg3.appendChild(col3('Capital',COP(l.monto),null));
         bg3.appendChild(col3('Cobrar',COP(IM(l)),'var(--acc)'));
-        bg3.appendChild(col3('Vence','D'+l.dia+' '+l.mes_fin.slice(0,3),null));
+        bg3.appendChild(col3('Vence','D'+l.dia+' '+l.mes_fin.slice(0,3)+(l.veces_extendido>0?' 🔄':''),null));
         bg3.appendChild(col3('Int.Socio',socVal,socCol));
         bg3.appendChild(col3('Int.Propio',propVal,propCol));
         r.appendChild(bg3);
