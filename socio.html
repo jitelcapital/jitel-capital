@@ -436,17 +436,24 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         leg.appendChild(el('span',null,null,label+' · '+Math.round(pctCap)+'%'));
         distLegend.appendChild(leg);
       }
+      // loanRankTag: mapea id de préstamo → {label,color} del segmento al que pertenece,
+      // para que "Tus préstamos" pueda mostrar el mismo tag que la gráfica de arriba.
+      var loanRankTag={};
       var loansByCap=loans.slice().sort(function(a,b){return (b.monto||0)-(a.monto||0);});
       var topN=Math.min(loansByCap.length,4),si;
       for(si=0;si<topN;si++){
         var pctCap=totalCapital>0?(loansByCap[si].monto||0)/totalCapital*100:0;
-        distSeg(distColors[si%distColors.length],'Préstamo '+(si+1),pctCap);
+        var lblTop='Préstamo '+(si+1),colorTop=distColors[si%distColors.length];
+        distSeg(colorTop,lblTop,pctCap);
+        if(loansByCap[si].id)loanRankTag[loansByCap[si].id]={label:lblTop,color:colorTop};
       }
       if(loansByCap.length>4){
         var restCount=loansByCap.length-4,restCap=0,ri;
         for(ri=4;ri<loansByCap.length;ri++)restCap+=(loansByCap[ri].monto||0);
         var pctRest=totalCapital>0?restCap/totalCapital*100:0;
-        distSeg(distColors[4%distColors.length],'Otros ('+restCount+' préstamos)',pctRest);
+        var colorRest=distColors[4%distColors.length];
+        distSeg(colorRest,'Otros ('+restCount+' préstamos)',pctRest);
+        for(ri=4;ri<loansByCap.length;ri++){if(loansByCap[ri].id)loanRankTag[loansByCap[ri].id]={label:'Otros',color:colorRest};}
       }
       distWrap.appendChild(distBar);
       distWrap.appendChild(distLegend);
@@ -467,6 +474,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           lrow.appendChild(el('div','ldia',null,String(ln.dia||'?')));
           var tasaPct=parseFloat((Math.round((ln.int_socio||0)*10000)/100).toFixed(2));
           var linfo=el('div','linfo',null,null);
+          if(socioNombre==='VICTOR'&&loanRankTag[ln.id]){
+            var rankInfo=loanRankTag[ln.id];
+            var rankTag=el('div',null,{display:'flex',alignItems:'center',gap:'4px',fontSize:'9px',color:'var(--mut)',marginBottom:'4px'},null);
+            rankTag.appendChild(el('span',null,{width:'7px',height:'7px',borderRadius:'50%',background:rankInfo.color,display:'inline-block',flexShrink:'0'},null));
+            rankTag.appendChild(el('span',null,null,rankInfo.label));
+            linfo.appendChild(rankTag);
+          }
           linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(ln.monto)));
           linfo.appendChild(el('div','lint',null,'Interés/mes: '+COP(intSocio)+' ('+tasaPct+'%)'));
           var periodo=fmtPeriodo(ln);
