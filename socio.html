@@ -90,6 +90,113 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     if(inicio)return 'Desde '+inicio;
     return '';
   }
+  // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive (piloto Victor)
+  function monthsElapsed(mesComienzo,uptoMk){
+    if(!mesComienzo||!uptoMk)return 0;
+    var p1=(mesComienzo+'').split('-'),p2=(uptoMk+'').split('-');
+    var y1=parseInt(p1[0],10),m1=parseInt(p1[1],10);
+    var y2=parseInt(p2[0],10),m2=parseInt(p2[1],10);
+    if(!y1||!m1||!y2||!m2)return 0;
+    var n=(y2-y1)*12+(m2-m1)+1;
+    return n>0?n:0;
+  }
+  function loanEndMk(loan){
+    if(!loan.mes_fin||!loan.año)return null;
+    var idx=MESES.indexOf((loan.mes_fin+'').toUpperCase());
+    if(idx<0)return null;
+    var mo=idx+1;
+    return loan.año+'-'+(mo<10?'0'+mo:String(mo));
+  }
+  function planProgress(loan,currMk){
+    var endMk=loanEndMk(loan);
+    if(!loan.mes_comienzo||!endMk)return null;
+    var total=monthsElapsed(loan.mes_comienzo,endMk);
+    var elapsed=monthsElapsed(loan.mes_comienzo,currMk);
+    if(elapsed<0)elapsed=0;
+    if(elapsed>total)elapsed=total;
+    var pct=total>0?Math.round((elapsed/total)*100):0;
+    if(pct>100)pct=100;if(pct<0)pct=0;
+    return{pct:pct,total:total,elapsed:elapsed,endMk:endMk};
+  }
+  // Serie mensual teórica de interés del socio (sin considerar mora), últimos 6 meses visibles
+  function loanMonthlySeries(loan,currMk){
+    var series=[];
+    if(!loan.mes_comienzo)return series;
+    var p1=(loan.mes_comienzo+'').split('-');
+    var y=parseInt(p1[0],10),m=parseInt(p1[1],10);
+    var pCurr=(currMk+'').split('-');
+    var yEnd=parseInt(pCurr[0],10),mEnd=parseInt(pCurr[1],10);
+    if(!y||!m||!yEnd||!mEnd)return series;
+    var intMensual=(loan.monto||0)*(loan.int_socio||0);
+    var acumulado=0,guard=0;
+    while((y<yEnd||(y===yEnd&&m<=mEnd))&&guard<600){
+      acumulado+=intMensual;
+      series.push({label:MESES_CORTO[m-1],mk:y+'-'+(m<10?'0'+m:String(m)),val:intMensual,acum:acumulado});
+      m++;if(m>12){m=1;y++;}
+      guard++;
+    }
+    if(series.length>6)series=series.slice(-6);
+    return series;
+  }
+  function miniBarSVG(series,color){
+    var VW=150,VH=90,padB=16,padT=10;
+    var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 '+VW+' '+VH);
+    svg.setAttribute('preserveAspectRatio','none');
+    svg.style.cssText='width:100%;height:90px;display:block';
+    if(series.length===0)return svg;
+    var maxVal=0,i;for(i=0;i<series.length;i++)if(series[i].val>maxVal)maxVal=series[i].val;
+    if(maxVal<=0)maxVal=1;
+    var n=series.length,slotW=VW/n,barW=Math.max(Math.round(slotW*0.5),4);
+    var chartBot=VH-padB;
+    for(i=0;i<series.length;i++){
+      var val=series[i].val;
+      var barH=Math.max(Math.round((val/maxVal)*(chartBot-padT)),2);
+      var bx=Math.round(i*slotW+(slotW-barW)/2),by=chartBot-barH;
+      var rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x',String(bx));rect.setAttribute('y',String(by));
+      rect.setAttribute('width',String(barW));rect.setAttribute('height',String(barH));
+      rect.setAttribute('rx','2');rect.style.fill=color;svg.appendChild(rect);
+      var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lt.setAttribute('x',String(bx+barW/2));lt.setAttribute('y',String(VH-4));
+      lt.setAttribute('text-anchor','middle');lt.setAttribute('font-size','7');
+      lt.style.fill='var(--mut)';lt.textContent=series[i].label;svg.appendChild(lt);
+    }
+    return svg;
+  }
+  function miniLineSVG(series,color){
+    var VW=150,VH=90,padB=16,padT=10;
+    var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 '+VW+' '+VH);
+    svg.setAttribute('preserveAspectRatio','none');
+    svg.style.cssText='width:100%;height:90px;display:block';
+    if(series.length===0)return svg;
+    var maxVal=0,i;for(i=0;i<series.length;i++)if(series[i].acum>maxVal)maxVal=series[i].acum;
+    if(maxVal<=0)maxVal=1;
+    var n=series.length,slotW=n>1?VW/(n-1):VW;
+    var chartBot=VH-padB;
+    var pts=[];
+    for(i=0;i<series.length;i++){
+      var x=n>1?Math.round(i*slotW):VW/2;
+      var y=chartBot-Math.round((series[i].acum/maxVal)*(chartBot-padT));
+      pts.push(x+','+y);
+    }
+    var poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    poly.setAttribute('points',pts.join(' '));
+    poly.setAttribute('fill','none');poly.style.stroke=color;poly.setAttribute('stroke-width','2');
+    svg.appendChild(poly);
+    for(i=0;i<series.length;i++){
+      var xy=pts[i].split(',');
+      var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',xy[0]);c.setAttribute('cy',xy[1]);c.setAttribute('r','2.5');
+      c.style.fill=color;svg.appendChild(c);
+      var lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lt.setAttribute('x',xy[0]);lt.setAttribute('y',String(VH-4));
+      lt.setAttribute('text-anchor','middle');lt.setAttribute('font-size','7');
+      lt.style.fill='var(--mut)';lt.textContent=series[i].label;svg.appendChild(lt);
+    }
+    return svg;
+  }
   var FIREBASE_CONFIG={
     apiKey:'AIzaSyAWxcYHpJjuFhP3pl2YIa6yjOrBL7Bd9K8',
     authDomain:'jitel-capital.firebaseapp.com',
@@ -208,13 +315,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     showLoading('Cargando tus préstamos…');
     db.collection('prestamos').where('socio','==',nombre).get()
       .then(function(snap){
-        var loans=[];
+        var loans=[],allLoans=[];
         snap.forEach(function(doc){
           var l=doc.data();
+          allLoans.push(l);
           if(l.status==='active')loans.push(l);
         });
         loans.sort(function(a,b){return (a.dia||0)-(b.dia||0);});
-        renderPortal(info,loans);
+        renderPortal(info,loans,allLoans);
       })
       .catch(function(e){
         showError('No se pudieron cargar los préstamos: '+(e&&e.message||''));
@@ -274,9 +382,11 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
 
   // ── Vista del portal ──
-  function renderPortal(info,loans){
+  function renderPortal(info,loans,allLoans){
     G.innerHTML='';
     var nombre=info.nombre||'Socio';
+    var socioNombre=(info.nombre||'').toUpperCase();
+    allLoans=allLoans||loans;
     var now=new Date();
     var mesIdx=now.getMonth();
     var anio=now.getFullYear();
@@ -369,6 +479,49 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       G.appendChild(c3);
     }
 
+    // ── PILOTO VICTOR: Tu cartera con JiTel ──
+    if(socioNombre==='VICTOR'){
+      var rendimientoTotal=0,ai;
+      for(ai=0;ai<allLoans.length;ai++){
+        var al=allLoans[ai];
+        var mElT=monthsElapsed(al.mes_comienzo,CURR_MK);
+        rendimientoTotal+=mElT*(al.int_socio||0)*(al.monto||0);
+      }
+      var projMensual=0;
+      for(ai=0;ai<loans.length;ai++){projMensual+=(loans[ai].monto||0)*(loans[ai].int_socio||0);}
+      var proyeccion3=projMensual*3;
+      var rentabilidadAnual=totalCapital>0?(projMensual/totalCapital)*12:0;
+      var rentPct=parseFloat((Math.round(rentabilidadAnual*10000)/100).toFixed(2));
+
+      var cV=el('div','card',null,null);
+      cV.appendChild(el('div','sec-title',null,'🚀 Tu cartera con JiTel'));
+      var gV=el('div','g3',null,null);
+      gV.appendChild(kpi('Rendimiento acum.',COP(rendimientoTotal),'var(--acc)'));
+      gV.appendChild(kpi('Rentab. anual',rentPct+'%','var(--grn)'));
+      gV.appendChild(kpi('Proyección 3m',COP(proyeccion3),'var(--blu)'));
+      cV.appendChild(gV);
+
+      var distColors=['var(--acc)','var(--grn)','var(--blu)','var(--pur)','var(--red)'];
+      var distWrap=el('div',null,{marginTop:'12px'},null);
+      distWrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px'},'Distribución de capital'));
+      var distBar=el('div',null,{display:'flex',height:'14px',borderRadius:'8px',overflow:'hidden',background:'var(--c2)'},null);
+      var distLegend=el('div',null,{display:'flex',flexWrap:'wrap',gap:'8px',marginTop:'8px'},null);
+      for(ai=0;ai<loans.length;ai++){
+        var lD=loans[ai];
+        var pctCap=totalCapital>0?(lD.monto||0)/totalCapital*100:0;
+        var colorD=distColors[ai%distColors.length];
+        distBar.appendChild(el('div',null,{width:pctCap+'%',background:colorD},null));
+        var leg=el('div',null,{display:'flex',alignItems:'center',gap:'4px',fontSize:'10px',color:'var(--mut)'},null);
+        leg.appendChild(el('span',null,{width:'8px',height:'8px',borderRadius:'50%',background:colorD,display:'inline-block'},null));
+        leg.appendChild(el('span',null,null,'Día '+(lD.dia||'?')+' · '+Math.round(pctCap)+'%'));
+        distLegend.appendChild(leg);
+      }
+      distWrap.appendChild(distBar);
+      distWrap.appendChild(distLegend);
+      cV.appendChild(distWrap);
+      G.appendChild(cV);
+    }
+
     // ── PRÉSTAMOS ──
     var c4=el('div','card',null,null);
     c4.appendChild(el('div','sec-title',null,'📋 Tus préstamos'));
@@ -376,22 +529,74 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       c4.appendChild(el('div',null,{color:'var(--mut)',fontSize:'13px',textAlign:'center',padding:'20px 0'},'No hay préstamos activos.'));
     }else{
       for(i=0;i<loans.length;i++){
-        l=loans[i];
-        intS=(l.monto||0)*(l.int_socio||0);
-        var lrow=el('div','lrow',null,null);
-        lrow.appendChild(el('div','ldia',null,String(l.dia||'?')));
-        var tasaPct=parseFloat((Math.round((l.int_socio||0)*10000)/100).toFixed(2));
-        var linfo=el('div','linfo',null,null);
-        linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(l.monto)));
-        linfo.appendChild(el('div','lint',null,'Interés/mes: '+COP(intS)+' ('+tasaPct+'%)'));
-        var periodo=fmtPeriodo(l);
-        if(periodo)linfo.appendChild(el('div','ldate',null,periodo));
-        lrow.appendChild(linfo);
-        var estCls,estTxt;
-        if(isCollectable(l)&&l.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
-        else{estCls='pend';estTxt='⏳ Pendiente';}
-        lrow.appendChild(el('div','lest '+estCls,null,estTxt));
-        c4.appendChild(lrow);
+        (function(ln,isLast){
+          var intSocio=(ln.monto||0)*(ln.int_socio||0);
+          var lrow=el('div','lrow',null,null);
+          lrow.appendChild(el('div','ldia',null,String(ln.dia||'?')));
+          var tasaPct=parseFloat((Math.round((ln.int_socio||0)*10000)/100).toFixed(2));
+          var linfo=el('div','linfo',null,null);
+          linfo.appendChild(el('div','lcap mn',null,'Capital: '+COP(ln.monto)));
+          linfo.appendChild(el('div','lint',null,'Interés/mes: '+COP(intSocio)+' ('+tasaPct+'%)'));
+          var periodo=fmtPeriodo(ln);
+          if(periodo)linfo.appendChild(el('div','ldate',null,periodo));
+          lrow.appendChild(linfo);
+          var estCls,estTxt;
+          if(isCollectable(ln)&&ln.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
+          else{estCls='pend';estTxt='⏳ Pendiente';}
+          lrow.appendChild(el('div','lest '+estCls,null,estTxt));
+
+          if(socioNombre==='VICTOR'){
+            lrow.style.cursor='pointer';
+            if(isLast)lrow.style.borderBottom='none';
+            var chev=el('div',null,{marginLeft:'2px',color:'var(--mut)',fontSize:'11px',flexShrink:'0'},'▸');
+            lrow.appendChild(chev);
+            var wrapDiv=el('div',null,null,null);
+            wrapDiv.appendChild(lrow);
+            var detailEl=null,openD=false;
+            var buildDetail=function(){
+              var det=el('div',null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginTop:'-4px',marginBottom:'11px'},null);
+              var mElG=monthsElapsed(ln.mes_comienzo,CURR_MK);
+              var generado=mElG*(ln.int_socio||0)*(ln.monto||0);
+              det.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},'Generado a la fecha (teórico)'));
+              det.appendChild(el('div','mn',{fontSize:'16px',fontWeight:'700',color:'var(--acc)',marginBottom:'10px'},COP(generado)));
+
+              var prog=planProgress(ln,CURR_MK);
+              if(prog){
+                var pbarW=el('div','pbar',null,null);
+                pbarW.appendChild(el('div','pf',{width:prog.pct+'%'},null));
+                det.appendChild(pbarW);
+                var rowLbl=el('div',null,{display:'flex',justifyContent:'space-between',fontSize:'10px',color:'var(--mut)',marginBottom:'12px'},null);
+                rowLbl.appendChild(el('span',null,null,'Inicio'));
+                rowLbl.appendChild(el('span',null,null,'Hoy · '+prog.pct+'%'));
+                rowLbl.appendChild(el('span',null,null,(ln.mes_fin||'')+(ln.año?(' '+ln.año):'')));
+                det.appendChild(rowLbl);
+              }
+
+              var series=loanMonthlySeries(ln,CURR_MK);
+              if(series.length>0){
+                var chartsRow=el('div',null,{display:'flex',gap:'8px'},null);
+                var barBox=el('div',null,{flex:'1',minWidth:'0'},null);
+                barBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'2px',textAlign:'center'},'Interés/mes'));
+                barBox.appendChild(miniBarSVG(series,'var(--blu)'));
+                var lineBox=el('div',null,{flex:'1',minWidth:'0'},null);
+                lineBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'2px',textAlign:'center'},'Acumulado'));
+                lineBox.appendChild(miniLineSVG(series,'var(--pur)'));
+                chartsRow.appendChild(barBox);chartsRow.appendChild(lineBox);
+                det.appendChild(chartsRow);
+              }
+              return det;
+            }
+            lrow.addEventListener('click',function(){
+              openD=!openD;
+              chev.textContent=openD?'▾':'▸';
+              if(openD&&!detailEl){detailEl=buildDetail();wrapDiv.appendChild(detailEl);}
+              else if(!openD&&detailEl){detailEl.remove();detailEl=null;}
+            });
+            c4.appendChild(wrapDiv);
+          }else{
+            c4.appendChild(lrow);
+          }
+        })(loans[i],i===loans.length-1);
       }
     }
     G.appendChild(c4);
