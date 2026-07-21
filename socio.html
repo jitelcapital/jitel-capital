@@ -90,7 +90,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     if(inicio)return 'Desde '+inicio;
     return '';
   }
-  // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive (piloto Victor)
+  // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive
   function monthsElapsed(mesComienzo,uptoMk){
     if(!mesComienzo||!uptoMk)return 0;
     var p1=(mesComienzo+'').split('-'),p2=(uptoMk+'').split('-');
@@ -306,7 +306,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   function renderPortal(info,loans,allLoans){
     G.innerHTML='';
     var nombre=info.nombre||'Socio';
-    var socioNombre=(info.nombre||'').toUpperCase();
     allLoans=allLoans||loans;
     var now=new Date();
     var mesIdx=now.getMonth();
@@ -400,66 +399,64 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       G.appendChild(c3);
     }
 
-    // ── PILOTO VICTOR: Tu cartera con JiTel ──
-    if(socioNombre==='VICTOR'){
-      var rendimientoTotal=0,ai;
-      for(ai=0;ai<allLoans.length;ai++){
-        var al=allLoans[ai];
-        var mElT=monthsElapsed(al.mes_comienzo,CURR_MK);
-        rendimientoTotal+=mElT*(al.int_socio||0)*(al.monto||0);
-      }
-      var projMensual=0;
-      for(ai=0;ai<loans.length;ai++){projMensual+=(loans[ai].monto||0)*(loans[ai].int_socio||0);}
-      var proyeccion3=projMensual*3;
-      var rentabilidadAnual=totalCapital>0?(projMensual/totalCapital)*12:0;
-      var rentPct=parseFloat((Math.round(rentabilidadAnual*10000)/100).toFixed(2));
-
-      var cV=el('div','card',null,null);
-      cV.appendChild(el('div','sec-title',null,'🚀 Tu cartera con JiTel'));
-      var gV=el('div','g3',null,null);
-      gV.appendChild(kpi('Rendimiento acum.',COP(rendimientoTotal),'var(--acc)'));
-      gV.appendChild(kpi('Rentab. anual',rentPct+'%','var(--grn)'));
-      gV.appendChild(kpi('Proyección 3m',COP(proyeccion3),'var(--blu)'));
-      cV.appendChild(gV);
-
-      // Distribución de capital: anónima respecto al cliente — nunca nombre ni día de cobro.
-      // Ordenado por tamaño (mayor a menor), top 4 numerados + resto agrupado en "Otros".
-      var distColors=['var(--acc)','var(--grn)','var(--blu)','var(--pur)','var(--red)'];
-      var distWrap=el('div',null,{marginTop:'12px'},null);
-      distWrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px'},'Distribución de capital'));
-      var distBar=el('div',null,{display:'flex',height:'14px',borderRadius:'8px',overflow:'hidden',background:'var(--c2)'},null);
-      var distLegend=el('div',null,{display:'flex',flexWrap:'wrap',gap:'8px',marginTop:'8px'},null);
-      var distSeg=function(color,label,pctCap){
-        distBar.appendChild(el('div',null,{width:pctCap+'%',background:color},null));
-        var leg=el('div',null,{display:'flex',alignItems:'center',gap:'4px',fontSize:'10px',color:'var(--mut)'},null);
-        leg.appendChild(el('span',null,{width:'8px',height:'8px',borderRadius:'50%',background:color,display:'inline-block'},null));
-        leg.appendChild(el('span',null,null,label+' · '+Math.round(pctCap)+'%'));
-        distLegend.appendChild(leg);
-      }
-      // loanRankTag: mapea id de préstamo → {label,color} del segmento al que pertenece,
-      // para que "Tus préstamos" pueda mostrar el mismo tag que la gráfica de arriba.
-      var loanRankTag={};
-      var loansByCap=loans.slice().sort(function(a,b){return (b.monto||0)-(a.monto||0);});
-      var topN=Math.min(loansByCap.length,4),si;
-      for(si=0;si<topN;si++){
-        var pctCap=totalCapital>0?(loansByCap[si].monto||0)/totalCapital*100:0;
-        var lblTop='Préstamo '+(si+1),colorTop=distColors[si%distColors.length];
-        distSeg(colorTop,lblTop,pctCap);
-        if(loansByCap[si].id)loanRankTag[loansByCap[si].id]={label:lblTop,color:colorTop};
-      }
-      if(loansByCap.length>4){
-        var restCount=loansByCap.length-4,restCap=0,ri;
-        for(ri=4;ri<loansByCap.length;ri++)restCap+=(loansByCap[ri].monto||0);
-        var pctRest=totalCapital>0?restCap/totalCapital*100:0;
-        var colorRest=distColors[4%distColors.length];
-        distSeg(colorRest,'Otros ('+restCount+' préstamos)',pctRest);
-        for(ri=4;ri<loansByCap.length;ri++){if(loansByCap[ri].id)loanRankTag[loansByCap[ri].id]={label:'Otros',color:colorRest};}
-      }
-      distWrap.appendChild(distBar);
-      distWrap.appendChild(distLegend);
-      cV.appendChild(distWrap);
-      G.appendChild(cV);
+    // ── Tu cartera con JiTel (todos los socios, cada uno con sus propios datos) ──
+    var rendimientoTotal=0,ai;
+    for(ai=0;ai<allLoans.length;ai++){
+      var al=allLoans[ai];
+      var mElT=monthsElapsed(al.mes_comienzo,CURR_MK);
+      rendimientoTotal+=mElT*(al.int_socio||0)*(al.monto||0);
     }
+    var projMensual=0;
+    for(ai=0;ai<loans.length;ai++){projMensual+=(loans[ai].monto||0)*(loans[ai].int_socio||0);}
+    var proyeccion3=projMensual*3;
+    var rentabilidadAnual=totalCapital>0?(projMensual/totalCapital)*12:0;
+    var rentPct=parseFloat((Math.round(rentabilidadAnual*10000)/100).toFixed(2));
+
+    var cV=el('div','card',null,null);
+    cV.appendChild(el('div','sec-title',null,'🚀 Tu cartera con JiTel'));
+    var gV=el('div','g3',null,null);
+    gV.appendChild(kpi('Rendimiento acum.',COP(rendimientoTotal),'var(--acc)'));
+    gV.appendChild(kpi('Rentab. anual',rentPct+'%','var(--grn)'));
+    gV.appendChild(kpi('Proyección 3m',COP(proyeccion3),'var(--blu)'));
+    cV.appendChild(gV);
+
+    // Distribución de capital: anónima respecto al cliente — nunca nombre ni día de cobro.
+    // Rankea el capital de ESTE socio: top 4 numerados + resto agrupado en "Otros".
+    var distColors=['var(--acc)','var(--grn)','var(--blu)','var(--pur)','var(--red)'];
+    var distWrap=el('div',null,{marginTop:'12px'},null);
+    distWrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px'},'Distribución de capital'));
+    var distBar=el('div',null,{display:'flex',height:'14px',borderRadius:'8px',overflow:'hidden',background:'var(--c2)'},null);
+    var distLegend=el('div',null,{display:'flex',flexWrap:'wrap',gap:'8px',marginTop:'8px'},null);
+    var distSeg=function(color,label,pctCap){
+      distBar.appendChild(el('div',null,{width:pctCap+'%',background:color},null));
+      var leg=el('div',null,{display:'flex',alignItems:'center',gap:'4px',fontSize:'10px',color:'var(--mut)'},null);
+      leg.appendChild(el('span',null,{width:'8px',height:'8px',borderRadius:'50%',background:color,display:'inline-block'},null));
+      leg.appendChild(el('span',null,null,label+' · '+Math.round(pctCap)+'%'));
+      distLegend.appendChild(leg);
+    }
+    // loanRankTag: mapea id de préstamo → {label,color} del segmento al que pertenece,
+    // para que "Tus préstamos" pueda mostrar el mismo tag que la gráfica de arriba.
+    var loanRankTag={};
+    var loansByCap=loans.slice().sort(function(a,b){return (b.monto||0)-(a.monto||0);});
+    var topN=Math.min(loansByCap.length,4),si;
+    for(si=0;si<topN;si++){
+      var pctCap=totalCapital>0?(loansByCap[si].monto||0)/totalCapital*100:0;
+      var lblTop='Préstamo '+(si+1),colorTop=distColors[si%distColors.length];
+      distSeg(colorTop,lblTop,pctCap);
+      if(loansByCap[si].id)loanRankTag[loansByCap[si].id]={label:lblTop,color:colorTop};
+    }
+    if(loansByCap.length>4){
+      var restCount=loansByCap.length-4,ri,restCap=0;
+      for(ri=4;ri<loansByCap.length;ri++)restCap+=(loansByCap[ri].monto||0);
+      var pctRest=totalCapital>0?restCap/totalCapital*100:0;
+      var colorRest=distColors[4%distColors.length];
+      distSeg(colorRest,'Otros ('+restCount+' préstamos)',pctRest);
+      for(ri=4;ri<loansByCap.length;ri++){if(loansByCap[ri].id)loanRankTag[loansByCap[ri].id]={label:'Otros',color:colorRest};}
+    }
+    distWrap.appendChild(distBar);
+    distWrap.appendChild(distLegend);
+    cV.appendChild(distWrap);
+    G.appendChild(cV);
 
     // ── PRÉSTAMOS ──
     var c4=el('div','card',null,null);
@@ -474,7 +471,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           lrow.appendChild(el('div','ldia',null,String(ln.dia||'?')));
           var tasaPct=parseFloat((Math.round((ln.int_socio||0)*10000)/100).toFixed(2));
           var linfo=el('div','linfo',null,null);
-          if(socioNombre==='VICTOR'&&loanRankTag[ln.id]){
+          if(loanRankTag[ln.id]){
             var rankInfo=loanRankTag[ln.id];
             var rankTag=el('div',null,{display:'flex',alignItems:'center',gap:'4px',fontSize:'9px',color:'var(--mut)',marginBottom:'4px'},null);
             rankTag.appendChild(el('span',null,{width:'7px',height:'7px',borderRadius:'50%',background:rankInfo.color,display:'inline-block',flexShrink:'0'},null));
@@ -491,56 +488,53 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           else{estCls='pend';estTxt='⏳ Pendiente';}
           lrow.appendChild(el('div','lest '+estCls,null,estTxt));
 
-          if(socioNombre==='VICTOR'){
-            lrow.style.cursor='pointer';
-            if(isLast)lrow.style.borderBottom='none';
-            var chev=el('div',null,{marginLeft:'2px',color:'var(--mut)',fontSize:'11px',flexShrink:'0'},'▸');
-            lrow.appendChild(chev);
-            var wrapDiv=el('div',null,null,null);
-            wrapDiv.appendChild(lrow);
-            var detailEl=null,openD=false;
-            var buildDetail=function(){
-              var det=el('div',null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginTop:'-4px',marginBottom:'11px'},null);
-              var mElG=monthsElapsed(ln.mes_comienzo,CURR_MK);
-              var generado=mElG*(ln.int_socio||0)*(ln.monto||0);
-              var prog=planProgress(ln,CURR_MK);
+          // Detalle expandible (todos los socios): comparación hasta-hoy vs hasta-el-final + progreso
+          lrow.style.cursor='pointer';
+          if(isLast)lrow.style.borderBottom='none';
+          var chev=el('div',null,{marginLeft:'2px',color:'var(--mut)',fontSize:'11px',flexShrink:'0'},'▸');
+          lrow.appendChild(chev);
+          var wrapDiv=el('div',null,null,null);
+          wrapDiv.appendChild(lrow);
+          var detailEl=null,openD=false;
+          var buildDetail=function(){
+            var det=el('div',null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginTop:'-4px',marginBottom:'11px'},null);
+            var mElG=monthsElapsed(ln.mes_comienzo,CURR_MK);
+            var generado=mElG*(ln.int_socio||0)*(ln.monto||0);
+            var prog=planProgress(ln,CURR_MK);
 
-              var compRow=el('div',null,{display:'flex',gap:'8px',marginBottom:'12px'},null);
-              var genBox=el('div',null,{flex:'1',minWidth:'0',background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'8px',padding:'8px'},null);
-              genBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'3px'},'Generado hasta hoy'));
-              genBox.appendChild(el('div','mn',{fontSize:'14px',fontWeight:'700',color:'var(--acc)'},COP(generado)));
-              compRow.appendChild(genBox);
-              if(prog){
-                var finBox=el('div',null,{flex:'1',minWidth:'0',background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'8px',padding:'8px'},null);
-                var totalFinal=(ln.int_socio||0)*(ln.monto||0)*prog.total;
-                finBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'3px'},'Si llega hasta el final'));
-                finBox.appendChild(el('div','mn',{fontSize:'14px',fontWeight:'700',color:'var(--grn)'},COP(totalFinal)));
-                compRow.appendChild(finBox);
-              }
-              det.appendChild(compRow);
-
-              if(prog){
-                var pbarW=el('div','pbar',null,null);
-                pbarW.appendChild(el('div','pf',{width:prog.pct+'%'},null));
-                det.appendChild(pbarW);
-                var rowLbl=el('div',null,{display:'flex',justifyContent:'space-between',fontSize:'10px',color:'var(--mut)'},null);
-                rowLbl.appendChild(el('span',null,null,'Inicio'));
-                rowLbl.appendChild(el('span',null,null,'Hoy · '+prog.pct+'%'));
-                rowLbl.appendChild(el('span',null,null,(ln.mes_fin||'')+(ln.año?(' '+ln.año):'')));
-                det.appendChild(rowLbl);
-              }
-              return det;
+            var compRow=el('div',null,{display:'flex',gap:'8px',marginBottom:'12px'},null);
+            var genBox=el('div',null,{flex:'1',minWidth:'0',background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'8px',padding:'8px'},null);
+            genBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'3px'},'Generado hasta hoy'));
+            genBox.appendChild(el('div','mn',{fontSize:'14px',fontWeight:'700',color:'var(--acc)'},COP(generado)));
+            compRow.appendChild(genBox);
+            if(prog){
+              var finBox=el('div',null,{flex:'1',minWidth:'0',background:'var(--card)',border:'1px solid var(--bor)',borderRadius:'8px',padding:'8px'},null);
+              var totalFinal=(ln.int_socio||0)*(ln.monto||0)*prog.total;
+              finBox.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',marginBottom:'3px'},'Si llega hasta el final'));
+              finBox.appendChild(el('div','mn',{fontSize:'14px',fontWeight:'700',color:'var(--grn)'},COP(totalFinal)));
+              compRow.appendChild(finBox);
             }
-            lrow.addEventListener('click',function(){
-              openD=!openD;
-              chev.textContent=openD?'▾':'▸';
-              if(openD&&!detailEl){detailEl=buildDetail();wrapDiv.appendChild(detailEl);}
-              else if(!openD&&detailEl){detailEl.remove();detailEl=null;}
-            });
-            c4.appendChild(wrapDiv);
-          }else{
-            c4.appendChild(lrow);
+            det.appendChild(compRow);
+
+            if(prog){
+              var pbarW=el('div','pbar',null,null);
+              pbarW.appendChild(el('div','pf',{width:prog.pct+'%'},null));
+              det.appendChild(pbarW);
+              var rowLbl=el('div',null,{display:'flex',justifyContent:'space-between',fontSize:'10px',color:'var(--mut)'},null);
+              rowLbl.appendChild(el('span',null,null,'Inicio'));
+              rowLbl.appendChild(el('span',null,null,'Hoy · '+prog.pct+'%'));
+              rowLbl.appendChild(el('span',null,null,(ln.mes_fin||'')+(ln.año?(' '+ln.año):'')));
+              det.appendChild(rowLbl);
+            }
+            return det;
           }
+          lrow.addEventListener('click',function(){
+            openD=!openD;
+            chev.textContent=openD?'▾':'▸';
+            if(openD&&!detailEl){detailEl=buildDetail();wrapDiv.appendChild(detailEl);}
+            else if(!openD&&detailEl){detailEl.remove();detailEl=null;}
+          });
+          c4.appendChild(wrapDiv);
         })(loans[i],i===loans.length-1);
       }
     }
