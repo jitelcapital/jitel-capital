@@ -118,6 +118,22 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     if(pct>100)pct=100;if(pct<0)pct=0;
     return{pct:pct,total:total,elapsed:elapsed,endMk:endMk};
   }
+  // Meses hasta el vencimiento (mes_fin) respecto al mes actual currMk. null si falta mes_fin/año.
+  // 0 = vence este mes, 1 = vence el próximo mes, negativo = ya venció.
+  function monthsUntilDue(loan,currMk){
+    var endMk=loanEndMk(loan);
+    if(!endMk)return null;
+    var p1=(currMk+'').split('-'),p2=(endMk+'').split('-');
+    var cy=parseInt(p1[0],10),cm=parseInt(p1[1],10);
+    var ey=parseInt(p2[0],10),em=parseInt(p2[1],10);
+    if(!cy||!cm||!ey||!em)return null;
+    return (ey-cy)*12+(em-cm);
+  }
+  // "Vence pronto": mes_fin cae en el mes actual o el próximo (1 mes o menos de anticipación).
+  function venceProximo(loan,currMk){
+    var d=monthsUntilDue(loan,currMk);
+    return d!==null&&d>=0&&d<=1;
+  }
   var FIREBASE_CONFIG={
     apiKey:'AIzaSyAWxcYHpJjuFhP3pl2YIa6yjOrBL7Bd9K8',
     authDomain:'jitel-capital.firebaseapp.com',
@@ -458,6 +474,22 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     cV.appendChild(distWrap);
     G.appendChild(cV);
 
+    // ── BANNER: préstamos que vencen pronto (mes actual o el próximo) ──
+    var vencenPronto=[],vpCapital=0,vpi;
+    for(vpi=0;vpi<loans.length;vpi++){
+      if(venceProximo(loans[vpi],CURR_MK)){vencenPronto.push(loans[vpi]);vpCapital+=(loans[vpi].monto||0);}
+    }
+    if(vencenPronto.length>0){
+      var nVp=vencenPronto.length;
+      var vpBanner=el('div',null,{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',background:'rgba(240,79,112,.1)',border:'1px solid var(--red)',borderRadius:'12px',padding:'12px 14px',marginBottom:'14px'},null);
+      var vpL=el('div',null,{minWidth:'0'},null);
+      vpL.appendChild(el('div',null,{fontSize:'13px',fontWeight:'700',color:'var(--red)'},'⏰ '+nVp+' préstamo'+(nVp!==1?'s':'')+' '+(nVp!==1?'vencen':'vence')+' pronto'));
+      vpL.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},'Capital total: '+COP(vpCapital)+' · este mes o el próximo'));
+      vpBanner.appendChild(vpL);
+      vpBanner.appendChild(el('div',null,{fontSize:'22px',flexShrink:'0'},'⚠️'));
+      G.appendChild(vpBanner);
+    }
+
     // ── PRÉSTAMOS ──
     var c4=el('div','card',null,null);
     c4.appendChild(el('div','sec-title',null,'📋 Tus préstamos'));
@@ -482,6 +514,11 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           linfo.appendChild(el('div','lint',null,'Interés/mes: '+COP(intSocio)+' ('+tasaPct+'%)'));
           var periodo=fmtPeriodo(ln);
           if(periodo)linfo.appendChild(el('div','ldate',null,periodo));
+          // Badge de alerta: vence este mes o el próximo (color rojo, distinto de Pagado/Pendiente)
+          if(venceProximo(ln,CURR_MK)){
+            var vpTag=el('div',null,{display:'inline-flex',alignItems:'center',gap:'3px',fontSize:'9px',fontWeight:'700',color:'var(--red)',background:'rgba(240,79,112,.12)',border:'1px solid var(--red)',borderRadius:'20px',padding:'2px 7px',marginTop:'4px'},'⏰ Vence pronto');
+            linfo.appendChild(vpTag);
+          }
           lrow.appendChild(linfo);
           var estCls,estTxt;
           if(isCollectable(ln)&&ln.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
