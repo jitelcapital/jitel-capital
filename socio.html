@@ -36,10 +36,6 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;white-space:nowrap}
 .lest.ok{color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor)}
 .lest.pend{color:#f0a020;background:var(--c-day-bg);border:1px solid var(--acc)}
-.venc-item{display:flex;justify-content:space-between;align-items:center;background:var(--c-warn-bg);border:1px solid var(--acc);border-radius:8px;padding:10px 12px;margin-bottom:8px}
-.venc-item:last-child{margin-bottom:0}
-.venc-day{font-weight:700;color:var(--acc)}
-.venc-amt{font-weight:700;font-family:'Courier New',monospace;color:var(--red)}
 .footer{font-size:11px;color:var(--mut);text-align:center;line-height:1.6;margin-top:20px;padding:0 8px}
 .err{text-align:center;padding:40px 20px;color:var(--mut)}
 .err .err-ico{font-size:42px;margin-bottom:12px}
@@ -392,28 +388,6 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     c2.appendChild(er2);
     c2.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},pct+'% cobrado — total mes '+COP(totalInt)));
     G.appendChild(c2);
-
-    // ── VENCEN ESTE MES ──
-    var vencen=[];
-    for(i=0;i<loans.length;i++){
-      if((loans[i].mes_fin||'').toUpperCase()===mesActual)vencen.push(loans[i]);
-    }
-    if(vencen.length>0){
-      var c3=el('div','card',null,null);
-      c3.appendChild(el('div','sec-title',null,'⚠️ Vencen este mes'));
-      for(i=0;i<vencen.length;i++){
-        l=vencen[i];
-        intS=(l.monto||0)*(l.int_socio||0);
-        var vi=el('div','venc-item',null,null);
-        var vl=el('div',null,null,null);
-        vl.appendChild(el('span','venc-day',null,'Día '+l.dia));
-        vl.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',marginTop:'2px'},'Capital '+COP(l.monto)));
-        vi.appendChild(vl);
-        vi.appendChild(el('div','venc-amt',null,COP(intS)));
-        c3.appendChild(vi);
-      }
-      G.appendChild(c3);
-    }
 
     // ── Tu cartera con JiTel (todos los socios, cada uno con sus propios datos) ──
     var rendimientoTotal=0,ai;
