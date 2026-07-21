@@ -1490,6 +1490,26 @@ function vCobros(){
   w.appendChild(kg);
 
   var bw=D(null,{marginBottom:'10px'},null);var br=D('pbar',null,null);br.appendChild(D('pf',{width:pct+'%'},null));var bl=D(null,{fontSize:'11px',color:'var(--mut)',textAlign:'right'},null);bl.textContent=pct+'% cobrado este mes';bw.appendChild(br);bw.appendChild(bl);w.appendChild(bw);
+
+  // ── Banner de pendientes acumulados (todos los días del mes, misma lógica pend/done: !paidMth) ──
+  // pendGroups se llena en el loop de grupos; "Ver todos" expande cada día con pendientes y hace scroll.
+  var pendGroups=[];
+  var accPendTot=0,accPendCnt=0,api;
+  for(api=0;api<active.length;api++){if(!paidMth(active[api])){accPendTot+=IM(active[api]);accPendCnt++;}}
+  if(accPendCnt>0){
+    var pbn=D(null,{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',background:'var(--c-danger-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'},null);
+    var pbnL=D(null,{flex:'1',minWidth:'0'},null);
+    var pbnT=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--c-danger-txt)'},null);pbnT.textContent='⚠️ Pendientes acumulados';
+    var pbnV=D('mn',{fontSize:'15px',fontWeight:'700',color:'var(--c-danger-txt)',marginTop:'2px'},null);pbnV.textContent=COP(accPendTot)+' · '+accPendCnt+' préstamo'+(accPendCnt!==1?'s':'');
+    pbnL.appendChild(pbnT);pbnL.appendChild(pbnV);
+    pbn.appendChild(pbnL);
+    pbn.appendChild(BTN('br','Ver todos',function(){
+      var pgi;for(pgi=0;pgi<pendGroups.length;pgi++)pendGroups[pgi].expand();
+      if(pendGroups.length>0)pendGroups[0].dg.scrollIntoView({behavior:'smooth',block:'start'});
+    },{fontSize:'12px',padding:'8px 12px',flexShrink:'0'}));
+    w.appendChild(pbn);
+  }
+
   w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups);},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
   // Today's summary banner
   for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'var(--c-day-bg)',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IM(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
@@ -1601,10 +1621,10 @@ function vCobros(){
               zAction.appendChild(lamt);zAction.appendChild(lpay);
               topZones.appendChild(zInfo);topZones.appendChild(zAction);
               row.appendChild(topZones);
-              // Footer: estado Cobré (solo lectura) + toggle Pagué socio
+              // Footer: toggle Cobré (marca recibido como confirmación rápida, sin registro
+              // formal en pagos[] ni mover el préstamo a "done") + toggle Pagué socio
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
-              var cobreePill=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c2)',color:'var(--mut)',border:'1px solid var(--bor)'},null);cobreePill.textContent='○ Cobré';
-              concilRow.appendChild(cobreePill);
+              concilRow.appendChild(conciliBtn(ln,'recibido','Cobré'));
               if(!isJulianLoan(ln))concilRow.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
               row.appendChild(concilRow);
               body.appendChild(row);
@@ -1661,6 +1681,9 @@ function vCobros(){
       }
       if(exp){bodyEl=buildBody();dg.appendChild(bodyEl);}
       dh.addEventListener('click',function(){exp=!exp;if(exp&&!bodyEl){bodyEl=buildBody();dg.appendChild(bodyEl);}else if(!exp&&bodyEl){bodyEl.remove();bodyEl=null;}});
+      // Registrar este grupo para el banner "Ver todos" (solo si tiene pendientes)
+      function expandGroup(){if(!exp){exp=true;if(!bodyEl){bodyEl=buildBody();dg.appendChild(bodyEl);}}}
+      if(pend.length>0)pendGroups.push({dg:dg,expand:expandGroup});
       w.appendChild(dg);
     })(groups[gi]);
   }
