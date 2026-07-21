@@ -138,7 +138,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 ## Firebase (migración en curso — Día 1 hecho)
 
-**SDK**: v8.10.1 vía CDN (`firebase-app/auth/firestore.js`, API legacy namespaced) cargado en `<head>`. Se usa v8 en lugar de v9 compat por un bug de CORS/XHR en Safari iOS (`firestore.googleapis.com ... access control checks`). La API `firebase.initializeApp/auth()/firestore()` es idéntica, así que el código no cambia. Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
+**SDK**: v12.16.0 vía CDN, **capa compat** (`firebase-app-compat/auth-compat/firestore-compat.js`) cargada en `<head>`. La capa compat mantiene exactamente la misma API namespaced que v8 (`firebase.initializeApp/auth()/firestore()`, `.collection()`, `.doc()`, etc.), así que el código de negocio no cambia. (Reemplazó al SDK v8 anterior, que se usaba por un bug histórico de CORS/XHR en Safari iOS con v9 compat; ver historial git.) Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
 
 **Objeto global `FB`**: `{ready, app, auth, db, user, perfil}`. `isAdmin()` = `FB.perfil.rol==='admin'`.
 
