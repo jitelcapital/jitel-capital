@@ -194,6 +194,11 @@ function paidMth(l){
   for(i=0;i<p.length;i++){var d=parseLocalDate(p[i].fecha);if(d&&d.getMonth()===tm&&d.getFullYear()===ty)return true;}
   return false;
 }
+// isCollectable(l) — true si el préstamo YA entra en el ciclo de cobro de ESTE mes.
+// Misma regla usada como filtro en vCobros: un préstamo con mes_comienzo >= CURR_MK se
+// creó este mismo mes (o después), así que su primer cobro es el mes siguiente y todavía
+// NO es cobrable. Sin mes_comienzo se asume cobrable (préstamos antiguos). Fuente única.
+function isCollectable(l){return !(l.mes_comienzo&&l.mes_comienzo>=CURR_MK);}
 
 // ── TOAST ──
 function showToast(msg){
@@ -1455,7 +1460,7 @@ function vCobros(){
   for(i=0;i<ST.loans.length;i++){
     var l0=ST.loans[i];
     if(l0.status!=='active')continue;
-    if(l0.mes_comienzo&&l0.mes_comienzo>=CURR_MK)continue; // not yet started; first billing is the month after mes_comienzo
+    if(!isCollectable(l0))continue; // not yet started; first billing is the month after mes_comienzo
     active.push(l0);
   }
   var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
@@ -2498,6 +2503,8 @@ function buildClienteImage(name, loans, onDone) {
   var fsCol= 9  * SCALE;
   var fsRow= 11 * SCALE;
   var fsFt = 8  * SCALE;
+  var fsNote= 8 * SCALE; // caption para préstamos que aún no son cobrables este mes
+  var noteH = 14* SCALE; // alto extra que suma una fila cuando lleva esa caption
 
   // Column widths (canvas px): AÑO | DÍA | MES FIN | MONTO | SALDO FINAL
   var cW = [42*SCALE, 28*SCALE, 68*SCALE, 88*SCALE, 88*SCALE];
@@ -2522,7 +2529,15 @@ function buildClienteImage(name, loans, onDone) {
 
     var footerH = 20 * SCALE;
     var totalRowH = isLast ? rH : 0;
-    var ph = hdH + rH + rH*rowCount + totalRowH + footerH; // hd + col-header + rows + total + footer
+
+    // Alturas por fila: las filas de préstamos que aún NO son cobrables este mes suman
+    // una línea extra (noteH) para la caption. El conteo de filas por página no cambia.
+    var rowH = [], rowsH = 0, rr;
+    for(rr=0; rr<rowCount; rr++){
+      var hh0 = isCollectable(sl[startRow+rr]) ? rH : rH + noteH;
+      rowH.push(hh0); rowsH += hh0;
+    }
+    var ph = hdH + rH + rowsH + totalRowH + footerH; // hd + col-header + rows + total + footer
 
     cvs.width  = pw;
     cvs.height = ph;
@@ -2587,18 +2602,20 @@ function buildClienteImage(name, loans, onDone) {
     }
 
     // ── Data rows
+    var rY = colHdrY + rH;
     for(var ri=0; ri<rowCount; ri++){
       var gi = startRow + ri;
       var l  = sl[gi];
-      var rY = colHdrY + rH + ri*rH;
+      var hhR = rowH[ri];
+      var nuevo = !isCollectable(l); // aún no entra en el ciclo de cobro de este mes
 
-      // Alternating row bg
-      ctx.fillStyle = ri%2===0 ? '#ffffff' : '#f7fafc';
-      ctx.fillRect(0, rY, pw, rH);
+      // Fondo de fila: crema suave cuando el préstamo aún no es cobrable, alternado si no.
+      ctx.fillStyle = nuevo ? '#fff7e6' : (ri%2===0 ? '#ffffff' : '#f7fafc');
+      ctx.fillRect(0, rY, pw, hhR);
 
-      // Row separator
+      // Separador al pie de la fila (usa el alto completo, con o sin caption)
       ctx.fillStyle = '#e8eef4';
-      ctx.fillRect(0, rY + rH - SCALE, pw, SCALE);
+      ctx.fillRect(0, rY + hhR - SCALE, pw, SCALE);
 
       var vals = [String(l.año), String(l.dia), l.mes_fin, COP(l.monto), COP(IM(l))];
       var valColors = ['#5a7a8a','#1a2a3a','#1a2a3a','#1a3a5a','#0a6a2a'];
@@ -2609,14 +2626,24 @@ function buildClienteImage(name, loans, onDone) {
         ctx.textAlign = 'center';
         var txt = vals[ci3];
         if(txt.length > 12) txt = txt.slice(0,11)+'…';
-        ctx.fillText(txt, cx + cW[ci3]/2, rY + rH*0.68);
+        ctx.fillText(txt, cx + cW[ci3]/2, rY + rH*0.68); // valores alineados en la franja superior
         cx += cW[ci3];
       }
+
+      // Caption discreta para préstamos nuevos: le dice al cliente que aún no paga este mes.
+      if(nuevo){
+        ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
+        ctx.fillStyle = '#b06a00';
+        ctx.textAlign = 'center';
+        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, rY + rH + noteH*0.60);
+      }
+
+      rY += hhR;
     }
 
     // ── Total row (last page only)
     if(isLast){
-      var totY = colHdrY + rH + rowCount*rH;
+      var totY = colHdrY + rH + rowsH;
       ctx.fillStyle = '#1a2a3a';
       ctx.fillRect(0, totY, pw, rH);
       // Gold top border
