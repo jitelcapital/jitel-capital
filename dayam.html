@@ -14,6 +14,7 @@
   --amber:#b45309;--amber-bg:#fef2d6;--amber-bd:#f7cd7a;
   --blue:#1d4ed8;--blue-bg:#dbeafe;--blue-bd:#9cc0f7;
   --red:#b91c1c;--red-bg:#fee2e2;--red-bd:#f3a3a3;
+  --flash-bg:#e3edff;--flash-bd:#7ea8f0;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{background:var(--bg);color:var(--ink);
@@ -44,26 +45,36 @@ html,body{background:var(--bg);color:var(--ink);
 .prox.urgent{background:var(--red-bg);border-color:var(--red-bd)}
 .prox.urgent .lbl{color:var(--red)}
 .prox.urgent .monto{color:var(--red)}
+.prox.clickable{cursor:pointer}
+.prox.clickable:active{transform:scale(.99)}
+.prox .tap-hint{font-size:14px;font-weight:700;margin-top:12px;color:var(--amber)}
+.prox.urgent .tap-hint{color:var(--red)}
 
 /* Título de sección */
 .sec{font-size:19px;font-weight:800;color:var(--ink);margin:6px 4px 12px}
 .sec .sub{display:block;font-size:14px;font-weight:600;color:var(--mut);margin-top:2px}
 
 /* Tarjeta de préstamo */
-.loan{background:var(--card);border:1px solid var(--line);border-radius:16px;
-  padding:16px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(20,40,70,.05)}
+.loan{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:12px 14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(20,40,70,.05)}
+/* Estado: se mantiene grande y legible (dato clave de un vistazo) */
 .estado{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:800;
   padding:8px 14px;border-radius:30px;line-height:1.2}
 .estado.pagado{color:var(--green);background:var(--green-bg);border:1px solid var(--green-bd)}
 .estado.pend{color:var(--amber);background:var(--amber-bg);border:1px solid var(--amber-bd)}
 .estado.nuevo{color:var(--blue);background:var(--blue-bg);border:1px solid var(--blue-bd);
   font-size:14px;white-space:normal;text-align:left}
-.loan .pago-lbl{font-size:15px;color:var(--mut);font-weight:600;margin-top:14px}
-.loan .pago-monto{font-size:30px;font-weight:800;color:var(--ink);line-height:1.1;margin-top:2px}
-.datos{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-.dato{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0}
-.dato .k{font-size:16px;color:var(--mut)}
-.dato .v{font-size:18px;font-weight:700;color:var(--ink);text-align:right}
+/* Monto a pagar: se mantiene grande (el otro dato clave) */
+.loan .pago-lbl{font-size:12px;color:var(--mut);font-weight:600;margin-top:10px}
+.loan .pago-monto{font-size:30px;font-weight:800;color:var(--ink);line-height:1.05;margin-top:1px}
+/* Datos secundarios (día, capital, vencimiento): condensados */
+.datos{margin-top:10px;border-top:1px solid var(--line);padding-top:7px}
+.dato{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:2px 0}
+.dato .k{font-size:13px;color:var(--mut)}
+.dato .v{font-size:14px;font-weight:700;color:var(--ink);text-align:right}
+/* Resaltado breve al llegar desde "Tu próximo pago" (se desvanece ~1.5s) */
+.loan-flash{animation:loanFlash 1.5s ease-out}
+@keyframes loanFlash{0%,12%{background:var(--flash-bg);border-color:var(--flash-bd)}100%{background:var(--card);border-color:var(--line)}}
 
 /* Estados de carga / error / vacío */
 .state{text-align:center;padding:60px 24px;color:var(--mut)}
@@ -84,6 +95,7 @@ html,body{background:var(--bg);color:var(--ink);
     --amber:#fbbf5a;--amber-bg:#2e2410;--amber-bd:#6b5320;
     --blue:#7cb0ff;--blue-bg:#0f2244;--blue-bd:#2b4f8f;
     --red:#f87171;--red-bg:#3a1518;--red-bd:#7f2a2f;
+    --flash-bg:#1a2c4d;--flash-bd:#3f66a8;
   }
   .head{background:linear-gradient(135deg,#16212f 0%,#111b28 100%)}
 }
@@ -221,7 +233,23 @@ html,body{background:var(--bg);color:var(--ink);
     var d=nowDate();
     var activos=[],i;
     for(i=0;i<loans.length;i++){if(loans[i].status==='active')activos.push(loans[i]);}
-    activos.sort(function(a,b){return (parseInt(a.dia,10)||0)-(parseInt(b.dia,10)||0);});
+    // Orden por urgencia REAL (no por el día crudo 1-31). Mismo criterio de fecha que calcularEstadoPago:
+    //  cat 0 atrasado (su día ya pasó; más antiguo = día menor primero)
+    //  cat 1 próximo (menos DÍAS REALES restantes hasta el cobro, con cruce de mes)
+    //  cat 2 nuevo · cat 3 pagado (al final, es lo que menos necesita revisar).
+    var uy=d.getFullYear(),umo=d.getMonth(),utd=d.getDate();
+    var uMid=new Date(uy,umo,utd).getTime(),uDAY=86400000;
+    function urgencyRank(l){
+      if(!isCollectable(l))return {cat:2,key:0};
+      if(pagadoEsteMes(l))return {cat:3,key:0};
+      var dia=parseInt(l.dia,10);if(!dia||dia<1)dia=1;if(dia>31)dia=31;
+      if(dia<utd)return {cat:0,key:dia};                 // atrasado: día menor = más antiguo primero
+      var occ=new Date(uy,umo,dia);
+      return {cat:1,key:Math.round((occ.getTime()-uMid)/uDAY)}; // próximo: días reales restantes
+    }
+    var deco=[];for(i=0;i<activos.length;i++)deco.push({l:activos[i],r:urgencyRank(activos[i])});
+    deco.sort(function(a,b){return a.r.cat!==b.r.cat?a.r.cat-b.r.cat:a.r.key-b.r.key;});
+    activos=[];for(i=0;i<deco.length;i++)activos.push(deco[i].l);
 
     // 1) Encabezado
     var head=el('div','head',null);
@@ -230,8 +258,9 @@ html,body{background:var(--bg);color:var(--ink);
     head.appendChild(el('div','fecha',hoyStr()));
     G.appendChild(head);
 
-    // 2) Próximo pago (bloque protagonista) — por prioridades
+    // 2) Próximo pago (bloque protagonista) — por prioridades. Clickeable en atrasado/próximo.
     var estado=calcularEstadoPago(activos);
+    var proxBox=null; // bloque clickeable (queda null en estado 'ninguno')
     if(estado.tipo==='atrasado'){
       // P1 — pago atrasado (rojo/urgente)
       var uBox=el('div','prox urgent',null);
@@ -240,7 +269,9 @@ html,body{background:var(--bg);color:var(--ink);
       uBox.appendChild(el('div','cuando','Venció el día '+estado.dia));
       var uDet=estado.count>1?(estado.count+' préstamos vencidos sin pagar'):'1 préstamo vencido sin pagar';
       uBox.appendChild(el('div','detalle',uDet));
+      uBox.appendChild(el('div','tap-hint','👆 Toca para ver el préstamo'));
       G.appendChild(uBox);
+      proxBox=uBox;
     }else if(estado.tipo==='proximo'){
       // P2 — próximo día de cobro futuro más cercano
       var box=el('div','prox',null);
@@ -251,9 +282,11 @@ html,body{background:var(--bg);color:var(--ink);
       var det='Se cobra el día '+estado.dia;
       if(estado.count>1)det+=' · '+estado.count+' préstamos juntos';
       box.appendChild(el('div','detalle',det));
+      box.appendChild(el('div','tap-hint','👆 Toca para ver el préstamo'));
       G.appendChild(box);
+      proxBox=box;
     }else{
-      // P3 — nada pendiente
+      // P3 — nada pendiente (no clickeable)
       var okBox=el('div','prox ok',null);
       okBox.appendChild(el('div','lbl','Tu próximo pago'));
       okBox.appendChild(el('div','msg','✅ No tienes pagos pendientes por ahora'));
@@ -268,11 +301,12 @@ html,body{background:var(--bg);color:var(--ink);
       return s;
     })());
 
+    var targetCard=null; // primera tarjeta (la más urgente) para el scroll desde el bloque protagonista
     if(activos.length===0){
       G.appendChild(el('div','empty','No tienes préstamos activos en este momento.'));
     }else{
       for(i=0;i<activos.length;i++){
-        (function(l){
+        (function(l,idx){
           var card=el('div','loan',null);
 
           // Estado (protagonista de la tarjeta)
@@ -303,8 +337,23 @@ html,body{background:var(--bg);color:var(--ink);
           card.appendChild(datos);
 
           G.appendChild(card);
-        })(activos[i]);
+          if(idx===0)targetCard=card; // la lista ya está ordenada por urgencia
+        })(activos[i],i);
       }
+    }
+
+    // Bloque "Tu próximo pago" clickeable → scroll suave a la tarjeta más urgente + resaltado breve
+    if(proxBox&&targetCard){
+      (function(box2,card2){
+        box2.classList.add('clickable');
+        box2.addEventListener('click',function(){
+          card2.scrollIntoView({behavior:'smooth',block:'center'});
+          card2.classList.remove('loan-flash');
+          void card2.offsetWidth; // fuerza reflow para reiniciar la animación en toques repetidos
+          card2.classList.add('loan-flash');
+          setTimeout(function(){card2.classList.remove('loan-flash');},1600);
+        });
+      })(proxBox,targetCard);
     }
 
     // Pie
