@@ -13,6 +13,7 @@
   --green:#15803d;--green-bg:#dcfce7;--green-bd:#8fe3ad;
   --amber:#b45309;--amber-bg:#fef2d6;--amber-bd:#f7cd7a;
   --blue:#1d4ed8;--blue-bg:#dbeafe;--blue-bd:#9cc0f7;
+  --red:#b91c1c;--red-bg:#fee2e2;--red-bd:#f3a3a3;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{background:var(--bg);color:var(--ink);
@@ -40,6 +41,9 @@ html,body{background:var(--bg);color:var(--ink);
 .prox.ok .lbl{color:var(--green)}
 .prox.ok .msg{font-size:24px;font-weight:800;color:var(--green);margin-top:10px;line-height:1.3}
 .prox.ok .detalle{margin-top:6px}
+.prox.urgent{background:var(--red-bg);border-color:var(--red-bd)}
+.prox.urgent .lbl{color:var(--red)}
+.prox.urgent .monto{color:var(--red)}
 
 /* Título de sección */
 .sec{font-size:19px;font-weight:800;color:var(--ink);margin:6px 4px 12px}
@@ -79,6 +83,7 @@ html,body{background:var(--bg);color:var(--ink);
     --green:#4ade80;--green-bg:#0f2e1d;--green-bd:#1f6b41;
     --amber:#fbbf5a;--amber-bg:#2e2410;--amber-bd:#6b5320;
     --blue:#7cb0ff;--blue-bg:#0f2244;--blue-bd:#2b4f8f;
+    --red:#f87171;--red-bg:#3a1518;--red-bd:#7f2a2f;
   }
   .head{background:linear-gradient(135deg,#16212f 0%,#111b28 100%)}
 }
@@ -144,13 +149,17 @@ html,body{background:var(--bg);color:var(--ink);
     return mf+(l.año?(' '+l.año):'');
   }
 
-  // ── Próximo pago: entre préstamos activos, cobrables y aún pendientes este mes,
-  //    el día de cobro más próximo a partir de hoy y el total a pagar ese día. ──
-  function calcularProximo(loans){
+  // ── Estado de pago (bloque protagonista), por prioridades. Solo considera préstamos
+  //    activos, cobrables (isCollectable) y aún NO pagados este mes.
+  //    P1 'atrasado' — su día de cobro YA pasó este mes y sigue sin pagar.
+  //    P2 'proximo'  — el próximo día de cobro futuro (hoy o después) más cercano.
+  //    P3 'ninguno'  — no hay nada atrasado ni próximo. ──
+  function calcularEstadoPago(loans){
     var d=nowDate();
     var y=d.getFullYear(),mo=d.getMonth(),td=d.getDate();
     var DAY=86400000;
     var todayMid=new Date(y,mo,td).getTime();
+    var atrTotal=0,atrCount=0,atrDiaMin=null; // atrasados: total, cantidad y día del más antiguo
     var groups={},i;
     for(i=0;i<loans.length;i++){
       var l=loans[i];
@@ -158,17 +167,29 @@ html,body{background:var(--bg);color:var(--ink);
       if(!isCollectable(l))continue;      // los nuevos empiezan a cobrar el próximo mes
       if(pagadoEsteMes(l))continue;       // ya está pagado → no es "pendiente"
       var dia=parseInt(l.dia,10);if(!dia||dia<1)dia=1;if(dia>31)dia=31;
-      // Próxima ocurrencia del día de cobro a partir de hoy (este mes si no ha pasado, si no el próximo).
-      var occ=(dia>=td)?new Date(y,mo,dia):new Date(y,mo+1,dia);
-      var da=Math.round((occ.getTime()-todayMid)/DAY);
-      var key=String(dia);
-      if(!groups[key])groups[key]={dia:dia,daysAway:da,occ:occ,total:0,count:0};
-      groups[key].total+=pagoMensual(l);
-      groups[key].count++;
+      if(dia<td){
+        // Atrasado: el día de cobro ya pasó este mes y no está pagado.
+        atrTotal+=pagoMensual(l);
+        atrCount++;
+        if(atrDiaMin===null||dia<atrDiaMin)atrDiaMin=dia; // el más antiguo = día más pequeño
+      }else{
+        // Próximo: hoy o un día futuro de este mes.
+        var occ=new Date(y,mo,dia);
+        var da=Math.round((occ.getTime()-todayMid)/DAY);
+        var key=String(dia);
+        if(!groups[key])groups[key]={dia:dia,daysAway:da,occ:occ,total:0,count:0};
+        groups[key].total+=pagoMensual(l);
+        groups[key].count++;
+      }
     }
+    // P1 — atrasado
+    if(atrCount>0)return {tipo:'atrasado',total:atrTotal,dia:atrDiaMin,count:atrCount};
+    // P2 — próximo futuro más cercano
     var best=null,ks=Object.keys(groups),j;
     for(j=0;j<ks.length;j++){var g=groups[ks[j]];if(best===null||g.daysAway<best.daysAway)best=g;}
-    return best; // null = no hay nada pendiente
+    if(best)return {tipo:'proximo',total:best.total,dia:best.dia,count:best.count,occ:best.occ,daysAway:best.daysAway};
+    // P3 — nada
+    return {tipo:'ninguno'};
   }
 
   function textoCuando(da){
@@ -209,19 +230,30 @@ html,body{background:var(--bg);color:var(--ink);
     head.appendChild(el('div','fecha',hoyStr()));
     G.appendChild(head);
 
-    // 2) Próximo pago (bloque protagonista)
-    var prox=calcularProximo(activos);
-    if(prox){
+    // 2) Próximo pago (bloque protagonista) — por prioridades
+    var estado=calcularEstadoPago(activos);
+    if(estado.tipo==='atrasado'){
+      // P1 — pago atrasado (rojo/urgente)
+      var uBox=el('div','prox urgent',null);
+      uBox.appendChild(el('div','lbl','⚠️ Tienes un pago atrasado'));
+      uBox.appendChild(el('div','monto',COP(estado.total)));
+      uBox.appendChild(el('div','cuando','Venció el día '+estado.dia));
+      var uDet=estado.count>1?(estado.count+' préstamos vencidos sin pagar'):'1 préstamo vencido sin pagar';
+      uBox.appendChild(el('div','detalle',uDet));
+      G.appendChild(uBox);
+    }else if(estado.tipo==='proximo'){
+      // P2 — próximo día de cobro futuro más cercano
       var box=el('div','prox',null);
       box.appendChild(el('div','lbl','Tu próximo pago'));
-      box.appendChild(el('div','monto',COP(prox.total)));
-      var fechaTxt=prox.occ.toLocaleDateString('es-CO',{day:'numeric',month:'long'});
-      box.appendChild(el('div','cuando',textoCuando(prox.daysAway)+' · '+fechaTxt));
-      var det='Se cobra el día '+prox.dia;
-      if(prox.count>1)det+=' · '+prox.count+' préstamos juntos';
+      box.appendChild(el('div','monto',COP(estado.total)));
+      var fechaTxt=estado.occ.toLocaleDateString('es-CO',{day:'numeric',month:'long'});
+      box.appendChild(el('div','cuando',textoCuando(estado.daysAway)+' · '+fechaTxt));
+      var det='Se cobra el día '+estado.dia;
+      if(estado.count>1)det+=' · '+estado.count+' préstamos juntos';
       box.appendChild(el('div','detalle',det));
       G.appendChild(box);
     }else{
+      // P3 — nada pendiente
       var okBox=el('div','prox ok',null);
       okBox.appendChild(el('div','lbl','Tu próximo pago'));
       okBox.appendChild(el('div','msg','✅ No tienes pagos pendientes por ahora'));
