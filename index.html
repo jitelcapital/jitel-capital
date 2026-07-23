@@ -1218,6 +1218,34 @@ var PREFS=loadPrefs();
 // Defaults
 if(typeof PREFS.confirmPays!=='boolean')PREFS.confirmPays=false;
 
+// ── REGISTRO DE EXPORTS POR CLIENTE (persistente en localStorage) ──
+// Guarda la fecha (YYYY-MM-DD) de la última generación de la imagen "Estado de Cuenta"
+// de cada cliente. Objeto aparte de ST (no se sincroniza a Firestore): { "DAYAM":"2026-07-22" }.
+var EXPORTS_KEY='jitel_exports_v1';
+function loadExports(){try{var r=localStorage.getItem(EXPORTS_KEY);return r?JSON.parse(r):{};}catch(e){return{};}}
+function saveExports(o){try{localStorage.setItem(EXPORTS_KEY,JSON.stringify(o));}catch(e){}}
+function isoToday(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// Registra HOY como última generación del export del cliente. Llamar al completar buildClienteImage.
+function registrarExportCliente(name){if(!name)return;var o=loadExports();o[name]=isoToday();saveExports(o);}
+// Días transcurridos desde la última generación — dinámico contra la fecha real de hoy.
+// Devuelve null si nunca se generó.
+function diasDesdeExport(name){
+  var o=loadExports(),iso=o[name];if(!iso)return null;
+  var d=parseLocalDate(iso);if(!d)return null;
+  var hoy=new Date();
+  var a=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+  var b=new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate()).getTime();
+  return Math.floor((b-a)/86400000);
+}
+// Indicador de frescura del export para vClientes. {txt,color,bg,pill}. Umbrales: 0-6 ok, 7-13 ámbar, 14+/nunca rojo.
+function exportIndicador(name){
+  var n=diasDesdeExport(name);
+  if(n===null) return{txt:'⚠️ Nunca actualizado',color:'var(--c-danger-txt)',bg:'var(--c-danger-bg)',pill:true};
+  if(n>=14)    return{txt:'⚠️ Sin actualizar hace '+n+' días',color:'var(--c-danger-txt)',bg:'var(--c-danger-bg)',pill:true};
+  if(n>=7)     return{txt:'📅 Hace '+n+' días',color:'var(--c-amber-txt)',bg:'var(--c-amber-bg)',pill:true};
+  return{txt:n===0?'✅ Actualizado hoy':'✅ Actualizado hace '+n+(n===1?' día':' días'),color:'var(--mut)',bg:null,pill:false};
+}
+
 // ── TOAST WITH ACTION (sticky version for pay confirmation + WhatsApp) ──
 // Standard showToast(msg) keeps working unchanged. This one accepts an optional action button.
 function showToastAction(msg,actionLbl,actionFn,duration){
@@ -2779,7 +2807,9 @@ function showExportModal(mode) {
       var cname=curMode.slice(4);
       if(cm[cname]){
         buildClienteImage(cname,cm[cname],function(pages){
-          imgPages=pages; generating=false; viewPage=0; refresh();
+          imgPages=pages; generating=false; viewPage=0;
+          registrarExportCliente(cname); // fecha de última generación del export (localStorage)
+          refresh();
         });
       }
     } else if(curMode.indexOf('soc_')===0){
@@ -2924,6 +2954,13 @@ function vClientes(){
         var hc=D(null,{fontSize:'10px',color:'var(--mut)'},null);hc.textContent=COP(st2.capital);
         hr.appendChild(hv);hr.appendChild(hc);
         hdr2.appendChild(hl);hdr2.appendChild(hr);row.appendChild(hdr2);
+        // Indicador de frescura del último export "Estado de Cuenta" (dinámico contra hoy)
+        var fr=exportIndicador(name);
+        var frWrap=D(null,{padding:'0 12px 8px 12px'},null);
+        var frEl=S(null,{fontSize:'10px',fontWeight:'700',color:fr.color,display:'inline-flex',alignItems:'center'},null);
+        if(fr.pill){frEl.style.background=fr.bg;frEl.style.padding='3px 8px';frEl.style.borderRadius='20px';}
+        frEl.textContent=fr.txt;
+        frWrap.appendChild(frEl);row.appendChild(frWrap);
         if(exp){
           var body=D(null,{borderTop:'1px solid var(--bor)',padding:'8px 12px'},null);
           // Mini-resumen: cobrado / pendiente + próximo cobro este mes
