@@ -196,11 +196,26 @@ function toCOP(l,amtNativo){return (amtNativo||0)*fxRate(l);}   // convierte un 
 function IMc(l){return toCOP(l,IM(l));}   // interés total cliente, en COP
 function ISc(l){return toCOP(l,IS(l));}   // interés socio, en COP
 function IPc(l){return toCOP(l,IP(l));}   // interés propio, en COP
-// Formato de una cifra en la moneda nativa del préstamo: COP normal, o "$500 USD".
-var USD=function(n){return '$'+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(n||0))+' USD';};
+// Formato de una cifra en la moneda nativa del préstamo: COP normal, o "$ 500 USD".
+var USD=function(n){return '$ '+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(n||0))+' USD';};
 function fmtNat(l,amtNativo){return isUSD(l)?USD(amtNativo):COP(amtNativo);}
-// Cifra nativa + equivalente COP entre paréntesis (solo USD), ej "$500 USD ($2.150.000 COP)".
+// Cifra nativa + equivalente COP entre paréntesis (solo USD), ej "$ 500 USD ($ 2.150.000 COP)".
 function fmtDual(l,amtNativo){return isUSD(l)?(USD(amtNativo)+' ('+COP(toCOP(l,amtNativo))+' COP)'):COP(amtNativo);}
+// dualMoney(l, amtNativo, css) — muestra un monto con IGUAL jerarquía COP/USD (mismo tamaño y peso).
+// USD → dos líneas equivalentes: "$ x USD" y "$ y COP". COP → una sola línea. Devuelve un DOM (usa D).
+// Helper compartido por vLoans y showLoanDetail para no duplicar el patrón.
+function dualMoney(l,amtNativo,css){
+  var wrap=D(null,null,null);
+  if(isUSD(l)){
+    var a=D('mn',css,null);a.textContent=USD(amtNativo);
+    var b=D('mn',css,null);b.textContent=COP(toCOP(l,amtNativo))+' COP';
+    wrap.appendChild(a);wrap.appendChild(b);
+  }else{
+    var c=D('mn',css,null);c.textContent=COP(amtNativo);
+    wrap.appendChild(c);
+  }
+  return wrap;
+}
 // Unified Julian detection: a loan is "direct to owner" when int_socio is 0 AND socio is JULIAN.
 // This prevents false positives (otro socio with 0% by mistake) and false negatives (typo in name).
 function isJulianLoan(l){return (+l.int_socio===0)&&(l.socio||'').toUpperCase()==='JULIAN';}
@@ -682,16 +697,16 @@ function showLoanDetail(lid){
     var cb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
     var cttl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);cttl.textContent='Cálculo mensual';cb.appendChild(cttl);
     var cg=D('g3',null,null);
-    function kv(lb,v,vc,sub){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=lb;var vv=D('mn',vc?{fontWeight:'700',fontSize:'13px',color:vc}:{fontWeight:'700',fontSize:'13px'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);if(sub){var sv=D('mn',{fontSize:'9px',color:'var(--mut)',marginTop:'1px'},null);sv.textContent=sub;d.appendChild(sv);}return d;}
-    cg.appendChild(kv('Capital',fmtNat(loan,loan.monto),null,isUSD(loan)?('≈ '+COP(montoCOP(loan))):null));
-    cg.appendChild(kv('Costo socio '+PCT(loan.int_socio),iS>0?fmtNat(loan,iS):fmtNat(loan,0),'var(--red)',(isUSD(loan)&&iS>0)?('≈ '+COP(ISc(loan))):null));
-    cg.appendChild(kv('Tu ganancia '+PCT(loan.int_propio),fmtNat(loan,iP),'var(--grn)',isUSD(loan)?('≈ '+COP(IPc(loan))):null));
+    function kv(lb,v,vc){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=lb;d.appendChild(ll);if(v&&v.nodeType){d.appendChild(v);}else{var vv=D('mn',vc?{fontWeight:'700',fontSize:'13px',color:vc}:{fontWeight:'700',fontSize:'13px'},null);vv.textContent=v;d.appendChild(vv);}return d;}
+    cg.appendChild(kv('Capital',dualMoney(loan,loan.monto,{fontWeight:'700',fontSize:'11px'})));
+    cg.appendChild(kv('Costo socio '+PCT(loan.int_socio),dualMoney(loan,iS,{fontWeight:'700',fontSize:'11px',color:'var(--red)'})));
+    cg.appendChild(kv('Tu ganancia '+PCT(loan.int_propio),dualMoney(loan,iP,{fontWeight:'700',fontSize:'11px',color:'var(--grn)'})));
     cb.appendChild(cg);cb.appendChild(D('sep',null,null));
     var crow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center'},null);
     var cl=D(null,{color:'var(--mut)',fontSize:'13px'},null);cl.textContent='Cobrar al cliente:';
-    var cv=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'16px'},null);cv.textContent=fmtNat(loan,iM);
+    var cv=dualMoney(loan,iM,{fontWeight:'700',color:'var(--acc)',fontSize:'15px'});cv.style.textAlign='right';
     crow.appendChild(cl);crow.appendChild(cv);cb.appendChild(crow);
-    if(isUSD(loan)){var cceq=D(null,{textAlign:'right',fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);cceq.textContent='≈ '+COP(IMc(loan))+' COP  ·  se cobra en COP';cb.appendChild(cceq);}
+    if(isUSD(loan)){var cceq=D(null,{textAlign:'right',fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);cceq.textContent='se cobra en COP';cb.appendChild(cceq);}
     if(ab>0){var cr2=D(null,{display:'flex',justifyContent:'space-between',marginTop:'4px'},null);var cl2=D(null,{fontSize:'12px',color:'var(--mut)'},null);cl2.textContent='Capital restante:';var cv2=S('mn',null,null);cv2.textContent=COP(montoCOP(loan)-ab)+(isUSD(loan)?' COP':'');cr2.appendChild(cl2);cr2.appendChild(cv2);cb.appendChild(cr2);}
     m.appendChild(cb);
     // Plazo
@@ -882,7 +897,7 @@ function showNewLoan(prefill){
   var defs=getSmartDefaults();
   // Allow calculator to pre-fill monto and tasas
   var pfill=(prefill&&typeof prefill==='object')?prefill:{};
-  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='',fmon='COP',ftc=0;
+  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='',fmon='COP',ftc=0,fmCOP=0;
   var m=D('modal',null,null);
   var hdr=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'14px'},null);
   var h2=document.createElement('h2');h2.style.color='var(--acc)';h2.textContent='Nuevo Préstamo';
@@ -919,22 +934,38 @@ function showNewLoan(prefill){
   sIn.addEventListener('change',function(e){fs=e.target.value;applyJulianRule(e.target.value);});
   sIn.addEventListener('blur',function(e){applyJulianRule(e.target.value);});
   m.appendChild(R2(FLD('Cliente',rIn),FLD('Socio (fuente)',sIn)));
-  var mIn=INP({type:'number',value:fm||'',placeholder:'0'});mIn.addEventListener('input',function(e){fm=parseFloat(e.target.value)||0;updPrev();});
+  // Monto: en COP 'fm' es el monto directo. En USD, 'mIn' captura el monto en COP (fmCOP) y
+  // el monto en USD (fm, lo que se GUARDA en el préstamo) se CALCULA = COP ÷ tasa, editable.
+  var mIn=INP({type:'number',value:fm||'',placeholder:'0'});
   var montoFld=FLD('Monto',mIn);
-  // Selector de moneda (COP por defecto) + campo de tasa de cambio que aparece solo para USD.
   var monSel=MSEL([['COP','COP (pesos)'],['USD','USD (dólares)']],'COP');
   var monFld=FLD('Moneda',monSel);
-  var tcIn=INP({type:'number',value:'',placeholder:'Ej: 4300',step:'1',min:'0'});tcIn.addEventListener('input',function(e){ftc=parseFloat(e.target.value)||0;updPrev();});
+  var tcIn=INP({type:'number',value:'',placeholder:'Ej: 3200',step:'1',min:'0'});
   var tcFld=FLD('Tasa de cambio (COP por 1 USD)',tcIn);tcFld.style.display='none';
+  // Campo USD calculado (solo USD): prellenado con COP ÷ tasa, editable por si hay que ajustar redondeo.
+  var usdIn=INP({type:'number',value:'',placeholder:'—',step:'0.01',min:'0'});
+  var usdFld=FLD('Monto en USD (calculado — editable)',usdIn);usdFld.style.display='none';
+  function recomputeUSD(){
+    var usd=(ftc>0)?(fmCOP/ftc):0;
+    fm=usd;
+    usdIn.value=(ftc>0&&fmCOP>0)?String(Math.round(usd*100)/100):'';
+    updPrev();
+  }
+  mIn.addEventListener('input',function(e){var v=parseFloat(e.target.value)||0;if(fmon==='USD'){fmCOP=v;recomputeUSD();}else{fm=v;updPrev();}});
+  tcIn.addEventListener('input',function(e){ftc=parseFloat(e.target.value)||0;if(fmon==='USD')recomputeUSD();else updPrev();});
+  usdIn.addEventListener('input',function(e){fm=parseFloat(e.target.value)||0;updPrev();}); // ajuste manual del USD
   monSel.addEventListener('change',function(e){
     fmon=e.target.value;
-    tcFld.style.display=(fmon==='USD')?'block':'none';
-    montoFld.querySelector('label').textContent=(fmon==='USD')?'Monto (en USD)':'Monto';
-    mIn.placeholder=(fmon==='USD')?'Ej: 500':'0';
-    updPrev();
+    var usd=(fmon==='USD');
+    tcFld.style.display=usd?'block':'none';
+    usdFld.style.display=usd?'block':'none';
+    montoFld.querySelector('label').textContent=usd?'Monto prestado (en COP)':'Monto';
+    mIn.placeholder=usd?'Ej: 2.500.000':'0';
+    if(usd){fmCOP=parseFloat(mIn.value)||0;recomputeUSD();}else{fm=parseFloat(mIn.value)||0;updPrev();}
   });
   m.appendChild(R2(montoFld,monFld));
   m.appendChild(tcFld);
+  m.appendChild(usdFld);
   m.appendChild(R2(FLD('Int. socio (ej:0.035)',isIn),FLD('Int. propio (ej:0.02)',ipIn)));
   var defHint=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',marginTop:'-6px'},null);
   defHint.textContent='💡 Pre-cargado: tasa más usada (socio '+(defs.int_socio*100).toFixed(1)+'% / propio '+(defs.int_propio*100).toFixed(1)+'%)';
@@ -950,8 +981,12 @@ function showNewLoan(prefill){
   var nIn=INP({type:'text',placeholder:'Observación...'});nIn.addEventListener('input',function(e){fn=e.target.value;});
   m.appendChild(FLD('Nota',nIn));
   m.appendChild(BTN('ba','💾 Guardar Préstamo',function(){
+    if(fmon==='USD'){
+      if(!(fmCOP>0)){alert('Ingresa el monto prestado en COP');return;}
+      if(!(ftc>0)){alert('Ingresa una tasa de cambio válida (COP por USD) para un préstamo en USD');return;}
+      if(!(fm>0)){alert('El monto en USD calculado no es válido');return;}
+    }
     if(!fr||!fs||!fm){alert('Completa cliente, socio y monto');return;}
-    if(fmon==='USD'&&(!(ftc>0))){alert('Ingresa una tasa de cambio válida (COP por USD) para un préstamo en USD');return;}
     var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString(),moneda:fmon,tasa_cambio:fmon==='USD'?ftc:null};
     // Regla de apertura: si el día de cobro ya pasó (o es hoy) y el mes de inicio es
     // el actual o anterior, marcar este mes como pagado para que el primer cobro real
@@ -2109,18 +2144,16 @@ function vLoans(){
         // 5-column grid: Capital | Cobrar | Vence | Int. Socio | Int. Propio
         var bg3=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:'6px',cursor:'pointer'},null);
         bg3.addEventListener('click',function(){showLoanDetail(l.id);});
-        function col3(lb,vl,vc,sub){var d=D(null,null,null);var dl=D(null,{fontSize:'10px',color:'var(--mut)'},null);dl.textContent=lb;var dv=D('mn',vc?{fontSize:'11px',fontWeight:'700',color:vc}:{fontSize:'11px',fontWeight:'700'},null);dv.textContent=vl;d.appendChild(dl);d.appendChild(dv);if(sub){var sv=D('mn',{fontSize:'8px',color:'var(--mut)',lineHeight:'1.2',wordBreak:'break-all'},null);sv.textContent=sub;d.appendChild(sv);}return d;}
+        function col3(lb,vl,vc){var d=D(null,{minWidth:'0'},null);var dl=D(null,{fontSize:'10px',color:'var(--mut)'},null);dl.textContent=lb;d.appendChild(dl);if(vl&&vl.nodeType){d.appendChild(vl);}else{var dv=D('mn',vc?{fontSize:'11px',fontWeight:'700',color:vc}:{fontSize:'11px',fontWeight:'700'},null);dv.textContent=vl;d.appendChild(dv);}return d;}
         var isSocDirec=isJulianLoan(l);
         var usd=isUSD(l);
-        var socVal=isSocDirec?'Directo':fmtNat(l,IS(l));
-        var socCol=isSocDirec?'var(--grn)':'var(--red)';
-        var propVal=isSocDirec?'Directo':fmtNat(l,IP(l));
-        var propCol='var(--grn)';
-        bg3.appendChild(col3('Capital',fmtNat(l,l.monto),null,usd?('≈'+COP(montoCOP(l))):null));
-        bg3.appendChild(col3('Cobrar',fmtNat(l,IM(l)),'var(--acc)',usd?('≈'+COP(IMc(l))):null));
+        // css de cifra: para USD, tamaño menor pero IGUAL para ambas líneas (nativo USD y equivalente COP).
+        function mcss(c){var o=usd?{fontSize:'9px',fontWeight:'700',lineHeight:'1.3',wordBreak:'break-word'}:{fontSize:'11px',fontWeight:'700'};if(c)o.color=c;return o;}
+        bg3.appendChild(col3('Capital',dualMoney(l,l.monto,mcss(null))));
+        bg3.appendChild(col3('Cobrar',dualMoney(l,IM(l),mcss('var(--acc)'))));
         bg3.appendChild(col3('Vence','D'+l.dia+' '+l.mes_fin.slice(0,3)+(l.veces_extendido>0?' 🔄':''),null));
-        bg3.appendChild(col3('Int.Socio',socVal,socCol,(usd&&!isSocDirec)?('≈'+COP(ISc(l))):null));
-        bg3.appendChild(col3('Int.Propio',propVal,propCol,(usd&&!isSocDirec)?('≈'+COP(IPc(l))):null));
+        bg3.appendChild(col3('Int.Socio',isSocDirec?'Directo':dualMoney(l,IS(l),mcss('var(--red)')),isSocDirec?'var(--grn)':null));
+        bg3.appendChild(col3('Int.Propio',isSocDirec?'Directo':dualMoney(l,IP(l),mcss('var(--grn)')),isSocDirec?'var(--grn)':null));
         r.appendChild(bg3);
         // ⋮ menu — replaces 4-button action row, added to tr2 (live DOM ref)
         if(l.status==='active'){
@@ -2617,7 +2650,7 @@ function buildClienteImage(name, loans, onDone) {
     var rowH = [], rowsH = 0, rr;
     for(rr=0; rr<rowCount; rr++){
       var _lr = sl[startRow+rr];
-      var hh0 = rH + (isCollectable(_lr)?0:noteH) + (isUSD(_lr)?noteH:0); // +línea por caption (nuevo / USD)
+      var hh0 = isCollectable(_lr)?rH:rH+noteH; // +línea por caption (préstamo nuevo)
       rowH.push(hh0); rowsH += hh0;
     }
     var ph = hdH + rH + rowsH + totalRowH + footerH; // hd + col-header + rows + total + footer
@@ -2700,7 +2733,8 @@ function buildClienteImage(name, loans, onDone) {
       ctx.fillStyle = '#e8eef4';
       ctx.fillRect(0, rY + hhR - SCALE, pw, SCALE);
 
-      var vals = [String(l.año), String(l.dia), l.mes_fin, fmtNat(l,l.monto), fmtNat(l,IM(l))];
+      // El cliente NUNCA ve USD: los préstamos USD se convierten a COP y se muestran igual que un COP nativo.
+      var vals = [String(l.año), String(l.dia), l.mes_fin, COP(montoCOP(l)), COP(IMc(l))];
       var valColors = ['#5a7a8a','#1a2a3a','#1a2a3a','#1a3a5a','#0a6a2a'];
       cx = pad;
       for(var ci3=0;ci3<vals.length;ci3++){
@@ -2713,21 +2747,12 @@ function buildClienteImage(name, loans, onDone) {
         cx += cW[ci3];
       }
 
-      // Captions apiladas bajo la fila: préstamo nuevo (aún no cobra) y/o denominado en USD.
-      var capY = rY + rH;
+      // Caption discreta para préstamos nuevos (sin mención de moneda: el cliente nunca ve USD).
       if(nuevo){
         ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
         ctx.fillStyle = '#b06a00';
         ctx.textAlign = 'center';
-        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, capY + noteH*0.60);
-        capY += noteH;
-      }
-      if(isUSD(l)){
-        ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
-        ctx.fillStyle = '#1a6a9a';
-        ctx.textAlign = 'center';
-        ctx.fillText('💵 En USD (tasa '+COP(l.tasa_cambio)+'/USD) · equivale a '+COP(montoCOP(l))+' capital, '+COP(IMc(l))+' cuota', pw/2, capY + noteH*0.60);
-        capY += noteH;
+        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, rY + rH + noteH*0.60);
       }
 
       rY += hhR;
