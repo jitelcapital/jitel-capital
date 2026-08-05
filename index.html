@@ -237,6 +237,24 @@ function showToast(msg){
   t.textContent=msg;t.className='show';
   clearTimeout(t._to);t._to=setTimeout(function(){t.className='';},2000);
 }
+// Toast de ERROR (rojo, más persistente) para fallos de guardado/sincronización — NO silencioso.
+function showSyncError(msg){
+  var t=document.getElementById('toast-err');
+  if(!t){t=document.createElement('div');t.id='toast-err';
+    t.style.cssText='position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-danger-bg);border:1px solid var(--red);color:var(--c-danger-txt);padding:12px 18px;border-radius:14px;font-size:13px;font-weight:600;z-index:400;max-width:88%;text-align:center;line-height:1.45;opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 6px 24px rgba(0,0,0,.45);pointer-events:none';
+    document.body.appendChild(t);}
+  t.textContent=msg;
+  t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';
+  clearTimeout(t._to);t._to=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(20px)';},6000);
+}
+// Aviso de fallo de sincronización con la nube, con throttle para no repetir en cada reintento/debounce.
+var _lastSyncErrShown=0;
+function notifySyncFailed(msg){
+  var now=(new Date()).getTime();
+  if(now-_lastSyncErrShown<8000)return;
+  _lastSyncErrShown=now;
+  showSyncError(msg||'⚠️ No se pudo sincronizar con la nube. Revisa tu conexión: tus cambios están guardados en este dispositivo y se reintentarán.');
+}
 
 // ── PAYMENT CONFIRMATION MODAL ──
 // Shows a summary of the payment(s) about to be registered. Only on ✓ Listo the callback fires.
@@ -407,7 +425,7 @@ function loadST(){
   }catch(e){return null;}
 }
 // Always-on local write (the safety net — never removed during the Firebase transition).
-function saveLocalOnly(){try{localStorage.setItem(LSK,JSON.stringify(ST));}catch(e){}}
+function saveLocalOnly(){try{localStorage.setItem(LSK,JSON.stringify(ST));}catch(e){if(typeof showSyncError==='function')showSyncError('⚠️ No se pudo guardar en este dispositivo (¿almacenamiento lleno?). Tus últimos cambios podrían perderse.');}}
 // saveST keeps writing localStorage AND triggers a best-effort Firestore sync (admin only).
 // Firestore sync never blocks the UI and never throws — if it fails, localStorage still has everything.
 function saveST(){saveLocalOnly();if(typeof fbSyncDebounced==='function')fbSyncDebounced();}
@@ -870,7 +888,7 @@ function showLoanDetail(lid){
         danger:true,
         onConfirm:function(){
           var nl=[],j;for(j=0;j<ST.loans.length;j++){if(ST.loans[j].id!==lid)nl.push(ST.loans[j]);}
-          ST.loans=nl;saveST();closeModal();renderApp();
+          ST.loans=nl;saveST();fbDeleteDoc(lid);closeModal();renderApp();
           showToast('🗑 Préstamo eliminado');
         }
       });
@@ -2185,7 +2203,7 @@ function vLoans(){
             menuDrop.appendChild(mItem('br','🗑 Eliminar',function(){
               showConfirm({title:'¿Eliminar préstamo?',msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',confirmLbl:'Sí, eliminar',danger:true,onConfirm:function(){
                 var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id!==l.id)nl.push(ST.loans[jj]);}
-                ST.loans=nl;saveST();renderApp();showToast('🗑 Préstamo eliminado');
+                ST.loans=nl;saveST();fbDeleteDoc(l.id);renderApp();showToast('🗑 Préstamo eliminado');
               }});
             }));
             menuWrap.appendChild(menuDrop);
@@ -3738,8 +3756,36 @@ function fbSyncDebounced(){
   if(_fbSyncTimer)clearTimeout(_fbSyncTimer);
   _fbSyncTimer=setTimeout(fbPushAll,1500);
 }
+// ── Borrado remoto EXPLÍCITO: fbPushAll es solo upsert y nunca elimina, así que un préstamo
+// borrado quedaría huérfano en Firestore y reaparecería al recargar. Este helper borra el doc
+// remoto de verdad, con reintentos y una cola simple (no silenciosa) si falla la red. ──
+var _pendingDeletes=[]; // ids que fallaron al borrar; se reintentan en el próximo sync
+function fbDeleteDoc(id,attempt){
+  if(!id)return;
+  if(!FB.ready||!FB.db||!isAdmin())return; // sin Firebase / no admin: localStorage ya lo quitó, nada remoto que borrar
+  attempt=attempt||0;
+  FB.db.collection('prestamos').doc(id).delete().then(function(){
+    _pendingDeletes=_pendingDeletes.filter(function(x){return x!==id;});
+  }).catch(function(e){
+    console.warn('[Firebase] Error borrando préstamo '+id+':',e&&e.message);
+    if(attempt<2){
+      setTimeout(function(){fbDeleteDoc(id,attempt+1);},1500*(attempt+1)); // reintento con backoff
+    }else{
+      if(_pendingDeletes.indexOf(id)<0)_pendingDeletes.push(id); // encolar para reintentar luego
+      syncInd('local');
+      showSyncError('⚠️ No se pudo eliminar el préstamo en la nube. Revisa tu conexión: se reintentará al guardar de nuevo.');
+    }
+  });
+}
+// Reintenta los borrados encolados; se invoca desde fbPushAll en cada sincronización.
+function flushPendingDeletes(){
+  if(!FB.ready||!FB.db||!isAdmin()||_pendingDeletes.length===0)return;
+  var ids=_pendingDeletes.slice();_pendingDeletes=[];
+  for(var i=0;i<ids.length;i++)fbDeleteDoc(ids[i]);
+}
 function fbPushAll(){
   if(!FB.ready||!FB.db||!isAdmin())return;
+  flushPendingDeletes(); // arrastra cualquier borrado pendiente que hubiera fallado antes
   try{
     var loans=ST.loans||[],i,chunk=400;
     // Escribe en lotes (límite Firestore 500 ops/batch).
@@ -3751,11 +3797,11 @@ function fbPushAll(){
       batch.commit().then(function(){
         if(end<loans.length){pushChunk(end);}
         else{syncInd('cloud');}
-      }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');});
+      }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');notifySyncFailed();});
     }
-    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');});}
+    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
     else pushChunk(0);
-  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');}
+  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');notifySyncFailed();}
 }
 
 // ── Helper de arranque: crea el perfil admin para el usuario actual (uso único) ──
