@@ -144,8 +144,12 @@ html,body{background:var(--bg);color:var(--ink);
   // se creó este mismo mes y su primer cobro es el próximo, así que aún NO es cobrable.
   function isCollectable(l){var mk=currMk();return !(l.mes_comienzo&&(''+l.mes_comienzo)>=mk);}
 
-  // Interés total del cliente = monto × (int_socio + int_propio). NUNCA desglosado.
-  function pagoMensual(l){return (l.monto||0)*((+l.int_socio||0)+(+l.int_propio||0));}
+  // Moneda: el cliente NUNCA ve USD. Un préstamo USD se convierte a COP con su tasa fija y se
+  // muestra igual que un COP nativo. Sin moneda/tasa_cambio → COP puro (fx=1, sin cambios).
+  function fxRate(l){return (l&&l.moneda==='USD')?(+l.tasa_cambio||0):1;} // COP por 1 USD (1 para COP)
+  function montoCOP(l){return (l.monto||0)*fxRate(l);}                    // capital en COP
+  // Interés total del cliente EN COP = monto × (int_socio + int_propio) × tasa. NUNCA desglosado.
+  function pagoMensual(l){return (l.monto||0)*((+l.int_socio||0)+(+l.int_propio||0))*fxRate(l);}
 
   // ¿Ya pagó este mes? Toma en cuenta la conciliación (recibido) y los pagos con fecha del mes actual.
   function pagadoEsteMes(l){
@@ -331,7 +335,7 @@ html,body{background:var(--bg);color:var(--ink);
             datos.appendChild(r);
           }
           fila('Día de cobro','Día '+(parseInt(l.dia,10)||'—'));
-          fila('Capital prestado',COP(l.monto));
+          fila('Capital prestado',COP(montoCOP(l)));
           var mv=mesVencimiento(l);
           if(mv)fila('Mes de vencimiento',mv);
           card.appendChild(datos);
