@@ -186,6 +186,21 @@ function IS(l){return l.monto*(+l.int_socio);}
 function IP(l){return l.monto*(+l.int_propio);}
 // Effective interest shown to client = int_socio + int_propio always
 function cobrarCliente(l){return IM(l);}
+// ── MONEDA: soporte USD con tasa de cambio FIJA (COP por 1 USD) fijada al crear el préstamo.
+// Compatibilidad total: sin moneda/tasa_cambio → COP puro (fx=1, sin conversión, sin NaN).
+// IM/IS/IP se calculan en la moneda NATIVA del préstamo; las versiones *c convierten a COP.
+function isUSD(l){return !!(l&&l.moneda==='USD');}
+function fxRate(l){return isUSD(l)?(+l.tasa_cambio||0):1;}      // COP por 1 USD (1 para COP)
+function montoCOP(l){return (l.monto||0)*fxRate(l);}            // capital del préstamo en COP
+function toCOP(l,amtNativo){return (amtNativo||0)*fxRate(l);}   // convierte un monto nativo → COP
+function IMc(l){return toCOP(l,IM(l));}   // interés total cliente, en COP
+function ISc(l){return toCOP(l,IS(l));}   // interés socio, en COP
+function IPc(l){return toCOP(l,IP(l));}   // interés propio, en COP
+// Formato de una cifra en la moneda nativa del préstamo: COP normal, o "$500 USD".
+var USD=function(n){return '$'+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(n||0))+' USD';};
+function fmtNat(l,amtNativo){return isUSD(l)?USD(amtNativo):COP(amtNativo);}
+// Cifra nativa + equivalente COP entre paréntesis (solo USD), ej "$500 USD ($2.150.000 COP)".
+function fmtDual(l,amtNativo){return isUSD(l)?(USD(amtNativo)+' ('+COP(toCOP(l,amtNativo))+' COP)'):COP(amtNativo);}
 // Unified Julian detection: a loan is "direct to owner" when int_socio is 0 AND socio is JULIAN.
 // This prevents false positives (otro socio with 0% by mistake) and false negatives (typo in name).
 function isJulianLoan(l){return (+l.int_socio===0)&&(l.socio||'').toUpperCase()==='JULIAN';}
@@ -222,11 +237,11 @@ function showPaymentConfirm(loans,dia,onConfirm){
   var tot=0,i;
   var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
   for(i=0;i<loans.length;i++){
-    var ln=loans[i],amt=Math.round(IM(ln));tot+=amt;
+    var ln=loans[i],amt=Math.round(IMc(ln));tot+=amt; // en COP (equivalente para USD)
     var row=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:i<loans.length-1?'1px solid var(--bor)':'none'},null);
     var lft=D(null,{flex:'1',minWidth:'0'},null);
     var n1=D(null,{fontWeight:'600',fontSize:'13px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);n1.textContent=ln.socio||ln.responsable;
-    var n2=D(null,{fontSize:'11px',color:'var(--mut)'},null);n2.textContent='Día '+dia+' · Interés '+COP(IS(ln))+' + '+COP(IP(ln));
+    var n2=D(null,{fontSize:'11px',color:'var(--mut)'},null);n2.textContent='Día '+dia+' · Interés '+COP(ISc(ln))+' + '+COP(IPc(ln))+(isUSD(ln)?' · '+USD(IM(ln)):'');
     lft.appendChild(n1);lft.appendChild(n2);
     var rgt=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'14px',marginLeft:'10px'},null);rgt.textContent=COP(amt);
     row.appendChild(lft);row.appendChild(rgt);box.appendChild(row);
@@ -326,22 +341,22 @@ function waSocioMsg(name,dia,amt,fecha){
 }
 function waRegMsg(dia,loans,fecha){
   var tc=0,ts=0,gn=0,i;
-  for(i=0;i<loans.length;i++){tc+=IM(loans[i]);ts+=IS(loans[i]);gn+=IP(loans[i]);}
+  for(i=0;i<loans.length;i++){tc+=IMc(loans[i]);ts+=ISc(loans[i]);gn+=IPc(loans[i]);}
   var lines=['📋 REGISTRO COBROS — Día '+dia,'📅 '+fecha,'','💵 Cobrado: '+COP(tc),'','Pagos a socios:'];
-  for(i=0;i<loans.length;i++)if(IS(loans[i])>0)lines.push('✓ '+loans[i].socio+': '+COP(IS(loans[i])));
+  for(i=0;i<loans.length;i++)if(IS(loans[i])>0)lines.push('✓ '+loans[i].socio+': '+COP(ISc(loans[i])));
   lines.push('','Total socios: '+COP(ts),'💚 Ganancia neta: '+COP(gn));
   return lines.join('\n');
 }
 function waSocioResumen(name,st){
   var lines=['📊 RESUMEN DE INVERSIÓN','Hola '+name+' 👋','Fecha: '+hoyStr(),'','💰 Capital: '+COP(st.capital),'📈 Tu interés mensual: '+COP(st.intS),'📋 Préstamos activos: '+st.count,'','Detalle:'],i;
-  for(i=0;i<st.loans.length;i++){var l=st.loans[i];lines.push((i+1)+'. '+COP(l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Interés: '+COP(IS(l)));}
+  for(i=0;i<st.loans.length;i++){var l=st.loans[i];lines.push((i+1)+'. '+COP(montoCOP(l))+(isUSD(l)?' ('+USD(l.monto)+')':'')+' → Día '+l.dia+' '+l.mes_fin+' → Interés: '+COP(ISc(l)));}
   lines.push('','¡Gracias por tu confianza! 🙏');
   return lines.join('\n');
 }
 function waClienteMsg(name,loans){
-  var t=0,i;for(i=0;i<loans.length;i++)t+=cobrarCliente(loans[i]);
+  var t=0,i;for(i=0;i<loans.length;i++)t+=IMc(loans[i]);
   var lines=['💼 ESTADO DE CUENTA','Hola '+name+' 👋','Fecha: '+hoyStr(),'','📋 Préstamos activos: '+loans.length,'💵 Total a pagar este mes: '+COP(t),'','Detalle:'];
-  for(i=0;i<loans.length;i++){var l=loans[i];lines.push((i+1)+'. Capital: '+COP(l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Cuota: '+COP(cobrarCliente(l)));}
+  for(i=0;i<loans.length;i++){var l=loans[i];lines.push((i+1)+'. Capital: '+fmtDual(l,l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Cuota: '+fmtDual(l,cobrarCliente(l)));}
   lines.push('','📅 Recuerda tus fechas de pago 😊');
   return lines.join('\n');
 }
@@ -393,6 +408,9 @@ function sanitizeLoan(l){
   if(!l.status)l.status='active';
   if(typeof l.recibido!=='boolean')l.recibido=!!l.recibido;
   if(typeof l.pagado_socio!=='boolean')l.pagado_socio=!!l.pagado_socio;
+  // Moneda: ausente/otro valor → COP (compatibilidad). USD exige tasa_cambio numérica.
+  if(l.moneda==='USD'){if(typeof l.tasa_cambio!=='number')l.tasa_cambio=parseFloat(l.tasa_cambio)||0;}
+  else{l.moneda='COP';l.tasa_cambio=null;}
   return l;
 }
 
@@ -475,7 +493,7 @@ function buildSocioImage(name,st,onDone){
       var l=loans[startRow+ri];var rY=tY+rH*(ri+1);
       ctx.fillStyle=ri%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
       ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
-      var vals=[String(l.dia),l.mes_fin,COP(l.monto),COP(IS(l))];
+      var vals=[String(l.dia),l.mes_fin,COP(montoCOP(l)),COP(ISc(l))];
       cx=pad;
       for(cIdx=0;cIdx<vals.length;cIdx++){
         ctx.textAlign='center';
@@ -532,7 +550,7 @@ function buildGeneralImage(loans,onDone){
   else ctx.fillRect(pad/2,pad/2,tW-pad,hdH-pad/2);
   ctx.font='bold '+Math.round(17*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#e9a020';ctx.textAlign='left';
   ctx.fillText('📋 JiTel Capital — Lista General',pad*1.2,pad*1.6);
-  var totC=0,totI=0,i;for(i=0;i<sl.length;i++){totC+=sl[i].monto;totI+=IM(sl[i]);}
+  var totC=0,totI=0,i;for(i=0;i<sl.length;i++){totC+=montoCOP(sl[i]);totI+=IMc(sl[i]);}
   ctx.font=Math.round(10*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
   ctx.fillText(sl.length+' préstamos activos  •  '+hoyStr(),pad*1.2,pad*1.6+Math.round(22*sc));
   ctx.font='bold '+Math.round(11*sc)+'px -apple-system,sans-serif';ctx.fillStyle='#5a7a9a';
@@ -547,7 +565,7 @@ function buildGeneralImage(loans,onDone){
     var l=sl[i];var rY=tY+rH*(i+1);
     ctx.fillStyle=i%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
     ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
-    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(l.monto),COP(IM(l))];cx=pad;
+    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(montoCOP(l)),COP(IMc(l))];cx=pad;
     for(cIdx=0;cIdx<vals.length;cIdx++){
       ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
       ctx.fillStyle=cIdx===3?'#d8e8f5':cIdx===4?'#2dd87a':'#d8e8f5';ctx.textAlign='center';
@@ -571,8 +589,8 @@ function buildGeneralImage(loans,onDone){
 function showWaModal(paidLoans,dia){
   var fecha=hoyStr();
   var sm={},i,l;
-  for(i=0;i<paidLoans.length;i++){l=paidLoans[i];if(!l.socio||IS(l)===0)continue;if(!sm[l.socio])sm[l.socio]={name:l.socio,loans:[],total:0};sm[l.socio].loans.push(l);sm[l.socio].total+=IS(l);}
-  var tc=0;for(i=0;i<paidLoans.length;i++)tc+=IM(paidLoans[i]);
+  for(i=0;i<paidLoans.length;i++){l=paidLoans[i];if(!l.socio||IS(l)===0)continue;if(!sm[l.socio])sm[l.socio]={name:l.socio,loans:[],total:0};sm[l.socio].loans.push(l);sm[l.socio].total+=ISc(l);}
+  var tc=0;for(i=0;i<paidLoans.length;i++)tc+=IMc(paidLoans[i]);
   var pvS={};var cur=null;
   function render(){
     var m=D('modal',null,null);
@@ -586,9 +604,9 @@ function showWaModal(paidLoans,dia){
       var r=D(null,{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:i<paidLoans.length-1?'1px solid var(--bor)':'none'},null);
       var rl=D(null,{fontSize:'13px'},null);rl.textContent=l.responsable+' ';var rs=S(null,{color:'var(--mut)',fontSize:'12px'},null);rs.textContent='vía '+l.socio;rl.appendChild(rs);
       var rr=D(null,{textAlign:'right'},null);
-      var rv=D('mn',{color:'var(--acc)',fontWeight:'700'},null);rv.textContent=COP(IM(l));
+      var rv=D('mn',{color:'var(--acc)',fontWeight:'700'},null);rv.textContent=COP(IMc(l));
       var ri=D(null,{fontSize:'11px',color:IS(l)>0?'var(--red)':'var(--grn)'},null);
-      ri.textContent=IS(l)>0?'→ socio: '+COP(IS(l)):'→ ganancia directa: '+COP(IP(l));
+      ri.textContent=IS(l)>0?'→ socio: '+COP(ISc(l)):'→ ganancia directa: '+COP(IPc(l));
       rr.appendChild(rv);rr.appendChild(ri);r.appendChild(rl);r.appendChild(rr);sb.appendChild(r);
     }
     m.appendChild(sb);
@@ -648,12 +666,13 @@ function showLoanDetail(lid){
     var iS=IS(loan),iP=IP(loan),iM=IM(loan);
     var ab=0;var pg=loan.pagos||[];for(i=0;i<pg.length;i++){if(pg[i].tipo!=='interes')ab+=pg[i].monto;}
     if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:'',int_socio:loan.int_socio,int_propio:loan.int_propio};initE=true;}
-    if(!pm)pm=String(Math.round(iM));
+    if(!pm)pm=String(Math.round(IMc(loan))); // el pago se registra en COP (equivalente para USD)
     var m=D('modal',null,null);
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
     var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px';h2.textContent=loan.responsable;
     var hs=D(null,{color:'var(--mut)',fontSize:'13px'},null);hs.textContent='Socio: '+(loan.socio||'—')+' · ';
     var badge=S(loan.status==='active'?'ta':'tp',null,null);badge.textContent=loan.status==='active'?'Activo':'Pagado';hs.appendChild(badge);
+    if(isUSD(loan)){var ub=S('tx',{marginLeft:'6px'},null);ub.textContent='USD';hs.appendChild(ub);var urt=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'6px'},null);urt.textContent='tasa '+COP(loan.tasa_cambio)+'/USD';hs.appendChild(urt);}
     hdr.appendChild(D(null,null,[h2,hs]));hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
     // Julian note
     if(isJulianLoan(loan)){
@@ -663,16 +682,17 @@ function showLoanDetail(lid){
     var cb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
     var cttl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);cttl.textContent='Cálculo mensual';cb.appendChild(cttl);
     var cg=D('g3',null,null);
-    function kv(lb,v,vc){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=lb;var vv=D('mn',vc?{fontWeight:'700',fontSize:'13px',color:vc}:{fontWeight:'700',fontSize:'13px'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);return d;}
-    cg.appendChild(kv('Capital',COP(loan.monto),null));
-    cg.appendChild(kv('Costo socio '+PCT(loan.int_socio),iS>0?COP(iS):'$0','var(--red)'));
-    cg.appendChild(kv('Tu ganancia '+PCT(loan.int_propio),COP(iP),'var(--grn)'));
+    function kv(lb,v,vc,sub){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=lb;var vv=D('mn',vc?{fontWeight:'700',fontSize:'13px',color:vc}:{fontWeight:'700',fontSize:'13px'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);if(sub){var sv=D('mn',{fontSize:'9px',color:'var(--mut)',marginTop:'1px'},null);sv.textContent=sub;d.appendChild(sv);}return d;}
+    cg.appendChild(kv('Capital',fmtNat(loan,loan.monto),null,isUSD(loan)?('≈ '+COP(montoCOP(loan))):null));
+    cg.appendChild(kv('Costo socio '+PCT(loan.int_socio),iS>0?fmtNat(loan,iS):fmtNat(loan,0),'var(--red)',(isUSD(loan)&&iS>0)?('≈ '+COP(ISc(loan))):null));
+    cg.appendChild(kv('Tu ganancia '+PCT(loan.int_propio),fmtNat(loan,iP),'var(--grn)',isUSD(loan)?('≈ '+COP(IPc(loan))):null));
     cb.appendChild(cg);cb.appendChild(D('sep',null,null));
     var crow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center'},null);
     var cl=D(null,{color:'var(--mut)',fontSize:'13px'},null);cl.textContent='Cobrar al cliente:';
-    var cv=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'16px'},null);cv.textContent=COP(iM);
+    var cv=S('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'16px'},null);cv.textContent=fmtNat(loan,iM);
     crow.appendChild(cl);crow.appendChild(cv);cb.appendChild(crow);
-    if(ab>0){var cr2=D(null,{display:'flex',justifyContent:'space-between',marginTop:'4px'},null);var cl2=D(null,{fontSize:'12px',color:'var(--mut)'},null);cl2.textContent='Capital restante:';var cv2=S('mn',null,null);cv2.textContent=COP(loan.monto-ab);cr2.appendChild(cl2);cr2.appendChild(cv2);cb.appendChild(cr2);}
+    if(isUSD(loan)){var cceq=D(null,{textAlign:'right',fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);cceq.textContent='≈ '+COP(IMc(loan))+' COP  ·  se cobra en COP';cb.appendChild(cceq);}
+    if(ab>0){var cr2=D(null,{display:'flex',justifyContent:'space-between',marginTop:'4px'},null);var cl2=D(null,{fontSize:'12px',color:'var(--mut)'},null);cl2.textContent='Capital restante:';var cv2=S('mn',null,null);cv2.textContent=COP(montoCOP(loan)-ab)+(isUSD(loan)?' COP':'');cr2.appendChild(cl2);cr2.appendChild(cv2);cb.appendChild(cr2);}
     m.appendChild(cb);
     // Plazo
     var pb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
@@ -714,7 +734,7 @@ function showLoanDetail(lid){
       var ratePreview=D(null,{fontSize:'12px',color:'var(--mut)',background:'var(--bg)',borderRadius:'6px',padding:'8px 10px',marginTop:'6px',lineHeight:'1.6'},null);
       function updateRatePreview(){
         var is2=parseFloat(isIn.value)||0,ip2=parseFloat(ipIn.value)||0;
-        ratePreview.textContent='Socio: '+COP(loan.monto*is2)+' · Propio: '+COP(loan.monto*ip2)+' · Total cliente: '+COP(loan.monto*(is2+ip2));
+        ratePreview.textContent='Socio: '+fmtNat(loan,loan.monto*is2)+' · Propio: '+fmtNat(loan,loan.monto*ip2)+' · Total cliente: '+fmtNat(loan,loan.monto*(is2+ip2));
       }
       isIn.addEventListener('input',function(e){ed.int_socio=parseFloat(e.target.value)||0;updateRatePreview();});
       ipIn.addEventListener('input',function(e){ed.int_propio=parseFloat(e.target.value)||0;updateRatePreview();});
@@ -790,20 +810,22 @@ function showLoanDetail(lid){
       else{
         var pd=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'14px',marginBottom:'12px'},null);
         var pth=D(null,{fontSize:'13px',fontWeight:'600',marginBottom:'12px'},null);pth.textContent='Nuevo Pago';pd.appendChild(pth);
-        var tsel=MSEL([['interes','Pago de Interés mensual ('+COP(iM)+')'],['abono','Abono a Capital'],['total','Pago Total (cierra préstamo)']],ptyp);
-        tsel.addEventListener('change',function(e){ptyp=e.target.value;if(ptyp==='interes')pm=String(Math.round(iM));refresh();});
+        var tsel=MSEL([['interes','Pago de Interés mensual ('+COP(IMc(loan))+')'],['abono','Abono a Capital'],['total','Pago Total (cierra préstamo)']],ptyp);
+        tsel.addEventListener('change',function(e){ptyp=e.target.value;if(ptyp==='interes')pm=String(Math.round(IMc(loan)));refresh();});
         pd.appendChild(FLD('Tipo',tsel));
-        var mIn=INP({type:'number',value:pm,placeholder:String(Math.round(iM))});mIn.addEventListener('input',function(e){pm=e.target.value;});
+        var mIn=INP({type:'number',value:pm,placeholder:String(Math.round(IMc(loan)))});mIn.addEventListener('input',function(e){pm=e.target.value;});
         var dtIn=INP({type:'date',value:pfec});dtIn.addEventListener('change',function(e){pfec=e.target.value;});
-        pd.appendChild(R2(FLD('Monto recibido',mIn),FLD('Fecha',dtIn)));
+        pd.appendChild(R2(FLD('Monto recibido (COP)',mIn),FLD('Fecha',dtIn)));
+        if(isUSD(loan)){var usdRef=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'-6px',marginBottom:'10px',lineHeight:'1.5'},null);usdRef.textContent='💵 En USD se cobra '+USD(iM)+' (tasa '+COP(loan.tasa_cambio)+'/USD). El monto se registra en COP: puedes ajustarlo si recibiste algo distinto.';pd.appendChild(usdRef);}
         var notIn=INP({type:'text',placeholder:'Transferencia, efectivo...',value:pnot});notIn.addEventListener('input',function(e){pnot=e.target.value;});
         pd.appendChild(FLD('Nota',notIn));
         var pbtns=D(null,{display:'flex',gap:'8px'},null);
         pbtns.appendChild(BTN('ba','💾 Guardar Pago',function(){
           var mv=parseFloat(pm);if(!mv||mv<=0){alert('Ingresa un monto válido');return;}
-          var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,nota:pnot};
+          var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,nota:pnot}; // monto siempre en COP (lo recibido)
+          if(isUSD(loan)&&ptyp==='interes')pago.monto_usd=Math.round(iM); // referencia en USD nativo
           var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];var np=(x.pagos||[]).slice();np.push(pago);c.pagos=np;c.status=pago.tipo==='total'?'paid':x.status;nl.push(c);}else nl.push(x);}
-          ST.loans=nl;saveST();pm=String(Math.round(iM));ptyp='interes';pfec=isoToday();pnot='';spay=false;
+          ST.loans=nl;saveST();pm=String(Math.round(IMc(loan)));ptyp='interes';pfec=isoToday();pnot='';spay=false;
           refresh();renderApp();
           if(pago.tipo==='interes'){var ln2=null,jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id===lid){ln2=ST.loans[jj];break;}}if(ln2)showWaModal([ln2],ln2.dia);}
         },{flex:'1'}));
@@ -860,7 +882,7 @@ function showNewLoan(prefill){
   var defs=getSmartDefaults();
   // Allow calculator to pre-fill monto and tasas
   var pfill=(prefill&&typeof prefill==='object')?prefill:{};
-  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='';
+  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='',fmon='COP',ftc=0;
   var m=D('modal',null,null);
   var hdr=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'14px'},null);
   var h2=document.createElement('h2');h2.style.color='var(--acc)';h2.textContent='Nuevo Préstamo';
@@ -868,10 +890,17 @@ function showNewLoan(prefill){
   var prevDiv=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px',display:'none'},null);
   function updPrev(){
     if(fm>0){prevDiv.style.display='block';prevDiv.innerHTML='';
+      var tl={moneda:fmon,tasa_cambio:ftc,monto:fm}; // objeto temporal solo para formateo
       var pg=D('g3',null,null);
       function pv(l,v,c){var d=D(null,null,null);var ll=D(null,{fontSize:'10px',color:'var(--mut)'},null);ll.textContent=l;var vv=D('mn',{color:c,fontWeight:'700'},null);vv.textContent=v;d.appendChild(ll);d.appendChild(vv);return d;}
-      pg.appendChild(pv('Pagas socio',COP(fm*fis),'var(--red)'));pg.appendChild(pv('Tu ganancia',COP(fm*fip),'var(--grn)'));pg.appendChild(pv('Cobras total',COP(fm*(fis+fip)),'var(--acc)'));
+      pg.appendChild(pv('Pagas socio',fmtNat(tl,fm*fis),'var(--red)'));pg.appendChild(pv('Tu ganancia',fmtNat(tl,fm*fip),'var(--grn)'));pg.appendChild(pv('Cobras total',fmtNat(tl,fm*(fis+fip)),'var(--acc)'));
       prevDiv.appendChild(pg);
+      if(fmon==='USD'){
+        var eq=D(null,{fontSize:'11px',marginTop:'8px',lineHeight:'1.5',color:'var(--mut)'},null);
+        if(ftc>0){eq.textContent='≈ en COP (tasa '+COP(ftc)+'/USD): socio '+COP(fm*fis*ftc)+' · ganancia '+COP(fm*fip*ftc)+' · cobras '+COP(fm*(fis+fip)*ftc);}
+        else{eq.textContent='⚠️ Ingresa la tasa de cambio (COP por USD) para ver los equivalentes.';eq.style.color='var(--red)';}
+        prevDiv.appendChild(eq);
+      }
     } else prevDiv.style.display='none';
   }
   var dlR=document.createElement('datalist');dlR.id='dlR_'+GID();clients.forEach(function(c){var o=document.createElement('option');o.value=c;dlR.appendChild(o);});
@@ -891,7 +920,21 @@ function showNewLoan(prefill){
   sIn.addEventListener('blur',function(e){applyJulianRule(e.target.value);});
   m.appendChild(R2(FLD('Cliente',rIn),FLD('Socio (fuente)',sIn)));
   var mIn=INP({type:'number',value:fm||'',placeholder:'0'});mIn.addEventListener('input',function(e){fm=parseFloat(e.target.value)||0;updPrev();});
-  m.appendChild(FLD('Monto',mIn));
+  var montoFld=FLD('Monto',mIn);
+  // Selector de moneda (COP por defecto) + campo de tasa de cambio que aparece solo para USD.
+  var monSel=MSEL([['COP','COP (pesos)'],['USD','USD (dólares)']],'COP');
+  var monFld=FLD('Moneda',monSel);
+  var tcIn=INP({type:'number',value:'',placeholder:'Ej: 4300',step:'1',min:'0'});tcIn.addEventListener('input',function(e){ftc=parseFloat(e.target.value)||0;updPrev();});
+  var tcFld=FLD('Tasa de cambio (COP por 1 USD)',tcIn);tcFld.style.display='none';
+  monSel.addEventListener('change',function(e){
+    fmon=e.target.value;
+    tcFld.style.display=(fmon==='USD')?'block':'none';
+    montoFld.querySelector('label').textContent=(fmon==='USD')?'Monto (en USD)':'Monto';
+    mIn.placeholder=(fmon==='USD')?'Ej: 500':'0';
+    updPrev();
+  });
+  m.appendChild(R2(montoFld,monFld));
+  m.appendChild(tcFld);
   m.appendChild(R2(FLD('Int. socio (ej:0.035)',isIn),FLD('Int. propio (ej:0.02)',ipIn)));
   var defHint=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',marginTop:'-6px'},null);
   defHint.textContent='💡 Pre-cargado: tasa más usada (socio '+(defs.int_socio*100).toFixed(1)+'% / propio '+(defs.int_propio*100).toFixed(1)+'%)';
@@ -908,12 +951,15 @@ function showNewLoan(prefill){
   m.appendChild(FLD('Nota',nIn));
   m.appendChild(BTN('ba','💾 Guardar Préstamo',function(){
     if(!fr||!fs||!fm){alert('Completa cliente, socio y monto');return;}
-    var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString()};
+    if(fmon==='USD'&&(!(ftc>0))){alert('Ingresa una tasa de cambio válida (COP por USD) para un préstamo en USD');return;}
+    var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString(),moneda:fmon,tasa_cambio:fmon==='USD'?ftc:null};
     // Regla de apertura: si el día de cobro ya pasó (o es hoy) y el mes de inicio es
     // el actual o anterior, marcar este mes como pagado para que el primer cobro real
     // sea el mes siguiente. Se inserta un pago simbólico que satisface paidMth().
     if(fd<=TODAY_DIA&&(!fmc||fmc<=CURR_MK)){
-      l.pagos=[{id:GID(),tipo:'interes',monto:Math.round(IM(l)),fecha:isoToday(),nota:'Mes de apertura'}];
+      var _apM={id:GID(),tipo:'interes',monto:Math.round(IMc(l)),fecha:isoToday(),nota:'Mes de apertura'};
+      if(isUSD(l))_apM.monto_usd=Math.round(IM(l));
+      l.pagos=[_apM];
       l.recibido=true;
     }
     ST.loans.unshift(l);saveST();closeModal();renderApp();
@@ -965,7 +1011,7 @@ function showReset(){
 // ── EXPORT ──
 function showExport(){
   var active=[];var i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
-  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=montoCOP(l);sm[l.socio].intS+=ISc(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
   var sns=Object.keys(sm);sns.sort();
   var mode='general';var imgPrev=null;var generating=false;var cur=null;
   function render(){
@@ -1009,15 +1055,15 @@ function showExport(){
 // Selections persist across re-renders within the same session; reset on reload.
 var SUM_STATE={
   cobros:{ids:{},summary:function(loans){
-    var t=0,i;for(i=0;i<loans.length;i++)t+=IM(loans[i]);
+    var t=0,i;for(i=0;i<loans.length;i++)t+=IMc(loans[i]);
     return{kind:'single',label:'Total a cobrar',total:t};
   }},
   socios:{ids:{},summary:function(loans){
     var julians=[],others=[],i;
     for(i=0;i<loans.length;i++){if(isJulianLoan(loans[i]))julians.push(loans[i]);else others.push(loans[i]);}
     var ipJ=0,isS=0;
-    for(i=0;i<julians.length;i++)ipJ+=IP(julians[i]);
-    for(i=0;i<others.length;i++)isS+=IS(others[i]);
+    for(i=0;i<julians.length;i++)ipJ+=IPc(julians[i]);
+    for(i=0;i<others.length;i++)isS+=ISc(others[i]);
     if(julians.length>0&&others.length===0){
       return{kind:'single',label:'MI GANANCIA',total:ipJ};
     }
@@ -1032,7 +1078,7 @@ var SUM_STATE={
   }},
   loans:{ids:{},summary:function(loans){
     var ip=0,is=0,im=0,i;
-    for(i=0;i<loans.length;i++){ip+=IP(loans[i]);is+=IS(loans[i]);im+=IM(loans[i]);}
+    for(i=0;i<loans.length;i++){ip+=IPc(loans[i]);is+=ISc(loans[i]);im+=IMc(loans[i]);}
     return{kind:'multi',title:'GANANCIA SELECCIONADA',expandable:true,lines:[
       {lbl:'MI GANANCIA',val:COP(Math.round(ip)),color:'var(--grn)'},
       {lbl:'Interés socios',val:COP(Math.round(is)),color:'var(--red)'},
@@ -1134,18 +1180,18 @@ function sumShowDesglose(){
   var totIp=0,totIs=0,totIm=0,k;
   for(k=0;k<sel.length;k++){
     var ln=sel[k];
-    totIp+=IP(ln);totIs+=IS(ln);totIm+=IM(ln);
+    totIp+=IPc(ln);totIs+=ISc(ln);totIm+=IMc(ln);
     var row=D(null,{padding:'10px 12px',borderBottom:k<sel.length-1?'1px solid var(--bor)':'none'},null);
     var rh=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'4px'},null);
     var rhl=D(null,null,null);
     var rsoc=S(null,{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);rsoc.textContent=ln.socio||'—';
     var rcli=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);rcli.textContent='· '+ln.responsable+' · D'+ln.dia;
     rhl.appendChild(rsoc);rhl.appendChild(rcli);
-    var rim=S('mn',{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);rim.textContent=COP(Math.round(IM(ln)));
+    var rim=S('mn',{fontWeight:'700',fontSize:'13px',color:'var(--acc)'},null);rim.textContent=COP(Math.round(IMc(ln)));
     rh.appendChild(rhl);rh.appendChild(rim);row.appendChild(rh);
     var rd=D(null,{display:'flex',gap:'12px',fontSize:'11px',color:'var(--mut)'},null);
-    var rd1=S(null,{color:'var(--grn)'},null);rd1.textContent='Mi: '+COP(Math.round(IP(ln)));
-    var rd2=S(null,{color:isJulianLoan(ln)?'var(--grn)':'var(--red)'},null);rd2.textContent=isJulianLoan(ln)?'Directo':'Socio: '+COP(Math.round(IS(ln)));
+    var rd1=S(null,{color:'var(--grn)'},null);rd1.textContent='Mi: '+COP(Math.round(IPc(ln)));
+    var rd2=S(null,{color:isJulianLoan(ln)?'var(--grn)':'var(--red)'},null);rd2.textContent=isJulianLoan(ln)?'Directo':'Socio: '+COP(Math.round(ISc(ln)));
     rd.appendChild(rd1);rd.appendChild(rd2);row.appendChild(rd);
     box.appendChild(row);
   }
@@ -1279,7 +1325,9 @@ function doPagoFlow(loansOrLoan,dia,isBatch){
       var x=ST.loans[jj];
       if(pids[x.id]){
         var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();
-        c.pagos.push({id:GID(),tipo:'interes',monto:Math.round(IM(x)),fecha:isoToday(),nota:'Interés día '+dia});
+        var _pg={id:GID(),tipo:'interes',monto:Math.round(IMc(x)),fecha:isoToday(),nota:'Interés día '+dia}; // COP (equivalente para USD)
+        if(isUSD(x))_pg.monto_usd=Math.round(IM(x));
+        c.pagos.push(_pg);
         c.recibido=true; // auto-marcar recibido al registrar pago
         nl.push(c);
       }else nl.push(x);
@@ -1314,13 +1362,13 @@ function copyAndOpenWhatsApp(loans,dia){
   if(loans.length===1){
     var l=loans[0];
     // Use socio message if has external partner, else a simple receipt
-    if(IS(l)>0){text=waSocioMsg(l.socio,dia,IS(l),fecha);}
-    else{text='✅ PAGO REGISTRADO\nDía '+dia+' · '+fecha+'\n\nCliente: '+l.responsable+'\nCapital: '+COP(l.monto)+'\nInterés: '+COP(IM(l))+'\n\n¡Gracias por tu pago! 😊';}
+    if(IS(l)>0){text=waSocioMsg(l.socio,dia,ISc(l),fecha);}
+    else{text='✅ PAGO REGISTRADO\nDía '+dia+' · '+fecha+'\n\nCliente: '+l.responsable+'\nCapital: '+fmtDual(l,l.monto)+'\nInterés: '+fmtDual(l,IM(l))+'\n\n¡Gracias por tu pago! 😊';}
   }else{
     // Multiple — group per socio
     var sm={},i,total=0;
-    for(i=0;i<loans.length;i++){var ln=loans[i];if(!ln.socio||IS(ln)===0)continue;if(!sm[ln.socio])sm[ln.socio]={total:0,n:0};sm[ln.socio].total+=IS(ln);sm[ln.socio].n++;}
-    for(i=0;i<loans.length;i++)total+=IM(loans[i]);
+    for(i=0;i<loans.length;i++){var ln=loans[i];if(!ln.socio||IS(ln)===0)continue;if(!sm[ln.socio])sm[ln.socio]={total:0,n:0};sm[ln.socio].total+=ISc(ln);sm[ln.socio].n++;}
+    for(i=0;i<loans.length;i++)total+=IMc(loans[i]);
     var lines=['✅ PAGOS REGISTRADOS','Día '+dia+' · '+fecha,'','📋 '+loans.length+' préstamos','💵 Total: '+COP(total),''];
     var sns=Object.keys(sm);
     for(i=0;i<sns.length;i++){lines.push('• '+sns[i]+': '+COP(sm[sns[i]].total)+' ('+sm[sns[i]].n+' préstamos)');}
@@ -1367,7 +1415,7 @@ function showMensajeMultidia(groups){
       var g=groups[gi];
       if(g.dia<desde||g.dia>hasta)continue;
       var dayAmt=0;
-      for(li2=0;li2<g.loans.length;li2++){var ln=g.loans[li2];if(ln.socio===selSocio)dayAmt+=IS(ln);}
+      for(li2=0;li2<g.loans.length;li2++){var ln=g.loans[li2];if(ln.socio===selSocio)dayAmt+=ISc(ln);}
       if(dayAmt>0)daysFound.push({dia:g.dia,amt:dayAmt});
     }
     if(daysFound.length===0)return'Sin pagos de '+selSocio+' entre días '+desde+' y '+hasta+'.';
@@ -1411,7 +1459,7 @@ function showMensajeMultidia(groups){
 function buildResumenCobrosMsg(c,dia){
   var complete=(c.pend.length===0);
   var lines=['Hola '+c.name+' ✅','Pagos recibidos día '+dia+':'],i;
-  for(i=0;i<c.paid.length;i++)lines.push('• '+COP(IM(c.paid[i]))+' ✓');
+  for(i=0;i<c.paid.length;i++)lines.push('• '+COP(IMc(c.paid[i]))+' ✓');
   if(complete){
     lines.push('Total recibido día '+dia+': '+COP(c.totalPaid));
     lines.push('Día '+dia+' completo 🎉');
@@ -1431,8 +1479,8 @@ function showResumenCobrosCliente(g){
     l=g.loans[i];r=l.responsable||'—';
     if(!byCli[r]){byCli[r]={name:r,loans:[],paid:[],pend:[],totalPaid:0,totalPend:0};order.push(r);}
     byCli[r].loans.push(l);
-    if(paidMth(l)){byCli[r].paid.push(l);byCli[r].totalPaid+=IM(l);}
-    else{byCli[r].pend.push(l);byCli[r].totalPend+=IM(l);}
+    if(paidMth(l)){byCli[r].paid.push(l);byCli[r].totalPaid+=IMc(l);}
+    else{byCli[r].pend.push(l);byCli[r].totalPend+=IMc(l);}
   }
   // Solo clientes con al menos 1 pago registrado ese día
   var clients=[];
@@ -1491,12 +1539,12 @@ function vCobros(){
     if(!isCollectable(l0))continue; // not yet started; first billing is the month after mes_comienzo
     active.push(l0);
   }
-  var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IM(l);if(paidMth(l))gm[l.dia].pagado+=IM(l);}
+  var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IMc(l);if(paidMth(l))gm[l.dia].pagado+=IMc(l);}
   var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
   var tm=0,tc=0,myPending=0,myPaid=0;
   for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
   // MI CUENTA: interés propio dividido entre préstamos cobrados y pendientes este mes.
-  for(i=0;i<active.length;i++){if(paidMth(active[i]))myPaid+=IP(active[i]);else myPending+=IP(active[i]);}
+  for(i=0;i<active.length;i++){if(paidMth(active[i]))myPaid+=IPc(active[i]);else myPending+=IPc(active[i]);}
   var pct=tm>0?Math.round(tc/tm*100):0;
 
   // helper: urgency class for a day group
@@ -1528,7 +1576,7 @@ function vCobros(){
   // pendGroups se llena en el loop de grupos; "Ver todos" expande cada día con pendientes y hace scroll.
   var pendGroups=[];
   var accPendTot=0,accPendCnt=0,api;
-  for(api=0;api<active.length;api++){if(!paidMth(active[api])){accPendTot+=IM(active[api]);accPendCnt++;}}
+  for(api=0;api<active.length;api++){if(!paidMth(active[api])){accPendTot+=IMc(active[api]);accPendCnt++;}}
   if(accPendCnt>0){
     var pbn=D(null,{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',background:'var(--c-danger-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'},null);
     var pbnL=D(null,{flex:'1',minWidth:'0'},null);
@@ -1545,7 +1593,7 @@ function vCobros(){
 
   w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups);},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
   // Today's summary banner
-  for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'var(--c-day-bg)',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IM(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
+  for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'var(--c-day-bg)',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IMc(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
 
   for(var gi=0;gi<groups.length;gi++){
     (function(g){
@@ -1592,12 +1640,13 @@ function vCobros(){
           // Single quick-pay for the one pending loan — shows confirmation first
           (function(ln){
             var qb=document.createElement('button');qb.className='qpay';
-            qb.textContent='✓ '+COP(IM(ln));
+            qb.textContent='✓ '+COP(IMc(ln));
             qb.style.fontSize='11px';qb.style.padding='8px 10px';
             qb.addEventListener('click',function(e){
               e.stopPropagation();
               showPaymentConfirm([ln],g.dia,function(){
-                var pago={id:GID(),tipo:'interes',monto:Math.round(IM(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
+                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
+                if(isUSD(ln))pago.monto_usd=Math.round(IM(ln));
                 var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);c.recibido=true;nl.push(c);}else nl.push(x);}
                 ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
               });
@@ -1641,13 +1690,13 @@ function vCobros(){
               var ln1=D(null,{fontWeight:'700',fontSize:'15px',color:'var(--acc)',marginBottom:'1px'},null);ln1.textContent=ln.socio||'—';
               var ln2=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},null);ln2.textContent=ln.responsable+' · '+ln.mes_fin;
               var lnCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace',marginBottom:'1px'},null);
-              lnCap.textContent='Capital: '+COP(ln.monto);
+              lnCap.textContent='Capital: '+COP(montoCOP(ln))+(isUSD(ln)?' · '+USD(ln.monto):'');
               var ln3=D(null,{fontSize:'10px',color:IS(ln)>0?'var(--red)':'var(--grn)'},null);
-              ln3.textContent=IS(ln)>0?'→ socio: '+COP(IS(ln)):'→ ganancia directa';
+              ln3.textContent=IS(ln)>0?'→ socio: '+COP(ISc(ln)):'→ ganancia directa';
               zInfo.appendChild(ln1);zInfo.appendChild(ln2);zInfo.appendChild(lnCap);zInfo.appendChild(ln3);
               // Zone 2: action (right, fixed width)
               var zAction=D(null,{display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',gap:'6px',flexShrink:'0',minWidth:'95px'},null);
-              var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IM(ln));
+              var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IMc(ln));
               var lpay=BTN('ba','✓ Pagar',function(){
                 doPagoFlow(ln,g.dia);
               },{fontSize:'12px',padding:'9px 14px',minHeight:'40px'});
@@ -1664,7 +1713,7 @@ function vCobros(){
             })(pend[pi2]);
           }
           if(pend.length>1){
-            var pendTot=0,pendSoc=0,bj;for(bj=0;bj<pend.length;bj++){pendTot+=IM(pend[bj]);pendSoc+=IS(pend[bj]);}
+            var pendTot=0,pendSoc=0,bj;for(bj=0;bj<pend.length;bj++){pendTot+=IMc(pend[bj]);pendSoc+=ISc(pend[bj]);}
             var bbox=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'10px',padding:'12px',marginBottom:'8px'},null);
             var btl=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--grn)',marginBottom:'4px'},null);btl.textContent='⚡ Pagar todos del día '+g.dia;
             var bsub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);bsub.textContent='Total: '+COP(pendTot)+(pendSoc>0?'  Socios: '+COP(pendSoc):'  (ganancia directa)');
@@ -1692,10 +1741,10 @@ function vCobros(){
               dInfo.addEventListener('click',function(){showLoanDetail(ln.id);});
               var dl1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)',marginBottom:'1px'},null);dl1.textContent=ln.socio||'—';
               var dl2=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},null);dl2.textContent=ln.responsable;
-              var dCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace'},null);dCap.textContent='Capital: '+COP(ln.monto);
+              var dCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace'},null);dCap.textContent='Capital: '+COP(montoCOP(ln))+(isUSD(ln)?' · '+USD(ln.monto):'');
               dInfo.appendChild(dl1);dInfo.appendChild(dl2);dInfo.appendChild(dCap);
               var dAct=D(null,{textAlign:'right',display:'flex',alignItems:'center',flexShrink:'0'},null);
-              var da2=S('mn',{color:'var(--grn)',fontWeight:'700',fontSize:'14px'},null);da2.textContent=COP(IM(ln));
+              var da2=S('mn',{color:'var(--grn)',fontWeight:'700',fontSize:'14px'},null);da2.textContent=COP(IMc(ln));
               dAct.appendChild(da2);
               dzones.appendChild(dInfo);dzones.appendChild(dAct);
               drWrap.appendChild(dzones);
@@ -1738,7 +1787,7 @@ function vEvolucion(){
   for(var mi=0;mi<months.length;mi++){
     var mk=months[mi];var totalIP=0,totalCap=0,cnt=0;
     if(mk===CURR_MK){
-      for(j=0;j<ST.loans.length;j++){var l=ST.loans[j];if(l.status==='active'){totalIP+=IP(l);totalCap+=l.monto;cnt++;}}
+      for(j=0;j<ST.loans.length;j++){var l=ST.loans[j];if(l.status==='active'){totalIP+=IPc(l);totalCap+=montoCOP(l);cnt++;}}
     }else{
       var arc=ST.archives[mk]||{};var lids=Object.keys(arc);
       for(k=0;k<lids.length;k++){
@@ -1746,7 +1795,7 @@ function vEvolucion(){
         for(var p=0;p<pagos.length;p++){if(pagos[p].tipo==='interes'){hasInt=true;break;}}
         if(!hasInt)continue;
         var loan=loanById[lid];if(!loan)continue;
-        totalIP+=IP(loan);totalCap+=loan.monto;cnt++;
+        totalIP+=IPc(loan);totalCap+=montoCOP(loan);cnt++;
       }
     }
     var mIdx=parseInt(mk.split('-')[1])-1;
@@ -1869,11 +1918,11 @@ function vDashboard(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
   var totCap=0,totP=0,totSoc=0,mora=0,myPaidR=0,myPendingR=0;
   for(i=0;i<active.length;i++){
-    totCap+=active[i].monto;
-    totP+=IP(active[i]);
-    totSoc+=IS(active[i]);
+    totCap+=montoCOP(active[i]);
+    totP+=IPc(active[i]);
+    totSoc+=ISc(active[i]);
     if(!paidMth(active[i])&&active[i].dia<TODAY_DIA)mora++;
-    if(paidMth(active[i]))myPaidR+=IP(active[i]);else myPendingR+=IP(active[i]);
+    if(paidMth(active[i]))myPaidR+=IPc(active[i]);else myPendingR+=IPc(active[i]);
   }
   // Margen neto ponderado = Σ(monto_i × int_propio_i) / Σ(monto_i)
   // This IS a weighted average by capital — same as totP/totCap. Explicit here for clarity.
@@ -2054,22 +2103,24 @@ function vLoans(){
         tl.appendChild(tSocRow);tl.appendChild(tCliRow);
         var tr2=D(null,{display:'flex',gap:'6px',alignItems:'center',flexShrink:'0'},null);
         if(l.status==='active'&&paidMth(l)){var pb2=S(null,{fontSize:'10px',color:'var(--grn)',background:'var(--c-paid-bg)',padding:'2px 6px',borderRadius:'20px'},null);pb2.textContent='✓ Pagó';tr2.appendChild(pb2);}
+        if(isUSD(l)){var ubL=S('tx',null,null);ubL.textContent='USD';tr2.appendChild(ubL);}
         var badge=S(l.status==='active'?'ta':'tp',null,null);badge.textContent=l.status==='active'?'Activo':'Pagado';tr2.appendChild(badge);
         top.appendChild(tl);top.appendChild(tr2);topWrap.appendChild(top);r.appendChild(topWrap);
         // 5-column grid: Capital | Cobrar | Vence | Int. Socio | Int. Propio
         var bg3=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:'6px',cursor:'pointer'},null);
         bg3.addEventListener('click',function(){showLoanDetail(l.id);});
-        function col3(lb,vl,vc){var d=D(null,null,null);var dl=D(null,{fontSize:'10px',color:'var(--mut)'},null);dl.textContent=lb;var dv=D('mn',vc?{fontSize:'11px',fontWeight:'700',color:vc}:{fontSize:'11px',fontWeight:'700'},null);dv.textContent=vl;d.appendChild(dl);d.appendChild(dv);return d;}
+        function col3(lb,vl,vc,sub){var d=D(null,null,null);var dl=D(null,{fontSize:'10px',color:'var(--mut)'},null);dl.textContent=lb;var dv=D('mn',vc?{fontSize:'11px',fontWeight:'700',color:vc}:{fontSize:'11px',fontWeight:'700'},null);dv.textContent=vl;d.appendChild(dl);d.appendChild(dv);if(sub){var sv=D('mn',{fontSize:'8px',color:'var(--mut)',lineHeight:'1.2',wordBreak:'break-all'},null);sv.textContent=sub;d.appendChild(sv);}return d;}
         var isSocDirec=isJulianLoan(l);
-        var socVal=isSocDirec?'Directo':COP(IS(l));
+        var usd=isUSD(l);
+        var socVal=isSocDirec?'Directo':fmtNat(l,IS(l));
         var socCol=isSocDirec?'var(--grn)':'var(--red)';
-        var propVal=isSocDirec?'Directo':COP(IP(l));
+        var propVal=isSocDirec?'Directo':fmtNat(l,IP(l));
         var propCol='var(--grn)';
-        bg3.appendChild(col3('Capital',COP(l.monto),null));
-        bg3.appendChild(col3('Cobrar',COP(IM(l)),'var(--acc)'));
+        bg3.appendChild(col3('Capital',fmtNat(l,l.monto),null,usd?('≈'+COP(montoCOP(l))):null));
+        bg3.appendChild(col3('Cobrar',fmtNat(l,IM(l)),'var(--acc)',usd?('≈'+COP(IMc(l))):null));
         bg3.appendChild(col3('Vence','D'+l.dia+' '+l.mes_fin.slice(0,3)+(l.veces_extendido>0?' 🔄':''),null));
-        bg3.appendChild(col3('Int.Socio',socVal,socCol));
-        bg3.appendChild(col3('Int.Propio',propVal,propCol));
+        bg3.appendChild(col3('Int.Socio',socVal,socCol,(usd&&!isSocDirec)?('≈'+COP(ISc(l))):null));
+        bg3.appendChild(col3('Int.Propio',propVal,propCol,(usd&&!isSocDirec)?('≈'+COP(IPc(l))):null));
         r.appendChild(bg3);
         // ⋮ menu — replaces 4-button action row, added to tr2 (live DOM ref)
         if(l.status==='active'){
@@ -2139,7 +2190,7 @@ function vLoans(){
 // ── VIEW: SOCIOS ──
 function vSocios(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
-  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=montoCOP(l);sm[l.socio].intS+=ISc(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
   var list=[];var sks=Object.keys(sm);for(i=0;i<sks.length;i++){
     // Sort each socio's loans by dia asc (consistent ordering: día 1 first, día 31 last)
     sm[sks[i]].loans.sort(function(a,b){return a.dia-b.dia;});
@@ -2164,8 +2215,8 @@ function vSocios(){
           var pendPagar=0,pendCobrar=0,lpi;
           for(lpi=0;lpi<st2.loans.length;lpi++){
             var ln_c=st2.loans[lpi];
-            if(ln_c.recibido && !ln_c.pagado_socio)pendPagar+=IS(ln_c);   // cliente pagó, yo aún no le pago al socio
-            if(!ln_c.recibido)pendCobrar+=IS(ln_c);                       // cliente aún no me paga
+            if(ln_c.recibido && !ln_c.pagado_socio)pendPagar+=ISc(ln_c);   // cliente pagó, yo aún no le pago al socio
+            if(!ln_c.recibido)pendCobrar+=ISc(ln_c);                       // cliente aún no me paga
           }
           if(pendPagar>0){
             var pp=D(null,{fontSize:'11px',color:'var(--red)',marginTop:'2px'},null);
@@ -2192,9 +2243,9 @@ function vSocios(){
               var lp2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);lp2.textContent='Día '+ln.dia+' '+ln.mes_fin;
               ll.appendChild(lp1);ll.appendChild(lp2);
               var lr2=D(null,{textAlign:'right',flexShrink:'0'},null);
-              var lv1=D('mn',{fontWeight:'600'},null);lv1.textContent=COP(ln.monto);
+              var lv1=D('mn',{fontWeight:'600'},null);lv1.textContent=COP(montoCOP(ln))+(isUSD(ln)?' ('+USD(ln.monto)+')':'');
               var lv2=D(null,{fontSize:'11px',color:isJulian?'var(--grn)':'var(--red)'},null);
-              lv2.textContent=isJulian?'ganancia: '+COP(IP(ln)):COP(IS(ln))+'/mes';
+              lv2.textContent=isJulian?'ganancia: '+COP(IPc(ln)):COP(ISc(ln))+'/mes';
               lr2.appendChild(lv1);lr2.appendChild(lv2);
               lr.appendChild(ll);lr.appendChild(lr2);
               card.appendChild(lr);
@@ -2203,7 +2254,7 @@ function vSocios(){
           var tr2=D(null,{display:'flex',justifyContent:'space-between',padding:'8px 0 4px'},null);
           var tl2=D(null,{color:'var(--mut)',fontSize:'13px'},null);tl2.textContent=isJulian?'Ganancia mensual directa:':'Total a pagarte:';
           var tv2=S('mn',{color:isJulian?'var(--grn)':'var(--red)',fontWeight:'700'},null);
-          var julianTotal=0;if(isJulian){for(var ji=0;ji<st2.loans.length;ji++)julianTotal+=IP(st2.loans[ji]);}
+          var julianTotal=0;if(isJulian){for(var ji=0;ji<st2.loans.length;ji++)julianTotal+=IPc(st2.loans[ji]);}
           tv2.textContent=isJulian?COP(julianTotal):COP(st2.intS);tr2.appendChild(tl2);tr2.appendChild(tv2);card.appendChild(tr2);
           card.appendChild(D('sep',null,null));
           // Image export button
@@ -2280,12 +2331,12 @@ function showSocioExport(name,st2){
 function exportBackupCSV(){
   // Flatten all loans + their payments into rows
   // Columns: 13 loan + 2 concil + 5 pago = 20 total
-  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
+  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,moneda,tasa_cambio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
   var i,j;
   for(i=0;i<ST.loans.length;i++){
     var l=ST.loans[i];
     function esc(v){var s=String(v===undefined||v===null?'':v);return s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0?'"'+s.replace(/"/g,'""')+'"':s;}
-    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0'].map(esc).join(',');
+    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0',l.moneda||'COP',(l.moneda==='USD'?l.tasa_cambio:'')].map(esc).join(',');
     var pagos=l.pagos||[];
     if(pagos.length===0){lines.push(base+',,,,,');}
     else{for(j=0;j<pagos.length;j++){var p=pagos[j];lines.push(base+','+ [p.id,p.tipo,p.monto,p.fecha,p.nota||''].map(esc).join(','));}}
@@ -2373,6 +2424,9 @@ function importBackupCSV(file,onDone){
             // New conciliation fields — default to false if absent in old CSVs
             recibido:gBool(row,'recibido'),
             pagado_socio:gBool(row,'pagado_socio'),
+            // Moneda: ausente en CSVs viejos → COP. USD conserva su tasa_cambio fija.
+            moneda:(g(row,'moneda').trim()==='USD')?'USD':'COP',
+            tasa_cambio:(g(row,'moneda').trim()==='USD')?(gNum(row,'tasa_cambio')||0):null,
             pagos:[]
           };
         }
@@ -2447,19 +2501,19 @@ function getAlerts() {
     var diff = l.dia - TODAY_DIA;
     // Vence HOY
     if (diff === 0) {
-      alerts.push({type:'hoy', loan:l, msg:'HOY — Cobrar a '+l.responsable+': '+COP(IM(l)), color:'var(--acc)', icon:'🔴'});
+      alerts.push({type:'hoy', loan:l, msg:'HOY — Cobrar a '+l.responsable+': '+COP(IMc(l)), color:'var(--acc)', icon:'🔴'});
     }
     // Vence mañana
     else if (diff === 1) {
-      alerts.push({type:'manana', loan:l, msg:'MAÑANA día '+l.dia+' — '+l.responsable+': '+COP(IM(l)), color:'var(--c-amber-txt)', icon:'🟡'});
+      alerts.push({type:'manana', loan:l, msg:'MAÑANA día '+l.dia+' — '+l.responsable+': '+COP(IMc(l)), color:'var(--c-amber-txt)', icon:'🟡'});
     }
     // Vence en 2-3 días
     else if (diff >= 2 && diff <= 3) {
-      alerts.push({type:'pronto', loan:l, msg:'En '+diff+' días (día '+l.dia+') — '+l.responsable+': '+COP(IM(l)), color:'var(--blu)', icon:'🔵'});
+      alerts.push({type:'pronto', loan:l, msg:'En '+diff+' días (día '+l.dia+') — '+l.responsable+': '+COP(IMc(l)), color:'var(--blu)', icon:'🔵'});
     }
     // Vencido (dia < hoy, sin pago)
     else if (diff < 0) {
-      alerts.push({type:'vencido', loan:l, msg:'VENCIDO hace '+Math.abs(diff)+' día'+(Math.abs(diff)!==1?'s':'')+' — '+l.responsable+': '+COP(IM(l)), color:'var(--red)', icon:'⚠️'});
+      alerts.push({type:'vencido', loan:l, msg:'VENCIDO hace '+Math.abs(diff)+' día'+(Math.abs(diff)!==1?'s':'')+' — '+l.responsable+': '+COP(IMc(l)), color:'var(--red)', icon:'⚠️'});
     }
   }
   // Sort: vencido first, hoy, manana, pronto
@@ -2543,7 +2597,7 @@ function buildClienteImage(name, loans, onDone) {
   cW[4] += extra - Math.floor(extra/2);
 
   var totCap=0, totInt=0, i;
-  for(i=0;i<sl.length;i++){totCap+=sl[i].monto; totInt+=IM(sl[i]);}
+  for(i=0;i<sl.length;i++){totCap+=montoCOP(sl[i]); totInt+=IMc(sl[i]);}
 
   var totalPages = Math.ceil(sl.length / MAX_ROWS) || 1;
   var dataUrls = [];
@@ -2562,7 +2616,8 @@ function buildClienteImage(name, loans, onDone) {
     // una línea extra (noteH) para la caption. El conteo de filas por página no cambia.
     var rowH = [], rowsH = 0, rr;
     for(rr=0; rr<rowCount; rr++){
-      var hh0 = isCollectable(sl[startRow+rr]) ? rH : rH + noteH;
+      var _lr = sl[startRow+rr];
+      var hh0 = rH + (isCollectable(_lr)?0:noteH) + (isUSD(_lr)?noteH:0); // +línea por caption (nuevo / USD)
       rowH.push(hh0); rowsH += hh0;
     }
     var ph = hdH + rH + rowsH + totalRowH + footerH; // hd + col-header + rows + total + footer
@@ -2645,7 +2700,7 @@ function buildClienteImage(name, loans, onDone) {
       ctx.fillStyle = '#e8eef4';
       ctx.fillRect(0, rY + hhR - SCALE, pw, SCALE);
 
-      var vals = [String(l.año), String(l.dia), l.mes_fin, COP(l.monto), COP(IM(l))];
+      var vals = [String(l.año), String(l.dia), l.mes_fin, fmtNat(l,l.monto), fmtNat(l,IM(l))];
       var valColors = ['#5a7a8a','#1a2a3a','#1a2a3a','#1a3a5a','#0a6a2a'];
       cx = pad;
       for(var ci3=0;ci3<vals.length;ci3++){
@@ -2658,12 +2713,21 @@ function buildClienteImage(name, loans, onDone) {
         cx += cW[ci3];
       }
 
-      // Caption discreta para préstamos nuevos: le dice al cliente que aún no paga este mes.
+      // Captions apiladas bajo la fila: préstamo nuevo (aún no cobra) y/o denominado en USD.
+      var capY = rY + rH;
       if(nuevo){
         ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
         ctx.fillStyle = '#b06a00';
         ctx.textAlign = 'center';
-        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, rY + rH + noteH*0.60);
+        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, capY + noteH*0.60);
+        capY += noteH;
+      }
+      if(isUSD(l)){
+        ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
+        ctx.fillStyle = '#1a6a9a';
+        ctx.textAlign = 'center';
+        ctx.fillText('💵 En USD (tasa '+COP(l.tasa_cambio)+'/USD) · equivale a '+COP(montoCOP(l))+' capital, '+COP(IMc(l))+' cuota', pw/2, capY + noteH*0.60);
+        capY += noteH;
       }
 
       rY += hhR;
@@ -2735,7 +2799,7 @@ function buildOwnerImage(active, onDone) {
   ctx.font=Math.round(10*sc)+'px -apple-system,sans-serif'; ctx.fillStyle='#5a7a9a';
   ctx.fillText('Julián Jiménez & Dayam Téllez · '+hoyStr(),pad*1.2,pad*1.6+Math.round(22*sc));
   var totGan=0,totSoc=0,totCap=0,i;
-  for(i=0;i<sl.length;i++){totGan+=IP(sl[i]);totSoc+=IS(sl[i]);totCap+=sl[i].monto;}
+  for(i=0;i<sl.length;i++){totGan+=IPc(sl[i]);totSoc+=ISc(sl[i]);totCap+=montoCOP(sl[i]);}
   // KPI row
   var kvY = pad*1.6+Math.round(46*sc);
   var kvs = [['Mi Ganancia/mes',COP(totGan),'#2dd87a'],['Costo Socios',COP(totSoc),'#f04f70'],['Capital Gestión',COP(totCap),'#e9a020']];
@@ -2759,7 +2823,7 @@ function buildOwnerImage(active, onDone) {
     var l=sl[i]; var rY=tY+rH*(i+1);
     ctx.fillStyle=i%2===0?'#0d1e33':'#0a0820'; ctx.fillRect(0,rY,tW,rH);
     ctx.strokeStyle='#2a1a4a'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,rY); ctx.lineTo(tW,rY); ctx.stroke();
-    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(l.monto),COP(IP(l)),IS(l)>0?COP(IS(l)):'—']; cx=pad;
+    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(montoCOP(l)),COP(IPc(l)),IS(l)>0?COP(ISc(l)):'—']; cx=pad;
     for(cIdx=0;cIdx<vals.length;cIdx++){
       ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
       ctx.fillStyle=cIdx===4?'#2dd87a':cIdx===5?'#f04f70':'#d8e8f5'; ctx.textAlign='center';
@@ -2789,7 +2853,7 @@ function showExportModal(mode) {
   for(i=0;i<active.length;i++){
     var l=active[i];
     if(l.responsable){if(!cm[l.responsable])cm[l.responsable]=[];cm[l.responsable].push(l);}
-    if(l.socio){if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=l.monto;sm[l.socio].intS+=IS(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+    if(l.socio){if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=montoCOP(l);sm[l.socio].intS+=ISc(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
   }
   var curMode = mode || 'general';
   // imgPages: null | string (single) | string[] (multi-page cliente)
@@ -2913,7 +2977,7 @@ function clientSemaforo(loans){
 
 function vClientes(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
-  var cm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.responsable)continue;if(!cm[l.responsable])cm[l.responsable]={capital:0,intT:0,count:0,loans:[]};cm[l.responsable].capital+=l.monto;cm[l.responsable].intT+=IM(l);cm[l.responsable].count++;cm[l.responsable].loans.push(l);}
+  var cm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.responsable)continue;if(!cm[l.responsable])cm[l.responsable]={capital:0,intT:0,count:0,loans:[]};cm[l.responsable].capital+=montoCOP(l);cm[l.responsable].intT+=IMc(l);cm[l.responsable].count++;cm[l.responsable].loans.push(l);}
   var list=[];var cks=Object.keys(cm);for(i=0;i<cks.length;i++){cm[cks[i]].loans.sort(function(a,b){return a.dia-b.dia;});list.push([cks[i],cm[cks[i]]]);}list.sort(function(a,b){return b[1].capital-a[1].capital;});
   var w=D(null,null,null);
   var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px;margin-bottom:10px';h2.textContent='Clientes';
@@ -2964,7 +3028,7 @@ function vClientes(){
         if(exp){
           var body=D(null,{borderTop:'1px solid var(--bor)',padding:'8px 12px'},null);
           // Mini-resumen: cobrado / pendiente + próximo cobro este mes
-          var cobM=0,pendM=0,nextDiaM=null,pj;for(pj=0;pj<st2.loans.length;pj++){var lj=st2.loans[pj];if(paidMth(lj))cobM+=IM(lj);else{pendM+=IM(lj);if(nextDiaM===null||lj.dia<nextDiaM)nextDiaM=lj.dia;}}
+          var cobM=0,pendM=0,nextDiaM=null,pj;for(pj=0;pj<st2.loans.length;pj++){var lj=st2.loans[pj];if(paidMth(lj))cobM+=IMc(lj);else{pendM+=IMc(lj);if(nextDiaM===null||lj.dia<nextDiaM)nextDiaM=lj.dia;}}
           var mini=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'10px'},null);
           var mK1=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'7px',padding:'7px 10px'},null);var mK1l=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'},null);mK1l.textContent='Cobrado mes';var mK1v=D('mn',{fontSize:'14px',fontWeight:'700',color:'var(--grn)'},null);mK1v.textContent=COP(cobM);mK1.appendChild(mK1l);mK1.appendChild(mK1v);
           var mK2=D(null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'7px',padding:'7px 10px'},null);var mK2l=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'2px'},null);mK2l.textContent='Pendiente mes';var mK2v=D('mn',{fontSize:'14px',fontWeight:'700',color:pendM>0?'var(--acc)':'var(--grn)'},null);mK2v.textContent=COP(pendM);var mK2s=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'2px'},null);mK2s.textContent=nextDiaM?'Próx. día '+nextDiaM:'Al día ✓';mK2.appendChild(mK2l);mK2.appendChild(mK2v);mK2.appendChild(mK2s);
@@ -2978,8 +3042,8 @@ function vClientes(){
               var lp2=S(null,{fontSize:'11px',color:'var(--mut)'},null);lp2.textContent='Día '+ln.dia+' '+ln.mes_fin+' · '+ln.socio;
               ll.appendChild(lp1);ll.appendChild(lp2);
               var lr2=D(null,{textAlign:'right'},null);
-              var lv1=D('mn',{fontSize:'11px',fontWeight:'600'},null);lv1.textContent=COP(ln.monto);
-              var lv2=D(null,{fontSize:'10px',color:'var(--blu)'},null);lv2.textContent=COP(IM(ln))+'/mes';
+              var lv1=D('mn',{fontSize:'11px',fontWeight:'600'},null);lv1.textContent=fmtNat(ln,ln.monto);
+              var lv2=D(null,{fontSize:'10px',color:'var(--blu)'},null);lv2.textContent=(isUSD(ln)?USD(IM(ln)):COP(IM(ln)))+'/mes';
               lr2.appendChild(lv1);lr2.appendChild(lv2);
               lr.appendChild(ll);lr.appendChild(lr2);body.appendChild(lr);
             })(st2.loans[pi4],pi4);
@@ -3401,12 +3465,12 @@ function gdriveGetFolder(){
 
 // ── Build the CSV string (reuses logic from exportBackupCSV without triggering download) ──
 function gdriveBuildCSV(){
-  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
+  var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,moneda,tasa_cambio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
   var i,j;
   for(i=0;i<ST.loans.length;i++){
     var l=ST.loans[i];
     function esc(v){var s=String(v===undefined||v===null?'':v);return s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\n')>=0?'"'+s.replace(/"/g,'""')+'"':s;}
-    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0'].map(esc).join(',');
+    var base=[l.id,l.año,l.dia,l.mes_fin,l.monto,l.socio,l.int_socio,l.int_propio,l.responsable,l.mes_comienzo,l.status,l.nota||'',l.created_at||'',l.recibido?'1':'0',l.pagado_socio?'1':'0',l.moneda||'COP',(l.moneda==='USD'?l.tasa_cambio:'')].map(esc).join(',');
     var pagos=l.pagos||[];
     if(pagos.length===0){lines.push(base+',,,,,');}
     else{for(j=0;j<pagos.length;j++){var p=pagos[j];lines.push(base+','+ [p.id,p.tipo,p.monto,p.fecha,p.nota||''].map(esc).join(','));}}
