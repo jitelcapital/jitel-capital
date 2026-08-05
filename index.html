@@ -3266,7 +3266,7 @@ function renderContent(){
 }
 function renderApp(){
   var active=0,totCap=0,i;
-  for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active'){active++;totCap+=ST.loans[i].monto;}}
+  for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active'){active++;totCap+=montoCOP(ST.loans[i]);}}
   document.getElementById('tsub').textContent=active+' activos · '+COP(totCap);
   // Update bell badge — reuse active count already computed above, alerts only re-evals pagos
   var alBtn=document.getElementById('btn-alerts');
