@@ -86,6 +86,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     if(inicio)return 'Desde '+inicio;
     return '';
   }
+  // ── Cuotas arrastradas (loan.cuotas_pendientes, del reinicio mensual) ──
+  // Este portal no tiene acceso a ST.archives (solo lee `prestamos` de Firestore), así que a
+  // diferencia de index.html no puede verificar un pago ya archivado — usa el flag `recibido`
+  // de la propia cuota, que la app mantiene al día (foto al cerrar el mes, o al registrar el
+  // pago tardío desde "Pendientes del mes anterior"). Resuelta = cobrada Y ya girada al socio.
+  function cuotaResuelta(l,cuota){return !!cuota.recibido&&!!cuota.pagado_socio;}
   // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive
   function monthsElapsed(mesComienzo,uptoMk){
     if(!mesComienzo||!uptoMk)return 0;
@@ -374,6 +380,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     }
     var pct=totalInt>0?Math.round((cobrado/totalInt)*100):0;
 
+    // Pendiente de girarle de MESES ANTERIORES (cuotas_pendientes sin resolver, del reinicio
+    // mensual) — aparte del "Pendiente" de este mes, que es solo del periodo actual.
+    var pendienteAnterior=0,pai;
+    for(pai=0;pai<loans.length;pai++){
+      var lp=loans[pai],cps=lp.cuotas_pendientes||[],ci;
+      for(ci=0;ci<cps.length;ci++){if(!cuotaResuelta(lp,cps[ci]))pendienteAnterior+=montoCOP(lp)*(lp.int_socio||0);}
+    }
+
     // ── KPIs ──
     var c1=el('div','card',null,null);
     c1.appendChild(el('div','sec-title',null,'💼 Tu cartera'));
@@ -405,6 +419,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     er2.appendChild(el('div','mn',{color:'var(--red)',fontWeight:'700'},COP(pendiente)));
     c2.appendChild(er2);
     c2.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},pct+'% cobrado — total mes '+COP(totalInt)));
+    if(pendienteAnterior>0){
+      var erAnt=el('div','estado-row',{marginTop:'8px',paddingTop:'8px',borderTop:'1px solid var(--bor)'},null);
+      erAnt.appendChild(el('div','estado-lbl',null,'📦 Pendiente de girarte (meses anteriores)'));
+      erAnt.appendChild(el('div','mn',{color:'var(--red)',fontWeight:'700'},COP(pendienteAnterior)));
+      c2.appendChild(erAnt);
+    }
     G.appendChild(c2);
 
     // ── Tu cartera con JiTel (todos los socios, cada uno con sus propios datos) ──

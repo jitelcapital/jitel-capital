@@ -219,16 +219,49 @@ function dualMoney(l,amtNativo,css){
 // Unified Julian detection: a loan is "direct to owner" when int_socio is 0 AND socio is JULIAN.
 // This prevents false positives (otro socio with 0% by mistake) and false negatives (typo in name).
 function isJulianLoan(l){return (+l.int_socio===0)&&(l.socio||'').toUpperCase()==='JULIAN';}
-function paidMth(l){
-  var p=l.pagos||[],i,tm=TODAY.getMonth(),ty=TODAY.getFullYear();
-  for(i=0;i<p.length;i++){var d=parseLocalDate(p[i].fecha);if(d&&d.getMonth()===tm&&d.getFullYear()===ty)return true;}
+// ── PERIODO DE UN PAGO ('YYYY-MM', el mes de la CUOTA, no necesariamente el mes en que se
+// registra) — permite pagos tardíos (ej. cuota de día 31 registrada el día 2 del mes siguiente)
+// sin que se pierdan ni se cuenten en el mes equivocado. Pagos existentes sin periodo (guardados
+// antes de esta funcionalidad) usan el mes de su fecha — compatibilidad total. ──
+function mkFromFecha(fecha){var d=parseLocalDate(fecha);return d?(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')):null;}
+function pagoPeriodo(pago){return pago.periodo||mkFromFecha(pago.fecha);}
+// Revisa l.pagos (mes en curso) Y ST.archives[periodo][l.id] — el reinicio mensual VACÍA
+// l.pagos de préstamos activos tras archivar, así que un periodo ya cerrado solo puede
+// verificarse contra el archivo (salvo pagos tardíos, que además se re-agregan ahí mismo).
+function hasPagoForPeriodo(l,periodo){
+  var p=l.pagos||[],i;
+  for(i=0;i<p.length;i++){if(pagoPeriodo(p[i])===periodo)return true;}
+  var arc=ST.archives&&ST.archives[periodo]&&ST.archives[periodo][l.id];
+  if(arc){for(i=0;i<arc.length;i++){if(pagoPeriodo(arc[i])===periodo)return true;}}
   return false;
 }
-// isCollectable(l) — true si el préstamo YA entra en el ciclo de cobro de ESTE mes.
-// Misma regla usada como filtro en vCobros: un préstamo con mes_comienzo >= CURR_MK se
-// creó este mismo mes (o después), así que su primer cobro es el mes siguiente y todavía
-// NO es cobrable. Sin mes_comienzo se asume cobrable (préstamos antiguos). Fuente única.
-function isCollectable(l){return !(l.mes_comienzo&&l.mes_comienzo>=CURR_MK);}
+// Mes anterior a 'YYYY-MM' en el mismo formato.
+function prevMk(mk){var p=(mk+'').split('-');var y=parseInt(p[0],10),m=parseInt(p[1],10)-1;if(m<1){m=12;y--;}return y+'-'+(m<10?'0'+m:String(m));}
+// Nombre de mes en minúscula a partir de 'YYYY-MM' (ej. '2026-09' → 'septiembre'), para prosa.
+function mesNombreLargo(mk){if(!mk)return'';var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return(MESES[mo]||'').toLowerCase();}
+// Una cuota arrastrada {periodo,recibido,pagado_socio} está resuelta cuando ya hay un pago
+// registrado para ese periodo Y (ya se giró al socio, o el préstamo es directo de Julián).
+function cuotaResuelta(l,cuota){return hasPagoForPeriodo(l,cuota.periodo)&&(cuota.pagado_socio||isJulianLoan(l));}
+// Cuotas arrastradas SIN resolver de un préstamo (compatibilidad: [] si no existe el campo).
+function cuotasSinResolver(l){var cps=l.cuotas_pendientes||[],i,out=[];for(i=0;i<cps.length;i++){if(!cuotaResuelta(l,cps[i]))out.push(cps[i]);}return out;}
+// Periodo por defecto al abrir el formulario de un pago: el de la cuota arrastrada sin resolver
+// más antigua de ese préstamo si existe; si no, el mes actual.
+function defaultPeriodoParaPago(l){
+  var pend=cuotasSinResolver(l),i,oldest=null;
+  for(i=0;i<pend.length;i++){if(oldest===null||pend[i].periodo<oldest)oldest=pend[i].periodo;}
+  return oldest||CURR_MK;
+}
+function paidMth(l){
+  var p=l.pagos||[],i;
+  for(i=0;i<p.length;i++){if(pagoPeriodo(p[i])===CURR_MK)return true;}
+  return false;
+}
+// isCollectableFor(l,mk) — true si el préstamo YA entra en el ciclo de cobro del mes 'mk'.
+// Un préstamo con mes_comienzo >= mk se creó ese mismo mes (o después), así que su primer
+// cobro es el mes siguiente y todavía NO es cobrable. Sin mes_comienzo se asume cobrable
+// (préstamos antiguos). Fuente única — isCollectable(l) es el atajo para el mes actual.
+function isCollectableFor(l,mk){return !(l.mes_comienzo&&l.mes_comienzo>=mk);}
+function isCollectable(l){return isCollectableFor(l,CURR_MK);}
 function findLoanById(id){var i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].id===id)return ST.loans[i];}return null;}
 // ── Cierre de préstamo: cálculo de meses activo / intereses de socio (mismo criterio que socio.html) ──
 // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive.
@@ -427,8 +460,9 @@ function mkCpBtn(msg){var b=mk('button','cp',null,null);b.textContent='📋 Copi
 function mkWaBtn(msg,css){return BTN('bw','📲 WhatsApp',function(){window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');},css||null);}
 
 // ── MESSAGES ──
-function waSocioMsg(name,dia,amt,fecha){
-  return 'Hola '+name+' 👋\n\nSe realizó el pago de intereses del día '+dia+':\n💰 Monto girado: '+COP(amt)+'\n📅 Fecha: '+fecha+'\n\n✅ Todo en orden. Confirma recibo 🙏';
+function waSocioMsg(name,dia,amt,fecha,periodo){
+  var cuotaTxt=(periodo&&periodo!==CURR_MK)?(' (cuota de '+mesNombreLargo(periodo)+')'):'';
+  return 'Hola '+name+' 👋\n\nSe realizó el pago de intereses del día '+dia+cuotaTxt+':\n💰 Monto girado: '+COP(amt)+'\n📅 Fecha: '+fecha+'\n\n✅ Todo en orden. Confirma recibo 🙏';
 }
 function waRegMsg(dia,loans,fecha){
   var tc=0,ts=0,gn=0,i;
@@ -692,7 +726,8 @@ function buildGeneralImage(loans,onDone){
 }
 
 // ── WA NOTIFY MODAL ──
-function showWaModal(paidLoans,dia){
+function showWaModal(paidLoans,dia,periodo){
+  periodo=periodo||CURR_MK;
   var fecha=hoyStr();
   var sm={},i,l;
   for(i=0;i<paidLoans.length;i++){l=paidLoans[i];if(!l.socio||IS(l)===0)continue;if(!sm[l.socio])sm[l.socio]={name:l.socio,loans:[],total:0};sm[l.socio].loans.push(l);sm[l.socio].total+=ISc(l);}
@@ -701,7 +736,8 @@ function showWaModal(paidLoans,dia){
   function render(){
     var m=D('modal',null,null);
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
-    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';h2.textContent='✅ Pago Registrado — Día '+dia;
+    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';
+    h2.textContent='✅ Pago Registrado — Día '+dia+(periodo!==CURR_MK?' (cuota de '+mesNombreLargo(periodo)+')':'');
     var hs=D(null,{color:'var(--mut)',fontSize:'13px'},null);hs.textContent='Cobrado: ';var hv=S('mn',{color:'var(--acc)',fontWeight:'700'},null);hv.textContent=COP(tc);hs.appendChild(hv);
     hdr.appendChild(D(null,null,[h2,hs]));hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
     var sb=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
@@ -722,7 +758,7 @@ function showWaModal(paidLoans,dia){
       var socLbl=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'1px'},null);socLbl.textContent='Notificar a socios';m.appendChild(socLbl);
       for(var si=0;si<sns.length;si++){
         (function(sn,sv){
-          var msg=waSocioMsg(sn,dia,sv.total,fecha);
+          var msg=waSocioMsg(sn,dia,sv.total,fecha,periodo);
           var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'10px'},null);
           var srow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
           var stxt=D(null,null,null);
@@ -838,7 +874,7 @@ function showCloseMessagesModal(loan){
 // ── LOAN DETAIL ──
 function showLoanDetail(lid){
   var spay=false,sext=false;
-  var pm='',ptyp='interes',pfec=isoToday(),pnot='';
+  var pm='',ptyp='interes',pfec=isoToday(),pnot='',pperiodo='';
   var ed=null,initE=false,cur=null;
   function render(){
     var loan=null,i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].id===lid){loan=ST.loans[i];break;}}
@@ -847,6 +883,7 @@ function showLoanDetail(lid){
     var ab=0;var pg=loan.pagos||[];for(i=0;i<pg.length;i++){if(pg[i].tipo!=='interes')ab+=pg[i].monto;}
     if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:'',int_socio:loan.int_socio,int_propio:loan.int_propio};initE=true;}
     if(!pm)pm=String(Math.round(IMc(loan))); // el pago se registra en COP (equivalente para USD)
+    if(!pperiodo)pperiodo=defaultPeriodoParaPago(loan); // cuota arrastrada sin resolver más antigua, o el mes actual
     var m=D('modal',null,null);
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
     var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:18px';h2.textContent=loan.responsable;
@@ -996,18 +1033,35 @@ function showLoanDetail(lid){
         var mIn=INP({type:'number',value:pm,placeholder:String(Math.round(IMc(loan)))});mIn.addEventListener('input',function(e){pm=e.target.value;});
         var dtIn=INP({type:'date',value:pfec});dtIn.addEventListener('change',function(e){pfec=e.target.value;});
         pd.appendChild(R2(FLD('Monto recibido (COP)',mIn),FLD('Fecha',dtIn)));
+        var perIn=INP({type:'month',value:pperiodo});perIn.addEventListener('change',function(e){pperiodo=e.target.value;refresh();});
+        pd.appendChild(FLD('Cuota de (periodo)',perIn));
+        if(pperiodo&&pperiodo!==CURR_MK){var perHint=D(null,{fontSize:'11px',color:'var(--acc)',marginTop:'-6px',marginBottom:'10px'},null);perHint.textContent='📌 Este pago se registrará como la cuota de '+mesNombreLargo(pperiodo)+', no la de este mes.';pd.appendChild(perHint);}
         if(isUSD(loan)){var usdRef=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'-6px',marginBottom:'10px',lineHeight:'1.5'},null);usdRef.textContent='💵 En USD se cobra '+USD(iM)+' (tasa '+COP(loan.tasa_cambio)+'/USD). El monto se registra en COP: puedes ajustarlo si recibiste algo distinto.';pd.appendChild(usdRef);}
         var notIn=INP({type:'text',placeholder:'Transferencia, efectivo...',value:pnot});notIn.addEventListener('input',function(e){pnot=e.target.value;});
         pd.appendChild(FLD('Nota',notIn));
         var pbtns=D(null,{display:'flex',gap:'8px'},null);
         pbtns.appendChild(BTN('ba','💾 Guardar Pago',function(){
           var mv=parseFloat(pm);if(!mv||mv<=0){alert('Ingresa un monto válido');return;}
-          var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,nota:pnot}; // monto siempre en COP (lo recibido)
+          var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,periodo:pperiodo||CURR_MK,nota:pnot}; // monto siempre en COP (lo recibido)
           if(isUSD(loan)&&ptyp==='interes')pago.monto_usd=Math.round(iM); // referencia en USD nativo
-          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];var np=(x.pagos||[]).slice();np.push(pago);c.pagos=np;c.status=pago.tipo==='total'?'paid':x.status;nl.push(c);}else nl.push(x);}
-          ST.loans=nl;saveST();pm=String(Math.round(IMc(loan)));ptyp='interes';pfec=isoToday();pnot='';spay=false;
+          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];var np=(x.pagos||[]).slice();np.push(pago);c.pagos=np;c.status=pago.tipo==='total'?'paid':x.status;
+            // Si el periodo pagado corresponde a una cuota arrastrada, marcarla recibida (mismo
+            // criterio que doPagoFlow: registrar el pago auto-marca "Cobré").
+            if(Array.isArray(c.cuotas_pendientes)){
+              c.cuotas_pendientes=c.cuotas_pendientes.map(function(cu){if(cu.periodo===pago.periodo&&!cu.recibido){var cc={};for(var k2 in cu)cc[k2]=cu[k2];cc.recibido=true;return cc;}return cu;});
+            }
+            // Si el periodo ya está archivado (mes cerrado), el pago también se agrega a ese
+            // archivo para que el historial de ese mes quede completo.
+            if(ST.archives&&ST.archives[pago.periodo]){
+              var arcCopy={};for(var ak in ST.archives)arcCopy[ak]=ST.archives[ak];
+              var arcMonth={};for(var ak2 in arcCopy[pago.periodo])arcMonth[ak2]=arcCopy[pago.periodo][ak2];
+              arcMonth[x.id]=(arcMonth[x.id]||[]).concat([pago]);
+              arcCopy[pago.periodo]=arcMonth;ST.archives=arcCopy;
+            }
+            nl.push(c);}else nl.push(x);}
+          ST.loans=nl;saveST();pm=String(Math.round(IMc(loan)));ptyp='interes';pfec=isoToday();pnot='';pperiodo='';spay=false;
           refresh();renderApp();
-          if(pago.tipo==='interes'){var ln2=null,jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id===lid){ln2=ST.loans[jj];break;}}if(ln2)showWaModal([ln2],ln2.dia);}
+          if(pago.tipo==='interes'){var ln2=null,jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id===lid){ln2=ST.loans[jj];break;}}if(ln2)showWaModal([ln2],ln2.dia,pago.periodo);}
         },{flex:'1'}));
         pbtns.appendChild(BTN('bh','Cancelar',function(){spay=false;refresh();},null));
         pd.appendChild(pbtns);m.appendChild(pd);
@@ -1175,7 +1229,7 @@ function showNewLoan(prefill){
     // el actual o anterior, marcar este mes como pagado para que el primer cobro real
     // sea el mes siguiente. Se inserta un pago simbólico que satisface paidMth().
     if(fd<=TODAY_DIA&&(!fmc||fmc<=CURR_MK)){
-      var _apM={id:GID(),tipo:'interes',monto:Math.round(IMc(l)),fecha:isoToday(),nota:'Mes de apertura'};
+      var _apM={id:GID(),tipo:'interes',monto:Math.round(IMc(l)),fecha:isoToday(),periodo:CURR_MK,nota:'Mes de apertura'};
       if(isUSD(l))_apM.monto_usd=Math.round(IM(l));
       l.pagos=[_apM];
       l.recibido=true;
@@ -1205,31 +1259,86 @@ function buildSociosSnapshot(){
   return snap;
 }
 
+// Préstamos activos y cobrables en el mes 'mk' cuya cuota de ese periodo sigue sin resolver
+// (sin pago registrado, o pagado por el cliente pero aún sin girar al socio). Se usa tanto para
+// la vista previa antes de confirmar el reinicio como para generar el arrastre real.
+function loansPendientesParaCierre(mk){
+  var out=[],i;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    if(l.status!=='active'||!isCollectableFor(l,mk))continue;
+    var tienePago=hasPagoForPeriodo(l,mk);
+    var girado=!!l.pagado_socio||isJulianLoan(l);
+    if(!tienePago||!girado)out.push({loan:l,tienePago:tienePago,girado:girado});
+  }
+  return out;
+}
+// Genera, para cada préstamo con cuota sin resolver del mes 'mk', un registro en
+// cuotas_pendientes con el estado ACTUAL de recibido/pagado_socio (mutación directa sobre
+// ST.loans — seguro aquí porque doReset reconstruye ST.loans completo justo después, sin
+// render de por medio). Idempotente: si ya existía un registro de ese periodo, lo reemplaza.
+function generarArrastrePendientes(mk){
+  var pendientes=loansPendientesParaCierre(mk),i;
+  for(i=0;i<pendientes.length;i++){
+    var l=pendientes[i].loan;
+    var cps=(l.cuotas_pendientes||[]).filter(function(c){return c.periodo!==mk;});
+    cps.push({id:GID(),periodo:mk,recibido:!!l.recibido,pagado_socio:!!l.pagado_socio});
+    l.cuotas_pendientes=cps;
+  }
+}
+
 // ── RESET ──
 function showReset(){
   var step=1;var cur=null;
+  // Sugerido: el mes anterior si hoy es del día 1 al 5 (pagos tardíos de fin de mes aún sin
+  // registrar); si no, el mes actual.
+  var mesElegido=(TODAY_DIA<=5)?prevMk(CURR_MK):CURR_MK;
   function render(){
     var m=D('modal',null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);margin-bottom:14px';h2.textContent='🔄 Reinicio Mensual';m.appendChild(h2);
     if(step===1){
       var info=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'14px',marginBottom:'14px',lineHeight:'1.8'},null);
       var it=D(null,{color:'var(--blu)',fontWeight:'600',marginBottom:'8px'},null);it.textContent='¿Qué hace el reinicio?';
-      [it,D(null,null,['✅ Archiva registros del mes '+CURR_MK]),D(null,null,['✅ Limpia pagos mensuales de préstamos activos']),D(null,null,['✅ Deja todo listo para el nuevo mes']),D(null,{marginTop:'8px',fontSize:'12px',color:'var(--mut)'},['Los préstamos no se borran.'])].forEach(function(x){info.appendChild(x);});
+      [it,D(null,null,['✅ Archiva registros del mes elegido']),D(null,null,['✅ Limpia pagos mensuales de préstamos activos']),D(null,null,['✅ Deja todo listo para el nuevo mes']),D(null,{marginTop:'8px',fontSize:'12px',color:'var(--mut)'},['Los préstamos no se borran.'])].forEach(function(x){info.appendChild(x);});
       m.appendChild(info);
+      var mkIn=INP({type:'month',value:mesElegido});mkIn.addEventListener('change',function(e){mesElegido=e.target.value;});
+      m.appendChild(FLD('Mes a cerrar',mkIn));
       var brow=D(null,{display:'flex',gap:'8px'},null);brow.appendChild(BTN('ba','Continuar →',function(){step=2;refresh();},null));brow.appendChild(BTN('bh','Cancelar',closeModal,null));m.appendChild(brow);
     } else {
       var warn=D(null,{background:'var(--c-warn-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'14px',marginBottom:'14px'},null);
       warn.appendChild(D(null,{color:'var(--red)',fontWeight:'700',marginBottom:'8px'},'⚠️ Confirma el reinicio'));
-      warn.appendChild(D(null,null,'Se archivará el mes '+CURR_MK+'. No se puede deshacer.'));
+      warn.appendChild(D(null,null,'Se archivará el mes '+mesElegido+'. No se puede deshacer.'));
       m.appendChild(warn);
+      var pend=loansPendientesParaCierre(mesElegido);
+      if(pend.length>0){
+        var pTtl=D(null,{fontSize:'12px',fontWeight:'700',color:'var(--acc)',marginBottom:'8px'},null);
+        pTtl.textContent='⏳ '+pend.length+' cuota'+(pend.length!==1?'s':'')+' de '+mesNombreLargo(mesElegido)+' sin cobrar o sin girar:';
+        m.appendChild(pTtl);
+        var pList=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px',maxHeight:'180px',overflowY:'auto'},null);
+        for(var pi=0;pi<pend.length;pi++){
+          var pr=pend[pi];
+          var prow=D(null,{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:pi<pend.length-1?'1px solid var(--bor)':'none',fontSize:'12px'},null);
+          var prL=D(null,{color:'var(--mut)'},null);prL.textContent=(pr.loan.socio||'—')+' · '+pr.loan.responsable;
+          var prR=D(null,{textAlign:'right',color:pr.tienePago?'var(--acc)':'var(--red)'},null);
+          prR.textContent=pr.tienePago?'Falta girar':'Sin cobrar';
+          prow.appendChild(prL);prow.appendChild(prR);pList.appendChild(prow);
+        }
+        m.appendChild(pList);
+        var pNote=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'-8px',marginBottom:'14px'},null);
+        pNote.textContent='Estas cuotas pasarán a "Pendientes del mes anterior" en Cobros.';
+        m.appendChild(pNote);
+      }
       var brow2=D(null,{display:'flex',gap:'8px'},null);
       brow2.appendChild(BTN('br','Sí, reiniciar mes',function(){
         function doReset(){
-          // Foto mensual por socio del mes que se cierra — ANTES de tocar nada más.
+          var mk=mesElegido;
+          // Arrastre de cuotas sin resolver del mes que se cierra — ANTES de tocar nada más.
+          generarArrastrePendientes(mk);
+          // Foto mensual por socio del mes que se cierra.
           if(!ST.snapshots)ST.snapshots={};
-          ST.snapshots[CURR_MK]=buildSociosSnapshot();
+          ST.snapshots[mk]=buildSociosSnapshot();
           // Archive current month's pagos for ALL loans (active + paid)
           var arc={},j;for(j=0;j<ST.loans.length;j++)arc[ST.loans[j].id]=(ST.loans[j].pagos||[]).slice();
-          if(!ST.archives)ST.archives={};ST.archives[CURR_MK]=arc;
+          if(!ST.archives)ST.archives={};ST.archives[mk]=arc;
           // Only clear pagos on ACTIVE loans — paid/closed loans keep their full history
           // Also reset conciliation flags (recibido / pagado_socio) for active loans.
           var nl=[];for(j=0;j<ST.loans.length;j++){
@@ -1239,13 +1348,13 @@ function showReset(){
             nl.push(c);
           }
           ST.loans=nl;saveST();closeModal();renderApp();
-          showToast('✅ Mes '+CURR_MK+' archivado');
+          showToast('✅ Mes '+mk+' archivado');
         }
         // Si ya existe una foto mensual para este mes, no sobrescribirla sin confirmar aparte.
-        if(ST.snapshots&&ST.snapshots[CURR_MK]){
+        if(ST.snapshots&&ST.snapshots[mesElegido]){
           showConfirm({
             title:'¿Sobrescribir foto del mes?',
-            msg:'Ya existe una foto mensual por socio para '+CURR_MK+'. Reiniciar el mes la reemplazará.',
+            msg:'Ya existe una foto mensual por socio para '+mesElegido+'. Reiniciar el mes la reemplazará.',
             confirmLbl:'Sí, sobrescribir',
             danger:true,
             onConfirm:doReset
@@ -1497,6 +1606,40 @@ function conciliBtn(ln,field,iconLbl){
   });
   return b;
 }
+// Igual que conciliBtn, pero para una cuota arrastrada específica de un préstamo (loan.cuotas_pendientes,
+// identificada por su id) — independiente de recibido/pagado_socio del mes actual del préstamo.
+function conciliBtnCuota(loan,cuotaId,field,iconLbl){
+  var cuota=(loan.cuotas_pendientes||[]).filter(function(c){return c.id===cuotaId;})[0]||{};
+  var active=!!cuota[field];
+  var b=document.createElement('button');b.type='button';
+  function applyStyle(){
+    b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
+      (active
+        ? 'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)'
+        : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
+    b.textContent=(active?'✓ ':'○ ')+iconLbl;
+  }
+  applyStyle();
+  b.addEventListener('click',function(e){
+    e.stopPropagation();
+    var nl=[],i;
+    for(i=0;i<ST.loans.length;i++){
+      var x=ST.loans[i];
+      if(x.id===loan.id){
+        var c={};for(var k in x)c[k]=x[k];
+        c.cuotas_pendientes=(x.cuotas_pendientes||[]).map(function(cu){
+          if(cu.id!==cuotaId)return cu;
+          var cc={};for(var k2 in cu)cc[k2]=cu[k2];cc[field]=!cc[field];cuota=cc;return cc;
+        });
+        nl.push(c);
+      }else nl.push(x);
+    }
+    ST.loans=nl;saveST();
+    active=!!cuota[field];
+    applyStyle();
+  });
+  return b;
+}
 
 // Creates a checkbox button wired to sumToggle. Initial state read from current scope.
 function sumCheckbox(loanId){
@@ -1577,7 +1720,7 @@ function doPagoFlow(loansOrLoan,dia,isBatch){
       var x=ST.loans[jj];
       if(pids[x.id]){
         var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();
-        var _pg={id:GID(),tipo:'interes',monto:Math.round(IMc(x)),fecha:isoToday(),nota:'Interés día '+dia}; // COP (equivalente para USD)
+        var _pg={id:GID(),tipo:'interes',monto:Math.round(IMc(x)),fecha:isoToday(),periodo:CURR_MK,nota:'Interés día '+dia}; // COP (equivalente para USD)
         if(isUSD(x))_pg.monto_usd=Math.round(IM(x));
         c.pagos.push(_pg);
         c.recibido=true; // auto-marcar recibido al registrar pago
@@ -1804,6 +1947,21 @@ function vCobros(){
   for(i=0;i<active.length;i++){if(paidMth(active[i]))myPaid+=IPc(active[i]);else myPending+=IPc(active[i]);}
   var pct=tm>0?Math.round(tc/tm*100):0;
 
+  // ── Cuotas arrastradas de meses anteriores (loan.cuotas_pendientes sin resolver) ──
+  // Separadas por completo de los KPIs del mes actual (Total mes/Cobrado/Mi cuenta), que solo
+  // cuentan cuotas del periodo actual (arriba, basados en `active`/`groups`/paidMth).
+  var arrastre=[],ai;
+  for(ai=0;ai<ST.loans.length;ai++){
+    var la=ST.loans[ai],sinResolver=cuotasSinResolver(la),aj;
+    for(aj=0;aj<sinResolver.length;aj++)arrastre.push({loan:la,cuota:sinResolver[aj]});
+  }
+  var arrTotalCobrado=0,arrTotalPend=0,arrCountPend=0;
+  for(ai=0;ai<arrastre.length;ai++){
+    var itA=arrastre[ai];
+    if(hasPagoForPeriodo(itA.loan,itA.cuota.periodo))arrTotalCobrado+=IMc(itA.loan);
+    else{arrTotalPend+=IMc(itA.loan);arrCountPend++;}
+  }
+
   // helper: urgency class for a day group
   // A day group is 'vencido' only if its dia < TODAY_DIA — meaning it was due earlier THIS month.
   // Loans due in a future month (mes_fin) are never vencido regardless of dia.
@@ -1834,6 +1992,7 @@ function vCobros(){
   var pendGroups=[];
   var accPendTot=0,accPendCnt=0,api;
   for(api=0;api<active.length;api++){if(!paidMth(active[api])){accPendTot+=IMc(active[api]);accPendCnt++;}}
+  accPendTot+=arrTotalPend;accPendCnt+=arrCountPend; // incluye cuotas arrastradas sin cobrar
   if(accPendCnt>0){
     var pbn=D(null,{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',background:'var(--c-danger-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'},null);
     var pbnL=D(null,{flex:'1',minWidth:'0'},null);
@@ -1849,6 +2008,88 @@ function vCobros(){
   }
 
   w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups);},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
+
+  // ── PENDIENTES DEL MES ANTERIOR (cuotas arrastradas, agrupadas por periodo y día) ──
+  if(arrastre.length>0){
+    var amSec=D(null,{marginBottom:'16px'},null);
+    var amTtl=D(null,{fontSize:'15px',fontWeight:'700',color:'var(--acc)',marginBottom:'8px'},null);
+    amTtl.textContent='📦 Pendientes del mes anterior';amSec.appendChild(amTtl);
+    var amKg=D(null,{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'},null);
+    amKg.appendChild(mkKpi('COBRADO ANTES',COP(arrTotalCobrado),'var(--grn)',null));
+    amKg.appendChild(mkKpi('PENDIENTE ANTES',COP(arrTotalPend),'var(--red)',arrCountPend+' cuota'+(arrCountPend!==1?'s':'')));
+    amSec.appendChild(amKg);
+    // Agrupar por periodo (más reciente primero) → por día (asc)
+    var byPeriodo={},periodos=[],api2;
+    for(api2=0;api2<arrastre.length;api2++){
+      var perA=arrastre[api2].cuota.periodo;
+      if(!byPeriodo[perA]){byPeriodo[perA]=[];periodos.push(perA);}
+      byPeriodo[perA].push(arrastre[api2]);
+    }
+    periodos.sort(function(a,b){return b.localeCompare(a);});
+    for(var pki=0;pki<periodos.length;pki++){
+      (function(per){
+        var items=byPeriodo[per].slice().sort(function(a,b){return a.loan.dia-b.loan.dia;});
+        var perBox=D(null,{marginBottom:'10px'},null);
+        var perHdr=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'1px'},null);
+        perHdr.textContent=mesNombreLargo(per)+' '+per.split('-')[0];perBox.appendChild(perHdr);
+        for(var ii=0;ii<items.length;ii++){
+          (function(item){
+            var loan=item.loan,cuota=item.cuota;
+            var tienePago=hasPagoForPeriodo(loan,cuota.periodo);
+            var row=D(null,{background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',overflow:'hidden'},null);
+            var topZ=D(null,{display:'flex',alignItems:'stretch',padding:'10px',gap:'10px'},null);
+            var zInfo=D(null,{flex:'1',cursor:'pointer',minWidth:'0',display:'flex',flexDirection:'column',justifyContent:'center'},null);
+            zInfo.addEventListener('click',function(){showLoanDetail(loan.id);});
+            var l1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)',marginBottom:'1px'},null);l1.textContent=loan.socio||'—';
+            var l2=D(null,{fontSize:'11px',color:'var(--mut)'},null);l2.textContent='Día '+loan.dia+' · '+loan.responsable;
+            var l3=S(null,{fontSize:'10px',color:tienePago?'var(--acc)':'var(--red)'},null);l3.textContent=tienePago?'Falta girar al socio':'Sin cobrar';
+            zInfo.appendChild(l1);zInfo.appendChild(l2);zInfo.appendChild(l3);
+            var zAct=D(null,{display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',gap:'6px',flexShrink:'0',minWidth:'95px'},null);
+            var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IMc(loan));
+            zAct.appendChild(lamt);
+            if(!tienePago){
+              zAct.appendChild(BTN('ba','Registrar pago',function(){
+                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(loan)),fecha:isoToday(),periodo:cuota.periodo,nota:'Interés cuota arrastrada de '+mesNombreLargo(cuota.periodo)};
+                if(isUSD(loan))pago.monto_usd=Math.round(IM(loan));
+                var nl=[],jj;
+                for(jj=0;jj<ST.loans.length;jj++){
+                  var x=ST.loans[jj];
+                  if(x.id===loan.id){
+                    var c={};for(var k in x)c[k]=x[k];
+                    c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);
+                    c.cuotas_pendientes=(x.cuotas_pendientes||[]).map(function(cu){if(cu.id!==cuota.id)return cu;var cc={};for(var k2 in cu)cc[k2]=cu[k2];cc.recibido=true;return cc;});
+                    nl.push(c);
+                  }else nl.push(x);
+                }
+                ST.loans=nl;
+                // Un pago con periodo de un mes ya archivado también se agrega a ese archivo.
+                if(ST.archives&&ST.archives[cuota.periodo]){
+                  var arcCopy={};for(var ak in ST.archives)arcCopy[ak]=ST.archives[ak];
+                  var arcMonth={};for(var ak2 in arcCopy[cuota.periodo])arcMonth[ak2]=arcCopy[cuota.periodo][ak2];
+                  arcMonth[loan.id]=(arcMonth[loan.id]||[]).concat([pago]);
+                  arcCopy[cuota.periodo]=arcMonth;ST.archives=arcCopy;
+                }
+                saveST();
+                var updated=findLoanById(loan.id);
+                showToast('✅ Pago registrado — '+(loan.socio||loan.responsable));
+                renderApp();
+                if(updated)showWaModal([updated],updated.dia,cuota.periodo);
+              },{fontSize:'11px',padding:'7px 10px',minHeight:'34px'}));
+            }
+            topZ.appendChild(zInfo);topZ.appendChild(zAct);row.appendChild(topZ);
+            var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
+            concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré'));
+            if(!isJulianLoan(loan))concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'pagado_socio','🏦 Pagué socio'));
+            row.appendChild(concilRow);
+            perBox.appendChild(row);
+          })(items[ii]);
+        }
+        amSec.appendChild(perBox);
+      })(periodos[pki]);
+    }
+    w.appendChild(amSec);
+  }
+
   // Today's summary banner
   for(i=0;i<groups.length;i++){if(groups[i].dia===TODAY_DIA){var tp=[];var j;for(j=0;j<groups[i].loans.length;j++){if(!paidMth(groups[i].loans[j]))tp.push(groups[i].loans[j]);}if(tp.length>0){var ta=D(null,{background:'var(--c-day-bg)',border:'1px solid var(--acc)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);var tal=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--acc)'},null);tal.textContent='📅 HOY día '+TODAY_DIA+' — '+tp.length+' cobro'+(tp.length!==1?'s':'')+' pendiente'+(tp.length!==1?'s':'');var tt=0;for(j=0;j<tp.length;j++)tt+=IMc(tp[j]);var tav=D('mn',{fontSize:'16px',fontWeight:'700'},null);tav.textContent=COP(tt);ta.appendChild(tal);ta.appendChild(tav);w.appendChild(ta);}break;}}
 
@@ -1902,7 +2143,7 @@ function vCobros(){
             qb.addEventListener('click',function(e){
               e.stopPropagation();
               showPaymentConfirm([ln],g.dia,function(){
-                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(ln)),fecha:isoToday(),nota:'Interés día '+g.dia};
+                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(ln)),fecha:isoToday(),periodo:CURR_MK,nota:'Interés día '+g.dia};
                 if(isUSD(ln))pago.monto_usd=Math.round(IM(ln));
                 var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);c.recibido=true;nl.push(c);}else nl.push(x);}
                 ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
