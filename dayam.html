@@ -167,6 +167,13 @@ html,body{background:var(--bg);color:var(--ink);
 
   function findLoanById(list,id){var i;for(i=0;i<list.length;i++){if(list[i].id===id)return list[i];}return null;}
 
+  // ── Cuotas arrastradas (ST.loans[i].cuotas_pendientes, del reinicio mensual) ──
+  // Esta página no tiene acceso a ST.archives (solo lee `prestamos` de Firestore), así que a
+  // diferencia de index.html no puede verificar un pago ya archivado — usa el flag `recibido`
+  // de la propia cuota, que la app mantiene al día (foto al cerrar el mes, o al registrar el
+  // pago tardío desde "Pendientes del mes anterior").
+  function cuotaSinCobrar(l,cuota){return !cuota.recibido;}
+
   // Estado efectivo de un préstamo para el cliente: 'nuevo' | 'pagado' | 'pend'.
   // Un préstamo con continuacion_de NUNCA es 'nuevo': mientras aún no sea cobrable, se usa el
   // estado del préstamo ORIGINAL para este mes (traspaso de cartera entre socios — para el
@@ -212,6 +219,17 @@ html,body{background:var(--bg);color:var(--ink);
         if(!groups[key])groups[key]={dia:dia,daysAway:da,occ:occ,total:0,count:0};
         groups[key].total+=pagoMensual(l);
         groups[key].count++;
+      }
+    }
+    // Cuotas arrastradas (mes anterior) sin cobrar: cuentan como atrasado (P1), en COP como siempre.
+    for(i=0;i<loans.length;i++){
+      var la=loans[i],cps=la.cuotas_pendientes||[],ci;
+      for(ci=0;ci<cps.length;ci++){
+        if(!cuotaSinCobrar(la,cps[ci]))continue;
+        atrTotal+=pagoMensual(la);
+        atrCount++;
+        var diaA=parseInt(la.dia,10);if(!diaA||diaA<1)diaA=1;if(diaA>31)diaA=31;
+        if(atrDiaMin===null||diaA<atrDiaMin)atrDiaMin=diaA;
       }
     }
     // P1 — atrasado
@@ -260,6 +278,8 @@ html,body{background:var(--bg);color:var(--ink);
     var uy=d.getFullYear(),umo=d.getMonth(),utd=d.getDate();
     var uMid=new Date(uy,umo,utd).getTime(),uDAY=86400000;
     function urgencyRank(l){
+      var cpsU=l.cuotas_pendientes||[],ciU;
+      for(ciU=0;ciU<cpsU.length;ciU++){if(cuotaSinCobrar(l,cpsU[ciU]))return {cat:-1,key:0};} // cuota arrastrada sin cobrar: máxima prioridad
       var est=clienteRowEstado(l,loans);
       if(est==='nuevo')return {cat:2,key:0};
       if(est==='pagado')return {cat:3,key:0};
