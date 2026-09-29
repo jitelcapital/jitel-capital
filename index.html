@@ -229,6 +229,59 @@ function paidMth(l){
 // creó este mismo mes (o después), así que su primer cobro es el mes siguiente y todavía
 // NO es cobrable. Sin mes_comienzo se asume cobrable (préstamos antiguos). Fuente única.
 function isCollectable(l){return !(l.mes_comienzo&&l.mes_comienzo>=CURR_MK);}
+function findLoanById(id){var i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].id===id)return ST.loans[i];}return null;}
+// ── Cierre de préstamo: cálculo de meses activo / intereses de socio (mismo criterio que socio.html) ──
+// Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive.
+function monthsElapsed(mesComienzo,uptoMk){
+  if(!mesComienzo||!uptoMk)return 0;
+  var p1=(mesComienzo+'').split('-'),p2=(uptoMk+'').split('-');
+  var y1=parseInt(p1[0],10),m1=parseInt(p1[1],10);
+  var y2=parseInt(p2[0],10),m2=parseInt(p2[1],10);
+  if(!y1||!m1||!y2||!m2)return 0;
+  var n=(y2-y1)*12+(m2-m1)+1;
+  return n>0?n:0;
+}
+function loanEndMk(l){
+  if(!l.mes_fin||!l.año)return null;
+  var idx=MESES.indexOf((l.mes_fin+'').toUpperCase());
+  if(idx<0)return null;
+  var mo=idx+1;
+  return l.año+'-'+(mo<10?'0'+mo:String(mo));
+}
+// Meses que el préstamo estuvo activo: desde mes_comienzo hasta el mes de mes_fin/año, inclusive.
+function loanMesesActivo(l){var endMk=loanEndMk(l);if(!l.mes_comienzo||!endMk)return 0;return monthsElapsed(l.mes_comienzo,endMk);}
+// Total de intereses de socio en la vida del préstamo, en COP. Se CALCULA (no se suma pagos[]),
+// porque el reinicio mensual archiva/borra los pagos de meses pasados de préstamos activos.
+function loanTotalInteresSocio(l){return loanMesesActivo(l)*ISc(l);}
+// Todos los pagos registrados de un préstamo a lo largo de su vida: l.pagos (mes en curso, aún
+// no archivado) + los pagos de ese id guardados en cada ST.archives['YYYY-MM'] (reinicio mensual
+// archiva y limpia l.pagos de préstamos activos, así que el historial completo vive repartido
+// entre ambos). Ordenados por fecha ascendente.
+function allPagosForLoan(l){
+  var result=(l.pagos||[]).slice();
+  var archKeys=Object.keys(ST.archives||{}),i;
+  for(i=0;i<archKeys.length;i++){
+    var arc=ST.archives[archKeys[i]];
+    if(arc&&arc[l.id])result=result.concat(arc[l.id]);
+  }
+  result.sort(function(a,b){return(a.fecha||'').localeCompare(b.fecha||'');});
+  return result;
+}
+function fmtFechaLargaISO(iso){var d=parseLocalDate(iso);return d?d.toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'}):(iso||'—');}
+// Formatea 'YYYY-MM' como 'MES YYYY' abreviado (e.g. '2026-10' → 'OCT 2026').
+function fmtMK(mk){if(!mk)return'—';var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return(MESES[mo]?MESES[mo].slice(0,3):'')+' '+p[0];}
+// ── Caption de fila para el cliente (buildClienteImage / dayam.html) ──
+// Un préstamo con continuacion_de NUNCA muestra "🆕 Préstamo nuevo": mientras aún no sea cobrable,
+// se usa el estado del préstamo ORIGINAL para este mes (para el cliente es un solo crédito continuo).
+// Devuelve null (sin caption especial, se ve como cualquier préstamo normal) o {text,color,bg}.
+function clienteRowCaption(l){
+  if(isCollectable(l))return null;
+  if(l.continuacion_de){
+    var orig=findLoanById(l.continuacion_de);
+    if(orig)return paidMth(orig)?{text:'✅ Pagado este mes',color:'#0a6a2a',bg:'#eafaf0'}:null;
+  }
+  return{text:'🆕 Préstamo nuevo — su primer cobro es el próximo mes',color:'#b06a00',bg:'#fff7e6'};
+}
 
 // ── TOAST ──
 function showToast(msg){
@@ -392,6 +445,18 @@ function waClienteMsg(name,loans){
   for(i=0;i<loans.length;i++){var l=loans[i];lines.push((i+1)+'. Capital: '+fmtDual(l,l.monto)+' → Día '+l.dia+' '+l.mes_fin+' → Cuota: '+fmtDual(l,cobrarCliente(l)));}
   lines.push('','📅 Recuerda tus fechas de pago 😊');
   return lines.join('\n');
+}
+// ── MENSAJES DE CIERRE (finalización / traspaso) — montos SIEMPRE en COP, sin mención de USD/tasa ──
+function waFinalizadoClienteMsg(loan,fechaCierre){
+  return '✅ CRÉDITO FINALIZADO\nHola '+loan.responsable+' 👋\n\nTu crédito ha sido saldado en su totalidad.\n💰 Capital: '+COP(montoCOP(loan))+'\n📅 Fecha de finalización: '+fmtFechaLargaISO(fechaCierre)+'\n\n¡Gracias por tu confianza! 🙏';
+}
+function waFinalizadoSocioMsg(loan,fechaCierre){
+  var meses=loanMesesActivo(loan),tot=loanTotalInteresSocio(loan);
+  return '✅ CAPITAL FINALIZADO\nHola '+loan.socio+' 👋\n\nTu capital de '+COP(montoCOP(loan))+' ya no está activo — el crédito finalizó el '+fmtFechaLargaISO(fechaCierre)+'.\n📈 Total de intereses recibidos: '+COP(tot)+' ('+meses+' mes'+(meses!==1?'es':'')+')\n\n¡Gracias por tu confianza! 🙏';
+}
+function waTraspasoSocioMsg(loan,fechaCierre){
+  var meses=loanMesesActivo(loan),tot=loanTotalInteresSocio(loan);
+  return '✅ LIQUIDADO EN SU TOTALIDAD\nHola '+loan.socio+' 👋\n\nTu capital de '+COP(montoCOP(loan))+' fue liquidado en su totalidad el '+fmtFechaLargaISO(fechaCierre)+'.\n📈 Total de intereses recibidos: '+COP(tot)+' ('+meses+' mes'+(meses!==1?'es':'')+')\n\n¡Gracias por tu confianza! 🙏';
 }
 
 
@@ -688,6 +753,80 @@ function showWaModal(paidLoans,dia){
   refresh();
 }
 
+// ── CIERRE DE PRÉSTAMO: elige tipo (finalizado / traspaso), guarda y muestra mensajes ──
+function showCloseLoanModal(lid){
+  var loan=findLoanById(lid);
+  if(!loan)return;
+  var tipo=loan.cierre_tipo||'finalizado';
+  var cur=null;
+  function render(){
+    var m=D('modal',{maxWidth:'440px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px;margin-bottom:6px';h2.textContent='¿Cerrar préstamo?';
+    m.appendChild(h2);
+    var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'14px'},null);
+    sub.textContent='Elige el tipo de cierre para '+loan.responsable+'.';
+    m.appendChild(sub);
+    function opt(val,label,desc){
+      var sel=tipo===val;
+      var box=D(null,{border:'1px solid '+(sel?'var(--acc)':'var(--bor)'),background:sel?'var(--c2)':'transparent',borderRadius:'10px',padding:'12px',marginBottom:'10px',cursor:'pointer'},null);
+      box.addEventListener('click',function(){tipo=val;refresh();});
+      var t=D(null,{fontWeight:'700',fontSize:'14px',color:sel?'var(--acc)':'var(--txt)'},null);t.textContent=(sel?'● ':'○ ')+label;
+      var d=D(null,{fontSize:'12px',color:'var(--mut)',marginTop:'4px'},null);d.textContent=desc;
+      box.appendChild(t);box.appendChild(d);
+      return box;
+    }
+    m.appendChild(opt('finalizado','Finalizado','El crédito terminó de verdad.'));
+    m.appendChild(opt('traspaso','Liquidado por traspaso','El socio sale, pero el crédito sigue con otro socio.'));
+    var brow=D(null,{display:'flex',gap:'8px',marginTop:'6px'},null);
+    brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
+    brow.appendChild(BTN('bg','Sí, cerrar',function(){
+      var fechaCierre=isoToday();
+      var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];c.status='paid';c.cierre_tipo=tipo;c.fecha_cierre=fechaCierre;nl.push(c);}else nl.push(x);}
+      ST.loans=nl;saveST();closeModal();renderApp();
+      showToast('✅ Préstamo cerrado');
+      var closedLoan=findLoanById(lid);
+      if(closedLoan)showCloseMessagesModal(closedLoan);
+    },{flex:'1'}));
+    m.appendChild(brow);
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+// ── MENSAJES DE CIERRE — mismo patrón visual que showWaModal (WhatsApp/Copiar + Ver/Ocultar) ──
+function showCloseMessagesModal(loan){
+  var pv={};var cur=null;
+  var fechaCierre=loan.fecha_cierre||isoToday();
+  var esTraspaso=loan.cierre_tipo==='traspaso';
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';
+    h2.textContent=esTraspaso?'✅ Liquidado por traspaso':'✅ Préstamo finalizado';
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    function msgBox(title,msg,key){
+      var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+      var t=D(null,{fontWeight:'700',fontSize:'13px',marginBottom:'8px'},null);t.textContent=title;box.appendChild(t);
+      var row=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+      row.appendChild(mkWaBtn(msg));row.appendChild(mkCpBtn(msg));
+      row.appendChild(BTN('bh',pv[key]?'Ocultar':'👁 Ver mensaje',function(){pv[key]=!pv[key];refresh();},{flex:'1'}));
+      box.appendChild(row);
+      if(pv[key]){var pvb=D('pvb',null,null);pvb.textContent=msg;box.appendChild(pvb);}
+      return box;
+    }
+    if(esTraspaso){
+      if(!isJulianLoan(loan))m.appendChild(msgBox('Mensaje al socio',waTraspasoSocioMsg(loan,fechaCierre),'socio'));
+    }else{
+      m.appendChild(msgBox('Mensaje al cliente',waFinalizadoClienteMsg(loan,fechaCierre),'cliente'));
+      if(!isJulianLoan(loan))m.appendChild(msgBox('Mensaje al socio',waFinalizadoSocioMsg(loan,fechaCierre),'socio'));
+    }
+    m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+
 // ── LOAN DETAIL ──
 function showLoanDetail(lid){
   var spay=false,sext=false;
@@ -868,17 +1007,7 @@ function showLoanDetail(lid){
     }
     var acts=D(null,{display:'flex',gap:'8px',marginTop:'4px'},null);
     if(loan.status==='active')acts.appendChild(BTN('bg','✓ Cerrar préstamo',function(){
-      showConfirm({
-        title:'¿Cerrar préstamo?',
-        msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',
-        confirmLbl:'Sí, cerrar',
-        danger:true,
-        onConfirm:function(){
-          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];c.status='paid';nl.push(c);}else nl.push(x);}
-          ST.loans=nl;saveST();closeModal();renderApp();
-          showToast('✅ Préstamo cerrado');
-        }
-      });
+      showCloseLoanModal(lid);
     },{flex:'1'}));
     acts.appendChild(BTN('br','🗑 Eliminar',function(){
       showConfirm({
@@ -939,7 +1068,7 @@ function showNewLoan(prefill){
   var dlR=document.createElement('datalist');dlR.id='dlR_'+GID();clients.forEach(function(c){var o=document.createElement('option');o.value=c;dlR.appendChild(o);});
   var dlS=document.createElement('datalist');dlS.id='dlS_'+GID();socios.forEach(function(s){var o=document.createElement('option');o.value=s;dlS.appendChild(o);});
   m.appendChild(dlR);m.appendChild(dlS);
-  var rIn=INP({type:'text',value:fr,placeholder:'DAYAM'});rIn.setAttribute('list',dlR.id);rIn.addEventListener('input',function(e){fr=e.target.value;});
+  var rIn=INP({type:'text',value:fr,placeholder:'DAYAM'});rIn.setAttribute('list',dlR.id);rIn.addEventListener('input',function(e){fr=e.target.value;if(esContinuacion)rebuildContSel();});
   // Declare isIn/ipIn BEFORE sIn listeners so Julian auto-fill can reference them safely
   var isIn=INP({type:'number',value:String(fis)});isIn.step='0.005';isIn.addEventListener('input',function(e){fis=parseFloat(e.target.value)||0;updPrev();});
   var ipIn=INP({type:'number',value:String(fip)});ipIn.step='0.005';ipIn.addEventListener('input',function(e){fip=parseFloat(e.target.value)||0;updPrev();});
@@ -996,6 +1125,33 @@ function showNewLoan(prefill){
   m.appendChild(R3(FLD('Día vence',dIn),FLD('Mes fin',mSel),FLD('Año',yIn)));
   var mcIn=INP({type:'month',value:CURR_MK});mcIn.addEventListener('change',function(e){fmc=e.target.value;});
   m.appendChild(FLD('Mes de inicio',mcIn));
+  // ── Continuación de un préstamo existente (traspaso de cartera entre socios) ──
+  var esContinuacion=false,continuacionDe='';
+  var contCheckRow=D(null,{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'},null);
+  var contCheck=document.createElement('input');contCheck.type='checkbox';contCheck.style.cssText='width:auto;flex-shrink:0';
+  var contLbl=document.createElement('label');contLbl.textContent='Es continuación de un préstamo existente';contLbl.style.cssText='font-size:13px;color:var(--txt)';
+  contCheckRow.appendChild(contCheck);contCheckRow.appendChild(contLbl);
+  var contSelWrap=D(null,{display:'none',marginBottom:'12px'},null);
+  function rebuildContSel(){
+    contSelWrap.innerHTML='';
+    var candidatos=[],ci;
+    for(ci=0;ci<ST.loans.length;ci++){var cl=ST.loans[ci];if(cl.responsable&&fr&&cl.responsable.toUpperCase()===fr.toUpperCase())candidatos.push(cl);}
+    if(candidatos.length===0){
+      var none=D(null,{fontSize:'12px',color:'var(--mut)'},null);none.textContent='No hay préstamos de este cliente para continuar.';
+      contSelWrap.appendChild(none);continuacionDe='';return;
+    }
+    var opts=[['','Selecciona...']];
+    for(ci=0;ci<candidatos.length;ci++){var cl2=candidatos[ci];opts.push([cl2.id,(cl2.socio||'—')+' · '+COP(montoCOP(cl2))+' · '+(cl2.status==='active'?'Activo':'Cerrado')+' · día '+cl2.dia]);}
+    var contSel=MSEL(opts,continuacionDe);
+    contSel.addEventListener('change',function(e){continuacionDe=e.target.value;});
+    contSelWrap.appendChild(FLD('Préstamo original',contSel));
+  }
+  contCheck.addEventListener('change',function(e){
+    esContinuacion=e.target.checked;
+    contSelWrap.style.display=esContinuacion?'block':'none';
+    if(esContinuacion)rebuildContSel();else continuacionDe='';
+  });
+  m.appendChild(contCheckRow);m.appendChild(contSelWrap);
   var nIn=INP({type:'text',placeholder:'Observación...'});nIn.addEventListener('input',function(e){fn=e.target.value;});
   m.appendChild(FLD('Nota',nIn));
   m.appendChild(BTN('ba','💾 Guardar Préstamo',function(){
@@ -1006,6 +1162,7 @@ function showNewLoan(prefill){
     }
     if(!fr||!fs||!fm){alert('Completa cliente, socio y monto');return;}
     var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString(),moneda:fmon,tasa_cambio:fmon==='USD'?ftc:null};
+    if(esContinuacion&&continuacionDe)l.continuacion_de=continuacionDe;
     // Regla de apertura: si el día de cobro ya pasó (o es hoy) y el mes de inicio es
     // el actual o anterior, marcar este mes como pagado para que el primer cobro real
     // sea el mes siguiente. Se inserta un pago simbólico que satisface paidMth().
@@ -1588,9 +1745,14 @@ function vCobros(){
   // The active count in the topbar header (renderApp) is unaffected — it uses ST.loans directly.
   for(i=0;i<ST.loans.length;i++){
     var l0=ST.loans[i];
-    if(l0.status!=='active')continue;
-    if(!isCollectable(l0))continue; // not yet started; first billing is the month after mes_comienzo
-    active.push(l0);
+    if(l0.status==='active'){
+      if(!isCollectable(l0))continue; // not yet started; first billing is the month after mes_comienzo
+      active.push(l0);
+    }else if(l0.status==='paid'&&paidMth(l0)){
+      // Cerrado, pero ya tenía un pago de este mes antes de cerrarse: sigue contando en los
+      // totales/día de este mes (Total mes, Cobrado, Mi cuenta) — cerrar no debe "des-cobrar" el mes.
+      active.push(l0);
+    }
   }
   var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IMc(l);if(paidMth(l))gm[l.dia].pagado+=IMc(l);}
   var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
@@ -2195,10 +2357,7 @@ function vLoans(){
             menuDrop.appendChild(mItem('bb','📅 Extender',function(){showLoanDetail(l.id);}));
             menuDrop.appendChild(mItem('bh','✏️ Actualizar',function(){showLoanDetail(l.id);}));
             menuDrop.appendChild(mItem('bg','✓ Cerrar',function(){
-              showConfirm({title:'¿Cerrar préstamo?',msg:'Se marcará como pagado y saldrá de cobros activos. Esta acción no se puede deshacer.',confirmLbl:'Sí, cerrar',danger:true,onConfirm:function(){
-                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===l.id){var c={};for(var k in x)c[k]=x[k];c.status='paid';nl.push(c);}else nl.push(x);}
-                ST.loans=nl;saveST();renderApp();showToast('✅ Préstamo cerrado');
-              }});
+              showCloseLoanModal(l.id);
             }));
             menuDrop.appendChild(mItem('br','🗑 Eliminar',function(){
               showConfirm({title:'¿Eliminar préstamo?',msg:'Se borrará permanentemente junto con todo su historial de pagos. Esta acción no se puede deshacer.',confirmLbl:'Sí, eliminar',danger:true,onConfirm:function(){
@@ -2242,16 +2401,24 @@ function vLoans(){
 function vSocios(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
   var sm={};for(i=0;i<active.length;i++){var l=active[i];if(!l.socio)continue;if(!sm[l.socio])sm[l.socio]={capital:0,intS:0,count:0,loans:[]};sm[l.socio].capital+=montoCOP(l);sm[l.socio].intS+=ISc(l);sm[l.socio].count++;sm[l.socio].loans.push(l);}
+  // Préstamos cerrados, agrupados por socio — para la sección "Préstamos finalizados" de cada tarjeta.
+  var closedBySocio={};
+  for(i=0;i<ST.loans.length;i++){var clp=ST.loans[i];if(clp.status==='paid'&&clp.socio){if(!closedBySocio[clp.socio])closedBySocio[clp.socio]=[];closedBySocio[clp.socio].push(clp);}}
   var list=[];var sks=Object.keys(sm);for(i=0;i<sks.length;i++){
     // Sort each socio's loans by dia asc (consistent ordering: día 1 first, día 31 last)
     sm[sks[i]].loans.sort(function(a,b){return a.dia-b.dia;});
     list.push([sks[i],sm[sks[i]]]);
   }
+  // Socios que solo tienen préstamos finalizados (sin ninguno activo) también deben tener tarjeta,
+  // para poder ver su historial.
+  var closedKeys=Object.keys(closedBySocio);
+  for(i=0;i<closedKeys.length;i++){if(!sm[closedKeys[i]])list.push([closedKeys[i],{capital:0,intS:0,count:0,loans:[]}]);}
   list.sort(function(a,b){return b[1].capital-a[1].capital;});
   var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
   for(var li=0;li<list.length;li++){
     (function(name,st2){
       var exp=false,pv=false;
+      var pagosOpen={}; // por id de préstamo finalizado — sobrevive a rebuild() (fuera de su alcance)
       var card=D('card',{marginBottom:'10px'},null);
       var msg=waSocioResumen(name,st2);
       var isJulian=(name.toUpperCase()==='JULIAN')&&st2.loans.every(function(l){return isJulianLoan(l);});
@@ -2308,6 +2475,52 @@ function vSocios(){
           var julianTotal=0;if(isJulian){for(var ji=0;ji<st2.loans.length;ji++)julianTotal+=IPc(st2.loans[ji]);}
           tv2.textContent=isJulian?COP(julianTotal):COP(st2.intS);tr2.appendChild(tl2);tr2.appendChild(tv2);card.appendChild(tr2);
           card.appendChild(D('sep',null,null));
+          // ── Préstamos finalizados (historial) — nunca nombra al cliente ni al socio entrante ──
+          var closedList=closedBySocio[name]||[];
+          if(closedList.length>0){
+            var cfTtl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);
+            cfTtl.textContent='Préstamos finalizados';card.appendChild(cfTtl);
+            for(var cfi=0;cfi<closedList.length;cfi++){
+              (function(cl,idx){
+                var mesesAct=loanMesesActivo(cl),totInt=loanTotalInteresSocio(cl);
+                var cfRow=D(null,{padding:'8px 0',borderBottom:idx<closedList.length-1?'1px solid var(--bor)':'none'},null);
+                var cfTop=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px'},null);
+                var cfCap=D('mn',{fontWeight:'700',fontSize:'13px'},null);cfCap.textContent=COP(montoCOP(cl));
+                var cfTag=S(null,{fontSize:'10px',fontWeight:'700',padding:'2px 8px',borderRadius:'20px',background:'var(--c-suc-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor)',whiteSpace:'nowrap',flexShrink:'0'},null);
+                cfTag.textContent=cl.cierre_tipo==='traspaso'?'✅ Liquidado en su totalidad':'✅ Finalizado';
+                cfTop.appendChild(cfCap);cfTop.appendChild(cfTag);
+                var cfSub=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);
+                cfSub.textContent=(cl.mes_comienzo?fmtMK(cl.mes_comienzo):'—')+' → '+(cl.mes_fin?cl.mes_fin.slice(0,3):'—')+' '+(cl.año||'')+' · '+mesesAct+' mes'+(mesesAct!==1?'es':'')+' activo'+(mesesAct!==1?'s':'');
+                var cfInt=D(null,{fontSize:'12px',color:'var(--grn)',marginTop:'2px',fontWeight:'700'},null);
+                cfInt.textContent='Intereses recibidos: '+COP(totInt);
+                cfRow.appendChild(cfTop);cfRow.appendChild(cfSub);cfRow.appendChild(cfInt);
+                var cfPagos=allPagosForLoan(cl);
+                var cfToggle=BTN('bh',(pagosOpen[cl.id]?'Ocultar':'👁 Ver pagos ('+cfPagos.length+')'),function(){pagosOpen[cl.id]=!pagosOpen[cl.id];rebuild();},{width:'100%',fontSize:'11px',padding:'5px 10px',marginTop:'6px'});
+                cfRow.appendChild(cfToggle);
+                if(pagosOpen[cl.id]){
+                  var cfList=D(null,{marginTop:'6px'},null);
+                  if(cfPagos.length===0){
+                    var cfNone=D(null,{fontSize:'11px',color:'var(--mut)',fontStyle:'italic',padding:'6px 0'},null);
+                    cfNone.textContent='Sin detalle de pagos registrado';
+                    cfList.appendChild(cfNone);
+                  }else{
+                    for(var pgi=0;pgi<cfPagos.length;pgi++){
+                      var pg=cfPagos[pgi];
+                      var pgRow=D(null,{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:pgi<cfPagos.length-1?'1px solid var(--bor)':'none',fontSize:'11px'},null);
+                      var pgL=D(null,{color:'var(--mut)'},null);
+                      pgL.textContent=(pg.fecha||'—')+' · '+(pg.tipo==='interes'?'Interés':pg.tipo==='abono'?'Abono':pg.tipo==='cancelacion'?'Pago Total':(pg.tipo||'—'));
+                      var pgV=S('mn',{fontWeight:'700'},null);pgV.textContent=COP(pg.monto);
+                      pgRow.appendChild(pgL);pgRow.appendChild(pgV);
+                      cfList.appendChild(pgRow);
+                    }
+                  }
+                  cfRow.appendChild(cfList);
+                }
+                card.appendChild(cfRow);
+              })(closedList[cfi],cfi);
+            }
+            card.appendChild(D('sep',null,null));
+          }
           // Image export button
           card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           // Portal link button — genera URL de solo lectura para el socio
@@ -2663,12 +2876,12 @@ function buildClienteImage(name, loans, onDone) {
     var footerH = 20 * SCALE;
     var totalRowH = isLast ? rH : 0;
 
-    // Alturas por fila: las filas de préstamos que aún NO son cobrables este mes suman
-    // una línea extra (noteH) para la caption. El conteo de filas por página no cambia.
+    // Alturas por fila: las filas con caption especial (préstamo nuevo, o continuación ya pagada
+    // este mes) suman una línea extra (noteH). El conteo de filas por página no cambia.
     var rowH = [], rowsH = 0, rr;
     for(rr=0; rr<rowCount; rr++){
       var _lr = sl[startRow+rr];
-      var hh0 = isCollectable(_lr)?rH:rH+noteH; // +línea por caption (préstamo nuevo)
+      var hh0 = clienteRowCaption(_lr)?rH+noteH:rH;
       rowH.push(hh0); rowsH += hh0;
     }
     var ph = hdH + rH + rowsH + totalRowH + footerH; // hd + col-header + rows + total + footer
@@ -2741,10 +2954,10 @@ function buildClienteImage(name, loans, onDone) {
       var gi = startRow + ri;
       var l  = sl[gi];
       var hhR = rowH[ri];
-      var nuevo = !isCollectable(l); // aún no entra en el ciclo de cobro de este mes
+      var capInfo = clienteRowCaption(l); // null, o {text,color,bg} — nunca "nuevo" si es continuacion_de
 
-      // Fondo de fila: crema suave cuando el préstamo aún no es cobrable, alternado si no.
-      ctx.fillStyle = nuevo ? '#fff7e6' : (ri%2===0 ? '#ffffff' : '#f7fafc');
+      // Fondo de fila: color de la caption si lleva una, alternado si no.
+      ctx.fillStyle = capInfo ? capInfo.bg : (ri%2===0 ? '#ffffff' : '#f7fafc');
       ctx.fillRect(0, rY, pw, hhR);
 
       // Separador al pie de la fila (usa el alto completo, con o sin caption)
@@ -2765,12 +2978,12 @@ function buildClienteImage(name, loans, onDone) {
         cx += cW[ci3];
       }
 
-      // Caption discreta para préstamos nuevos (sin mención de moneda: el cliente nunca ve USD).
-      if(nuevo){
+      // Caption discreta (préstamo nuevo, o continuación ya pagada este mes vía el original).
+      if(capInfo){
         ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
-        ctx.fillStyle = '#b06a00';
+        ctx.fillStyle = capInfo.color;
         ctx.textAlign = 'center';
-        ctx.fillText('🆕 Préstamo nuevo — su primer cobro es el próximo mes', pw/2, rY + rH + noteH*0.60);
+        ctx.fillText(capInfo.text, pw/2, rY + rH + noteH*0.60);
       }
 
       rY += hhR;
