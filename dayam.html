@@ -165,12 +165,27 @@ html,body{background:var(--bg);color:var(--ink);
     return mf+(l.año?(' '+l.año):'');
   }
 
+  function findLoanById(list,id){var i;for(i=0;i<list.length;i++){if(list[i].id===id)return list[i];}return null;}
+
+  // Estado efectivo de un préstamo para el cliente: 'nuevo' | 'pagado' | 'pend'.
+  // Un préstamo con continuacion_de NUNCA es 'nuevo': mientras aún no sea cobrable, se usa el
+  // estado del préstamo ORIGINAL para este mes (traspaso de cartera entre socios — para el
+  // cliente es un solo crédito continuo, nunca ve el cambio de socio).
+  function clienteRowEstado(l,allLoans){
+    if(isCollectable(l))return pagadoEsteMes(l)?'pagado':'pend';
+    if(l.continuacion_de){
+      var orig=findLoanById(allLoans,l.continuacion_de);
+      if(orig)return pagadoEsteMes(orig)?'pagado':'pend';
+    }
+    return 'nuevo';
+  }
+
   // ── Estado de pago (bloque protagonista), por prioridades. Solo considera préstamos
   //    activos, cobrables (isCollectable) y aún NO pagados este mes.
   //    P1 'atrasado' — su día de cobro YA pasó este mes y sigue sin pagar.
   //    P2 'proximo'  — el próximo día de cobro futuro (hoy o después) más cercano.
   //    P3 'ninguno'  — no hay nada atrasado ni próximo. ──
-  function calcularEstadoPago(loans){
+  function calcularEstadoPago(loans,allLoans){
     var d=nowDate();
     var y=d.getFullYear(),mo=d.getMonth(),td=d.getDate();
     var DAY=86400000;
@@ -180,8 +195,9 @@ html,body{background:var(--bg);color:var(--ink);
     for(i=0;i<loans.length;i++){
       var l=loans[i];
       if(l.status!=='active')continue;
-      if(!isCollectable(l))continue;      // los nuevos empiezan a cobrar el próximo mes
-      if(pagadoEsteMes(l))continue;       // ya está pagado → no es "pendiente"
+      var est=clienteRowEstado(l,allLoans);
+      if(est==='nuevo')continue;   // los nuevos empiezan a cobrar el próximo mes
+      if(est==='pagado')continue;  // ya está pagado (directo o vía el préstamo original) → no es "pendiente"
       var dia=parseInt(l.dia,10);if(!dia||dia<1)dia=1;if(dia>31)dia=31;
       if(dia<td){
         // Atrasado: el día de cobro ya pasó este mes y no está pagado.
@@ -244,8 +260,9 @@ html,body{background:var(--bg);color:var(--ink);
     var uy=d.getFullYear(),umo=d.getMonth(),utd=d.getDate();
     var uMid=new Date(uy,umo,utd).getTime(),uDAY=86400000;
     function urgencyRank(l){
-      if(!isCollectable(l))return {cat:2,key:0};
-      if(pagadoEsteMes(l))return {cat:3,key:0};
+      var est=clienteRowEstado(l,loans);
+      if(est==='nuevo')return {cat:2,key:0};
+      if(est==='pagado')return {cat:3,key:0};
       var dia=parseInt(l.dia,10);if(!dia||dia<1)dia=1;if(dia>31)dia=31;
       if(dia<utd)return {cat:0,key:dia};                 // atrasado: día menor = más antiguo primero
       var occ=new Date(uy,umo,dia);
@@ -263,7 +280,7 @@ html,body{background:var(--bg);color:var(--ink);
     G.appendChild(head);
 
     // 2) Próximo pago (bloque protagonista) — por prioridades. Clickeable en atrasado/próximo.
-    var estado=calcularEstadoPago(activos);
+    var estado=calcularEstadoPago(activos,loans);
     var proxBox=null; // bloque clickeable (queda null en estado 'ninguno')
     if(estado.tipo==='atrasado'){
       // P1 — pago atrasado (rojo/urgente)
@@ -314,9 +331,10 @@ html,body{background:var(--bg);color:var(--ink);
           var card=el('div','loan',null);
 
           // Estado (protagonista de la tarjeta)
-          if(!isCollectable(l)){
+          var estL=clienteRowEstado(l,loans);
+          if(estL==='nuevo'){
             card.appendChild(el('div','estado nuevo','🆕 Préstamo nuevo — empieza a cobrar el próximo mes'));
-          }else if(pagadoEsteMes(l)){
+          }else if(estL==='pagado'){
             card.appendChild(el('div','estado pagado','✅ Pagado este mes'));
           }else{
             card.appendChild(el('div','estado pend','⏳ Pendiente'));

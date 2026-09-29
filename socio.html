@@ -408,10 +408,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     G.appendChild(c2);
 
     // ── Tu cartera con JiTel (todos los socios, cada uno con sus propios datos) ──
+    // Rendimiento acumulado histórico: incluye préstamos cerrados, pero un préstamo cerrado
+    // dejó de generar interés en su mes_fin/año — nunca se cuenta hasta "hoy" (CURR_MK).
     var rendimientoTotal=0,ai;
     for(ai=0;ai<allLoans.length;ai++){
       var al=allLoans[ai];
-      var mElT=monthsElapsed(al.mes_comienzo,CURR_MK);
+      var uptoMk=(al.status==='paid')?(loanEndMk(al)||CURR_MK):CURR_MK;
+      var mElT=monthsElapsed(al.mes_comienzo,uptoMk);
       rendimientoTotal+=mElT*(al.int_socio||0)*montoCOP(al);
     }
     var projMensual=0;
@@ -581,6 +584,39 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       }
     }
     G.appendChild(c4);
+
+    // ── PRÉSTAMOS FINALIZADOS (historial) — nunca nombra al cliente ni al socio entrante ──
+    var closedLoans=[],ci2;
+    for(ci2=0;ci2<allLoans.length;ci2++){if(allLoans[ci2].status==='paid')closedLoans.push(allLoans[ci2]);}
+    if(closedLoans.length>0){
+      var c5=el('div','card',null,null);
+      c5.appendChild(el('div','sec-title',null,'🗂️ Préstamos finalizados'));
+      for(ci2=0;ci2<closedLoans.length;ci2++){
+        (function(cl,idx){
+          var endMk=loanEndMk(cl);
+          var mesesAct=(cl.mes_comienzo&&endMk)?monthsElapsed(cl.mes_comienzo,endMk):0;
+          var totIntNative=mesesAct*(cl.int_socio||0)*(cl.monto||0);
+          var row=el('div',null,{padding:'10px 0',borderBottom:idx<closedLoans.length-1?'1px solid var(--bor)':'none'},null);
+          var top=el('div',null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'8px'},null);
+          var capWrap=el('div',null,{flex:'1',minWidth:'0'},null);
+          capWrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)'},'Capital'));
+          capWrap.appendChild(dualMoneyEl(cl,cl.monto,{fontSize:'13px',fontWeight:'700'}));
+          top.appendChild(capWrap);
+          var tag=el('div',null,{fontSize:'10px',fontWeight:'700',padding:'3px 9px',borderRadius:'20px',background:'var(--c-suc-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor)',whiteSpace:'nowrap',flexShrink:'0'},cl.cierre_tipo==='traspaso'?'✅ Liquidado en su totalidad':'✅ Finalizado');
+          top.appendChild(tag);
+          row.appendChild(top);
+          var periodo=fmtPeriodo(cl);
+          var per=el('div',null,{fontSize:'11px',color:'var(--mut)',marginTop:'6px'},periodo+(mesesAct?(' · '+mesesAct+' mes'+(mesesAct!==1?'es':'')+' activo'+(mesesAct!==1?'s':'')):''));
+          row.appendChild(per);
+          var intRow=el('div',null,{fontSize:'12px',marginTop:'4px'},null);
+          intRow.appendChild(el('span',null,{fontWeight:'700',color:'var(--grn)'},'Intereses recibidos: '));
+          intRow.appendChild(dualMoneyEl(cl,totIntNative,{fontSize:'12px',fontWeight:'700',color:'var(--grn)'}));
+          row.appendChild(intRow);
+          c5.appendChild(row);
+        })(closedLoans[ci2],ci2);
+      }
+      G.appendChild(c5);
+    }
 
     // ── FOOTER ──
     var fechaStr=now.toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
