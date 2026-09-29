@@ -467,7 +467,7 @@ function waTraspasoSocioMsg(loan,fechaCierre){
 
 // ── STORAGE ──
 var LSK='jitel_v1';
-var ST={loans:[],archives:{}};
+var ST={loans:[],archives:{},snapshots:{}};
 function loadST(){
   try{
     var r=localStorage.getItem(LSK);
@@ -477,6 +477,9 @@ function loadST(){
     if(!p||typeof p!=='object')return null;
     if(!Array.isArray(p.loans))return null;
     if(!p.archives||typeof p.archives!=='object')p.archives={};
+    // snapshots: foto mensual por socio (capital/préstamos/interés) — opcional, ausente en saves
+    // anteriores a esta funcionalidad. Su ausencia nunca rompe nada (compatibilidad total).
+    if(!p.snapshots||typeof p.snapshots!=='object')p.snapshots={};
     // Sanitize each loan: ensure required numeric fields exist
     for(var i=0;i<p.loans.length;i++){
       var l=p.loans[i];
@@ -1183,6 +1186,25 @@ function showNewLoan(prefill){
   if(fm>0)updPrev(); // show preview immediately when coming from calculator
 }
 
+// ── FOTO MENSUAL POR SOCIO (ST.snapshots) ──
+// Captura, por socio, su capital activo (en COP), número de préstamos activos, interés
+// mensual (en COP) y los ids de esos préstamos. Se guarda en ST.snapshots[mk] al ejecutar
+// "Nuevo mes", ANTES de reiniciar — independiente de ST.archives (que solo guarda pagos por
+// préstamo), para poder reconstruir con confianza cuánto capital tenía un socio en un mes pasado.
+function buildSociosSnapshot(){
+  var snap={},i;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    if(l.status!=='active'||!l.socio)continue;
+    if(!snap[l.socio])snap[l.socio]={capital:0,count:0,intS:0,loanIds:[]};
+    snap[l.socio].capital+=montoCOP(l);
+    snap[l.socio].count++;
+    snap[l.socio].intS+=ISc(l);
+    snap[l.socio].loanIds.push(l.id);
+  }
+  return snap;
+}
+
 // ── RESET ──
 function showReset(){
   var step=1;var cur=null;
@@ -1201,19 +1223,34 @@ function showReset(){
       m.appendChild(warn);
       var brow2=D(null,{display:'flex',gap:'8px'},null);
       brow2.appendChild(BTN('br','Sí, reiniciar mes',function(){
-        // Archive current month's pagos for ALL loans (active + paid)
-        var arc={},j;for(j=0;j<ST.loans.length;j++)arc[ST.loans[j].id]=(ST.loans[j].pagos||[]).slice();
-        if(!ST.archives)ST.archives={};ST.archives[CURR_MK]=arc;
-        // Only clear pagos on ACTIVE loans — paid/closed loans keep their full history
-        // Also reset conciliation flags (recibido / pagado_socio) for active loans.
-        var nl=[];for(j=0;j<ST.loans.length;j++){
-          var c={};for(var k in ST.loans[j])c[k]=ST.loans[j][k];
-          if(c.status==='active'){c.pagos=[];c.recibido=false;c.pagado_socio=false;}
-          // paid loans: keep pagos untouched so history is preserved
-          nl.push(c);
+        function doReset(){
+          // Foto mensual por socio del mes que se cierra — ANTES de tocar nada más.
+          if(!ST.snapshots)ST.snapshots={};
+          ST.snapshots[CURR_MK]=buildSociosSnapshot();
+          // Archive current month's pagos for ALL loans (active + paid)
+          var arc={},j;for(j=0;j<ST.loans.length;j++)arc[ST.loans[j].id]=(ST.loans[j].pagos||[]).slice();
+          if(!ST.archives)ST.archives={};ST.archives[CURR_MK]=arc;
+          // Only clear pagos on ACTIVE loans — paid/closed loans keep their full history
+          // Also reset conciliation flags (recibido / pagado_socio) for active loans.
+          var nl=[];for(j=0;j<ST.loans.length;j++){
+            var c={};for(var k in ST.loans[j])c[k]=ST.loans[j][k];
+            if(c.status==='active'){c.pagos=[];c.recibido=false;c.pagado_socio=false;}
+            // paid loans: keep pagos untouched so history is preserved
+            nl.push(c);
+          }
+          ST.loans=nl;saveST();closeModal();renderApp();
+          showToast('✅ Mes '+CURR_MK+' archivado');
         }
-        ST.loans=nl;saveST();closeModal();renderApp();
-        showToast('✅ Mes '+CURR_MK+' archivado');
+        // Si ya existe una foto mensual para este mes, no sobrescribirla sin confirmar aparte.
+        if(ST.snapshots&&ST.snapshots[CURR_MK]){
+          showConfirm({
+            title:'¿Sobrescribir foto del mes?',
+            msg:'Ya existe una foto mensual por socio para '+CURR_MK+'. Reiniciar el mes la reemplazará.',
+            confirmLbl:'Sí, sobrescribir',
+            danger:true,
+            onConfirm:doReset
+          });
+        }else doReset();
       },{flex:'1'}));
       brow2.appendChild(BTN('bh','← Atrás',function(){step=1;refresh();},null));m.appendChild(brow2);
     }
@@ -2402,6 +2439,21 @@ function vLoans(){
   w.appendChild(listEl);renderList();return w;
 }
 
+// Historial mensual de un socio a partir de ST.snapshots (foto de "Nuevo mes"), ordenado del
+// más reciente al más antiguo. delta = variación de capital frente al mes anterior CON foto para
+// este socio (no necesariamente el mes calendario inmediato); null en la primera foto que exista.
+function socioHistorialMensual(name){
+  var mks=Object.keys(ST.snapshots||{}).sort(),rows=[],i; // ascendente
+  for(i=0;i<mks.length;i++){
+    var s=ST.snapshots[mks[i]]&&ST.snapshots[mks[i]][name];
+    if(!s)continue;
+    rows.push({mk:mks[i],capital:s.capital||0,count:s.count||0,intS:s.intS||0});
+  }
+  for(i=0;i<rows.length;i++)rows[i].delta=(i===0)?null:(rows[i].capital-rows[i-1].capital);
+  rows.reverse(); // más reciente primero
+  return rows;
+}
+
 // ── VIEW: SOCIOS ──
 function vSocios(){
   var active=[],i;for(i=0;i<ST.loans.length;i++){if(ST.loans[i].status==='active')active.push(ST.loans[i]);}
@@ -2526,6 +2578,36 @@ function vSocios(){
             }
             card.appendChild(D('sep',null,null));
           }
+          // ── Historial mensual (foto por socio guardada en ST.snapshots al ejecutar "Nuevo mes") ──
+          var histTtl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);
+          histTtl.textContent='Historial mensual';card.appendChild(histTtl);
+          var histRows=socioHistorialMensual(name);
+          if(histRows.length===0){
+            var histNone=D(null,{fontSize:'12px',color:'var(--mut)',fontStyle:'italic',padding:'2px 0 10px'},null);
+            histNone.textContent='Aún no hay historial mensual.';
+            card.appendChild(histNone);
+          }else{
+            for(var hi=0;hi<histRows.length;hi++){
+              (function(r,idx){
+                var hRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:idx<histRows.length-1?'1px solid var(--bor)':'none'},null);
+                var hLeft=D(null,null,null);
+                var hMes=D(null,{fontWeight:'600',fontSize:'12px'},null);hMes.textContent=fmtMK(r.mk);
+                var hSub=D(null,{fontSize:'11px',color:'var(--mut)'},null);hSub.textContent=r.count+' préstamo'+(r.count!==1?'s':'')+' · '+COP(r.intS)+'/mes';
+                hLeft.appendChild(hMes);hLeft.appendChild(hSub);
+                var hRight=D(null,{textAlign:'right'},null);
+                var hCap=D('mn',{fontWeight:'700',fontSize:'13px'},null);hCap.textContent=COP(r.capital);
+                hRight.appendChild(hCap);
+                if(r.delta!==null){
+                  var hDelta=D(null,{fontSize:'11px',color:r.delta>0?'var(--grn)':(r.delta<0?'var(--red)':'var(--mut)')},null);
+                  hDelta.textContent=(r.delta>0?'+':(r.delta<0?'−':''))+COP(Math.abs(r.delta));
+                  hRight.appendChild(hDelta);
+                }
+                hRow.appendChild(hLeft);hRow.appendChild(hRight);
+                card.appendChild(hRow);
+              })(histRows[hi],hi);
+            }
+          }
+          card.appendChild(D('sep',null,null));
           // Image export button
           card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           // Portal link button — genera URL de solo lectura para el socio
@@ -3907,7 +3989,7 @@ function loadProfile(uid,cb){
 // ── Lectura de datos (Fase 5): Firestore primero, localStorage como fallback ──
 function loadFromFirestore(cb){
   if(!FB.ready){cb(null);return;}
-  var result={loans:[],archives:{}};
+  var result={loans:[],archives:{},snapshots:{}};
   FB.db.collection('prestamos').get().then(function(snap){
     snap.forEach(function(doc){
       var l=doc.data()||{};
@@ -3917,7 +3999,11 @@ function loadFromFirestore(cb){
     });
     return FB.db.collection('config').doc('global').get();
   }).then(function(cfg){
-    if(cfg&&cfg.exists){var c=cfg.data()||{};if(c.archives&&typeof c.archives==='object')result.archives=c.archives;}
+    if(cfg&&cfg.exists){
+      var c=cfg.data()||{};
+      if(c.archives&&typeof c.archives==='object')result.archives=c.archives;
+      if(c.snapshots&&typeof c.snapshots==='object')result.snapshots=c.snapshots;
+    }
     cb(result);
   }).catch(function(e){
     console.warn('[Firebase] Error leyendo Firestore — usando localStorage:',e&&e.message);
@@ -3936,7 +4022,7 @@ function loadSTAsync(cb){
     function useLocal(){
       var local=null;try{local=loadST();}catch(le){local=null;}
       if(local&&local.loans&&local.loans.length>0){ST=local;}
-      else ST={loans:[],archives:{}};
+      else ST={loans:[],archives:{},snapshots:{}};
       syncInd('local');
       finish();
     }
@@ -4011,13 +4097,13 @@ function fbPushAll(){
       var batch=FB.db.batch();
       var end=Math.min(start+chunk,loans.length),n;
       for(n=start;n<end;n++){var l=loans[n];if(!l.id)l.id=GID();batch.set(FB.db.collection('prestamos').doc(l.id),loanToDoc(l));}
-      if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()});
+      if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()});
       batch.commit().then(function(){
         if(end<loans.length){pushChunk(end);}
         else{syncInd('cloud');}
       }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');notifySyncFailed();});
     }
-    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
+    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
     else pushChunk(0);
   }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');notifySyncFailed();}
 }
@@ -4046,7 +4132,7 @@ function migrarAFirebase(){
   console.log('🚀 Iniciando migración de '+total+' préstamos a Firestore...');
   var idx=0;
   function finish(){
-    FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},migratedAt:Date.now()}).then(function(){
+    FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},migratedAt:Date.now()}).then(function(){
       console.log('✅ Migración completa — '+total+' préstamos migrados');
       if(typeof showToast==='function')showToast('✅ Migración completa — '+total+' préstamos');
     }).catch(function(e){console.error('Error guardando config:',e&&e.message);});
@@ -4207,8 +4293,8 @@ function bootLegacyLocal(){
   try{
     var saved=loadST();
     if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
-    else ST={loans:[],archives:{}};
-  }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST={loans:[],archives:{}};}
+    else ST={loans:[],archives:{},snapshots:{}};
+  }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST={loans:[],archives:{},snapshots:{}};}
   syncInd('local');
   startApp();
 }
