@@ -251,6 +251,31 @@ function defaultPeriodoParaPago(l){
   for(i=0;i<pend.length;i++){if(oldest===null||pend[i].periodo<oldest)oldest=pend[i].periodo;}
   return oldest||CURR_MK;
 }
+// ── Aplica un pago a una COPIA ya clonada de un préstamo (c) — punto único usado por TODOS los
+// caminos que registran un pago (formulario de showLoanDetail, quick-pay de vCobros —individual
+// y por lote—, y "Registrar pago" de una cuota arrastrada), para que ninguno se quede sin:
+// 1) agregar el pago a pagos[] y marcar recibido=true (igual que siempre);
+// 2) si pago.periodo corresponde a una cuota arrastrada sin cobrar, marcarla recibida también;
+// 3) si ese periodo ya está archivado (mes cerrado), duplicar el pago en ST.archives[periodo].
+// Nota: NO toca c.recibido (el flag del mes en curso) — cada llamador decide eso, igual que
+// antes de existir esta función (doPagoFlow y el quick-pay lo marcan; el formulario de
+// showLoanDetail nunca lo hizo, y se mantiene así aquí).
+function aplicarPagoALoan(c,pago){
+  c.pagos=(c.pagos||[]).slice();
+  c.pagos.push(pago);
+  if(Array.isArray(c.cuotas_pendientes)){
+    c.cuotas_pendientes=c.cuotas_pendientes.map(function(cu){
+      if(cu.periodo===pago.periodo&&!cu.recibido){var cc={};for(var k in cu)cc[k]=cu[k];cc.recibido=true;return cc;}
+      return cu;
+    });
+  }
+  if(ST.archives&&ST.archives[pago.periodo]){
+    var arcCopy={};for(var ak in ST.archives)arcCopy[ak]=ST.archives[ak];
+    var arcMonth={};for(var ak2 in arcCopy[pago.periodo])arcMonth[ak2]=arcCopy[pago.periodo][ak2];
+    arcMonth[c.id]=(arcMonth[c.id]||[]).concat([pago]);
+    arcCopy[pago.periodo]=arcMonth;ST.archives=arcCopy;
+  }
+}
 function paidMth(l){
   var p=l.pagos||[],i;
   for(i=0;i<p.length;i++){if(pagoPeriodo(p[i])===CURR_MK)return true;}
@@ -1044,21 +1069,7 @@ function showLoanDetail(lid){
           var mv=parseFloat(pm);if(!mv||mv<=0){alert('Ingresa un monto válido');return;}
           var pago={id:GID(),tipo:ptyp,monto:mv,fecha:pfec,periodo:pperiodo||CURR_MK,nota:pnot}; // monto siempre en COP (lo recibido)
           if(isUSD(loan)&&ptyp==='interes')pago.monto_usd=Math.round(iM); // referencia en USD nativo
-          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];var np=(x.pagos||[]).slice();np.push(pago);c.pagos=np;c.status=pago.tipo==='total'?'paid':x.status;
-            // Si el periodo pagado corresponde a una cuota arrastrada, marcarla recibida (mismo
-            // criterio que doPagoFlow: registrar el pago auto-marca "Cobré").
-            if(Array.isArray(c.cuotas_pendientes)){
-              c.cuotas_pendientes=c.cuotas_pendientes.map(function(cu){if(cu.periodo===pago.periodo&&!cu.recibido){var cc={};for(var k2 in cu)cc[k2]=cu[k2];cc.recibido=true;return cc;}return cu;});
-            }
-            // Si el periodo ya está archivado (mes cerrado), el pago también se agrega a ese
-            // archivo para que el historial de ese mes quede completo.
-            if(ST.archives&&ST.archives[pago.periodo]){
-              var arcCopy={};for(var ak in ST.archives)arcCopy[ak]=ST.archives[ak];
-              var arcMonth={};for(var ak2 in arcCopy[pago.periodo])arcMonth[ak2]=arcCopy[pago.periodo][ak2];
-              arcMonth[x.id]=(arcMonth[x.id]||[]).concat([pago]);
-              arcCopy[pago.periodo]=arcMonth;ST.archives=arcCopy;
-            }
-            nl.push(c);}else nl.push(x);}
+          var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];aplicarPagoALoan(c,pago);c.status=pago.tipo==='total'?'paid':x.status;nl.push(c);}else nl.push(x);}
           ST.loans=nl;saveST();pm=String(Math.round(IMc(loan)));ptyp='interes';pfec=isoToday();pnot='';pperiodo='';spay=false;
           refresh();renderApp();
           if(pago.tipo==='interes'){var ln2=null,jj;for(jj=0;jj<ST.loans.length;jj++){if(ST.loans[jj].id===lid){ln2=ST.loans[jj];break;}}if(ln2)showWaModal([ln2],ln2.dia,pago.periodo);}
@@ -1719,23 +1730,28 @@ function doPagoFlow(loansOrLoan,dia,isBatch){
     for(jj=0;jj<ST.loans.length;jj++){
       var x=ST.loans[jj];
       if(pids[x.id]){
-        var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();
-        var _pg={id:GID(),tipo:'interes',monto:Math.round(IMc(x)),fecha:isoToday(),periodo:CURR_MK,nota:'Interés día '+dia}; // COP (equivalente para USD)
+        var c={};for(var k in x)c[k]=x[k];
+        // Si el préstamo arrastra una cuota sin resolver de un mes anterior, el pago se aplica
+        // a esa primero (la más antigua); si no, es la cuota normal del mes actual.
+        var _pg={id:GID(),tipo:'interes',monto:Math.round(IMc(x)),fecha:isoToday(),periodo:defaultPeriodoParaPago(x),nota:'Interés día '+dia}; // COP (equivalente para USD)
         if(isUSD(x))_pg.monto_usd=Math.round(IM(x));
-        c.pagos.push(_pg);
-        c.recibido=true; // auto-marcar recibido al registrar pago
+        aplicarPagoALoan(c,_pg);
+        // Auto-marcar "Cobré" del mes en curso SOLO si el pago realmente satisface ese periodo —
+        // si se aplicó a una cuota arrastrada de un mes anterior, el mes actual sigue sin pagar.
+        if(_pg.periodo===CURR_MK)c.recibido=true;
         nl.push(c);
       }else nl.push(x);
     }
     ST.loans=nl;saveST();renderApp();
   }
+  var periodo0=loans.length===1?defaultPeriodoParaPago(loans[0]):CURR_MK; // calculado ANTES de commitPayments
   if(PREFS.confirmPays){
     // Use existing modal flow — unchanged
     showPaymentConfirm(loans,dia,function(){
       commitPayments();
       var msg=loans.length===1?'✅ Pago registrado — '+(loans[0].socio||loans[0].responsable):'✅ Pagos registrados — día '+dia+' ('+loans.length+')';
       showToast(msg);
-      showWaModal(loans,dia);
+      showWaModal(loans,dia,periodo0);
     });
   }else{
     // Fast path: register immediately, then toast with WhatsApp inline action
@@ -2054,21 +2070,10 @@ function vCobros(){
                 var nl=[],jj;
                 for(jj=0;jj<ST.loans.length;jj++){
                   var x=ST.loans[jj];
-                  if(x.id===loan.id){
-                    var c={};for(var k in x)c[k]=x[k];
-                    c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);
-                    c.cuotas_pendientes=(x.cuotas_pendientes||[]).map(function(cu){if(cu.id!==cuota.id)return cu;var cc={};for(var k2 in cu)cc[k2]=cu[k2];cc.recibido=true;return cc;});
-                    nl.push(c);
-                  }else nl.push(x);
+                  if(x.id===loan.id){var c={};for(var k in x)c[k]=x[k];aplicarPagoALoan(c,pago);nl.push(c);}
+                  else nl.push(x);
                 }
                 ST.loans=nl;
-                // Un pago con periodo de un mes ya archivado también se agrega a ese archivo.
-                if(ST.archives&&ST.archives[cuota.periodo]){
-                  var arcCopy={};for(var ak in ST.archives)arcCopy[ak]=ST.archives[ak];
-                  var arcMonth={};for(var ak2 in arcCopy[cuota.periodo])arcMonth[ak2]=arcCopy[cuota.periodo][ak2];
-                  arcMonth[loan.id]=(arcMonth[loan.id]||[]).concat([pago]);
-                  arcCopy[cuota.periodo]=arcMonth;ST.archives=arcCopy;
-                }
                 saveST();
                 var updated=findLoanById(loan.id);
                 showToast('✅ Pago registrado — '+(loan.socio||loan.responsable));
@@ -2142,11 +2147,12 @@ function vCobros(){
             qb.style.fontSize='11px';qb.style.padding='8px 10px';
             qb.addEventListener('click',function(e){
               e.stopPropagation();
+              var periodoLn=defaultPeriodoParaPago(ln); // cuota arrastrada sin resolver más antigua, o el mes actual
               showPaymentConfirm([ln],g.dia,function(){
-                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(ln)),fecha:isoToday(),periodo:CURR_MK,nota:'Interés día '+g.dia};
+                var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(ln)),fecha:isoToday(),periodo:periodoLn,nota:'Interés día '+g.dia};
                 if(isUSD(ln))pago.monto_usd=Math.round(IM(ln));
-                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];c.pagos=(x.pagos||[]).slice();c.pagos.push(pago);c.recibido=true;nl.push(c);}else nl.push(x);}
-                ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia);
+                var nl=[],jj;for(jj=0;jj<ST.loans.length;jj++){var x=ST.loans[jj];if(x.id===ln.id){var c={};for(var k in x)c[k]=x[k];aplicarPagoALoan(c,pago);if(pago.periodo===CURR_MK)c.recibido=true;nl.push(c);}else nl.push(x);}
+                ST.loans=nl;saveST();showToast('✅ Pago registrado — '+(ln.socio||ln.responsable));renderApp();showWaModal([ln],g.dia,periodoLn);
               });
             });
             dhl.appendChild(qb);
