@@ -270,6 +270,11 @@ function allPagosForLoan(l){
 function fmtFechaLargaISO(iso){var d=parseLocalDate(iso);return d?d.toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'}):(iso||'—');}
 // Formatea 'YYYY-MM' como 'MES YYYY' abreviado (e.g. '2026-10' → 'OCT 2026').
 function fmtMK(mk){if(!mk)return'—';var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return(MESES[mo]?MESES[mo].slice(0,3):'')+' '+p[0];}
+// Mes de vencimiento abreviado + año (e.g. "DIC 2026") — solo el mes_fin/año de un préstamo, sin el día.
+function fmtMesFinAño(l){return(l.mes_fin||'').slice(0,3)+' '+(l.año||'');}
+// "Día X · MES AÑO" — vencimiento completo de un préstamo, usado en mensajes/prosa (no en tablas
+// con columnas DÍA/MES FIN separadas, donde solo se usa fmtMesFinAño en la columna de mes).
+function fmtDiaMesAño(l){return'Día '+l.dia+' · '+fmtMesFinAño(l);}
 // ── Caption de fila para el cliente (buildClienteImage / dayam.html) ──
 // Un préstamo con continuacion_de NUNCA muestra "🆕 Préstamo nuevo": mientras aún no sea cobrable,
 // se usa el estado del préstamo ORIGINAL para este mes (para el cliente es un solo crédito continuo).
@@ -435,7 +440,7 @@ function waRegMsg(dia,loans,fecha){
 }
 function waSocioResumen(name,st){
   var lines=['📊 RESUMEN DE INVERSIÓN','Hola '+name+' 👋','Fecha: '+hoyStr(),'','💰 Capital: '+COP(st.capital),'📈 Tu interés mensual: '+COP(st.intS),'📋 Préstamos activos: '+st.count,'','Detalle:'],i;
-  for(i=0;i<st.loans.length;i++){var l=st.loans[i];lines.push((i+1)+'. '+COP(montoCOP(l))+(isUSD(l)?' ('+USD(l.monto)+')':'')+' → Día '+l.dia+' '+l.mes_fin+' → Interés: '+COP(ISc(l)));}
+  for(i=0;i<st.loans.length;i++){var l=st.loans[i];lines.push((i+1)+'. '+COP(montoCOP(l))+(isUSD(l)?' ('+USD(l.monto)+')':'')+' → '+fmtDiaMesAño(l)+' → Interés: '+COP(ISc(l)));}
   lines.push('','¡Gracias por tu confianza! 🙏');
   return lines.join('\n');
 }
@@ -591,7 +596,7 @@ function buildSocioImage(name,st,onDone){
       var l=loans[startRow+ri];var rY=tY+rH*(ri+1);
       ctx.fillStyle=ri%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
       ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
-      var vals=[String(l.dia),l.mes_fin,COP(montoCOP(l)),COP(ISc(l))];
+      var vals=[String(l.dia),fmtMesFinAño(l),COP(montoCOP(l)),COP(ISc(l))];
       cx=pad;
       for(cIdx=0;cIdx<vals.length;cIdx++){
         ctx.textAlign='center';
@@ -663,7 +668,7 @@ function buildGeneralImage(loans,onDone){
     var l=sl[i];var rY=tY+rH*(i+1);
     ctx.fillStyle=i%2===0?'#0d1e33':'#0a1928';ctx.fillRect(0,rY,tW,rH);
     ctx.strokeStyle='#1c3455';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,rY);ctx.lineTo(tW,rY);ctx.stroke();
-    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(montoCOP(l)),COP(IMc(l))];cx=pad;
+    var vals=[String(l.dia),fmtMesFinAño(l),l.responsable||'—',COP(montoCOP(l)),COP(IMc(l))];cx=pad;
     for(cIdx=0;cIdx<vals.length;cIdx++){
       ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
       ctx.fillStyle=cIdx===3?'#d8e8f5':cIdx===4?'#2dd87a':'#d8e8f5';ctx.textAlign='center';
@@ -2458,7 +2463,7 @@ function vSocios(){
               lr.appendChild(sumCheckbox(ln.id));
               var ll=D(null,{flex:'1',minWidth:'0'},null);
               var lp1=S(null,{fontWeight:'600',color:'var(--mut)'},null);lp1.textContent='Préstamo '+(idx+1);
-              var lp2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);lp2.textContent='Día '+ln.dia+' '+ln.mes_fin;
+              var lp2=S(null,{fontSize:'11px',color:'var(--mut)',marginLeft:'8px'},null);lp2.textContent=fmtDiaMesAño(ln);
               ll.appendChild(lp1);ll.appendChild(lp2);
               var lr2=D(null,{textAlign:'right',flexShrink:'0'},null);
               var lv1=D('mn',{fontWeight:'600'},null);lv1.textContent=COP(montoCOP(ln))+(isUSD(ln)?' ('+USD(ln.monto)+')':'');
@@ -3079,7 +3084,7 @@ function buildOwnerImage(active, onDone) {
     var l=sl[i]; var rY=tY+rH*(i+1);
     ctx.fillStyle=i%2===0?'#0d1e33':'#0a0820'; ctx.fillRect(0,rY,tW,rH);
     ctx.strokeStyle='#2a1a4a'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,rY); ctx.lineTo(tW,rY); ctx.stroke();
-    var vals=[String(l.dia),l.mes_fin,l.responsable||'—',COP(montoCOP(l)),COP(IPc(l)),IS(l)>0?COP(ISc(l)):'—']; cx=pad;
+    var vals=[String(l.dia),fmtMesFinAño(l),l.responsable||'—',COP(montoCOP(l)),COP(IPc(l)),IS(l)>0?COP(ISc(l)):'—']; cx=pad;
     for(cIdx=0;cIdx<vals.length;cIdx++){
       ctx.font=(cIdx>=3?'bold ':'')+fs+'px -apple-system,sans-serif';
       ctx.fillStyle=cIdx===4?'#2dd87a':cIdx===5?'#f04f70':'#d8e8f5'; ctx.textAlign='center';
