@@ -268,9 +268,12 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
 
   function loadLoans(info){
     currentInfo=info;
-    var nombre=(info.nombre||'').toUpperCase();
+    var email=(info.email||'').toLowerCase();
     showLoading('Cargando tus préstamos…');
-    db.collection('prestamos').where('socio','==',nombre).get()
+    // Por socio_email (no por nombre): así la regla de Firestore solo tiene que comprobar que
+    // el campo del documento coincide con el correo de la sesión, sin exponer los préstamos de
+    // otros socios a quien tenga sesión iniciada.
+    db.collection('prestamos').where('socio_email','==',email).get()
       .then(function(snap){
         var loans=[],allLoans=[];
         snap.forEach(function(doc){

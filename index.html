@@ -4297,9 +4297,62 @@ function loadSTAsync(cb){
   });
 }
 
+// ── Mapa nombre de socio → email, para poder escribir socio_email en cada préstamo (Fase 6:
+// cierre de reglas de Firestore — un socio con sesión solo puede leer sus propios préstamos
+// filtrando por este campo, no por su nombre). Se carga una vez al iniciar sesión de admin;
+// si un socio no tiene documento en la colección socios (ej. JULIAN), su email queda null.
+var SOCIOS_MAP={};
+function loadSociosMap(){
+  if(!FB.ready||!FB.db)return;
+  FB.db.collection('socios').get().then(function(snap){
+    var m={};
+    snap.forEach(function(doc){
+      var d=doc.data()||{};
+      if(d.nombre&&d.email)m[(d.nombre+'').toUpperCase()]=(d.email+'').toLowerCase();
+    });
+    SOCIOS_MAP=m;
+  }).catch(function(e){console.warn('[Firebase] No se pudo cargar la colección socios:',e&&e.message);});
+}
+
 // ── Escritura: sync best-effort a Firestore (Fase 5) ──
-// Convierte un loan a documento plano JSON (incluye el array pagos — "todos los campos").
-function loanToDoc(l){var c={},k;for(k in l){if(l.hasOwnProperty(k))c[k]=l[k];}return c;}
+// Convierte un loan a documento plano JSON (incluye el array pagos — "todos los campos"),
+// agregando socio_email (Fase 6) a partir de SOCIOS_MAP.
+function loanToDoc(l){
+  var c={},k;for(k in l){if(l.hasOwnProperty(k))c[k]=l[k];}
+  var nombreSoc=(l.socio||'').toUpperCase();
+  c.socio_email=SOCIOS_MAP.hasOwnProperty(nombreSoc)?SOCIOS_MAP[nombreSoc]:null;
+  return c;
+}
+// ── Copia pública para el portal del cliente DAYAM (dayam.html), sin campos sensibles.
+// NUNCA incluir: socio, socio_email, int_socio, int_propio, moneda, tasa_cambio, nota, cierre_tipo.
+function buildPortalClienteLoan(l){
+  return {
+    id:l.id,
+    dia:l.dia,
+    capital:montoCOP(l),
+    pago_mensual:IMc(l),
+    mes_fin:l.mes_fin||null,
+    año:l.año||null,
+    mes_comienzo:l.mes_comienzo||null,
+    status:l.status,
+    continuacion_de:l.continuacion_de||null,
+    recibido:!!l.recibido,
+    pagos:(l.pagos||[]).map(function(p){return {periodo:pagoPeriodo(p),fecha:p.fecha||null};}),
+    cuotas_pendientes:(l.cuotas_pendientes||[]).map(function(cu){return {periodo:cu.periodo,recibido:!!cu.recibido};})
+  };
+}
+function buildPortalClienteDoc(responsable){
+  var out=[],i;
+  for(i=0;i<ST.loans.length;i++){
+    if((ST.loans[i].responsable||'').toUpperCase()===responsable.toUpperCase())out.push(buildPortalClienteLoan(ST.loans[i]));
+  }
+  return {prestamos:out,updatedAt:Date.now()};
+}
+function pushPortalClientes(){
+  if(!FB.ready||!FB.db||!isAdmin())return;
+  FB.db.collection('portal_clientes').doc('dayam').set(buildPortalClienteDoc('DAYAM'))
+    .catch(function(e){console.warn('[Firebase] Error guardando portal_clientes/dayam:',e&&e.message);});
+}
 var _fbSyncTimer=null;
 function fbSyncDebounced(){
   if(!FB.ready||!FB.db||!isAdmin())return;
@@ -4347,10 +4400,10 @@ function fbPushAll(){
       if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()});
       batch.commit().then(function(){
         if(end<loans.length){pushChunk(end);}
-        else{syncInd('cloud');}
+        else{pushPortalClientes();syncInd('cloud');}
       }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');notifySyncFailed();});
     }
-    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()}).then(function(){syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
+    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()}).then(function(){pushPortalClientes();syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
     else pushChunk(0);
   }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');notifySyncFailed();}
 }
@@ -4409,6 +4462,7 @@ function jitelSocioAdd(code,email,nombre){
   FB.db.collection('socios').doc(code).set(doc).then(function(){
     console.log('✅ Socio creado: socios/'+code+' → '+email+' (nombre: '+doc.nombre+')');
     if(typeof showToast==='function')showToast('✅ Socio '+code+' creado');
+    loadSociosMap(); // refresca SOCIOS_MAP para que el próximo guardado ya escriba su socio_email
   }).catch(function(e){console.error('Error creando socio:',e&&e.message);});
 }
 try{window.migrarAFirebase=migrarAFirebase;window.jitelBootstrapAdmin=jitelBootstrapAdmin;window.jitelLogout=jitelLogout;window.jitelSocioAdd=jitelSocioAdd;}catch(e){}
@@ -4514,7 +4568,7 @@ function startApp(){
   }
   renderApp();
 }
-function bootData(){loadSTAsync(function(){startApp();});}
+function bootData(){loadSociosMap();loadSTAsync(function(){startApp();});}
 
 // ── BOOT ──
 document.getElementById('btn-new').addEventListener('click',showNewLoan);

@@ -144,12 +144,10 @@ html,body{background:var(--bg);color:var(--ink);
   // se creó este mismo mes y su primer cobro es el próximo, así que aún NO es cobrable.
   function isCollectable(l){var mk=currMk();return !(l.mes_comienzo&&(''+l.mes_comienzo)>=mk);}
 
-  // Moneda: el cliente NUNCA ve USD. Un préstamo USD se convierte a COP con su tasa fija y se
-  // muestra igual que un COP nativo. Sin moneda/tasa_cambio → COP puro (fx=1, sin cambios).
-  function fxRate(l){return (l&&l.moneda==='USD')?(+l.tasa_cambio||0):1;} // COP por 1 USD (1 para COP)
-  function montoCOP(l){return (l.monto||0)*fxRate(l);}                    // capital en COP
-  // Interés total del cliente EN COP = monto × (int_socio + int_propio) × tasa. NUNCA desglosado.
-  function pagoMensual(l){return (l.monto||0)*((+l.int_socio||0)+(+l.int_propio||0))*fxRate(l);}
+  // Capital y cuota mensual ya vienen precalculados en COP en portal_clientes/dayam (el admin los
+  // convierte al guardar) — esta página nunca ve monto/int_socio/int_propio/moneda/tasa_cambio.
+  function montoCOP(l){return l.capital||0;}    // capital en COP
+  function pagoMensual(l){return l.pago_mensual||0;} // interés total del cliente en COP. NUNCA desglosado.
 
   // ¿Ya pagó este mes? Toma en cuenta la conciliación (recibido) y los pagos con fecha del mes actual.
   function pagadoEsteMes(l){
@@ -421,12 +419,17 @@ html,body{background:var(--bg);color:var(--ink);
     return;
   }
 
-  // ── Consulta directa: préstamos de DAYAM (lectura pública permitida por las reglas de Firestore) ──
+  // ── Copia pública de solo lectura: un único documento con los campos ya filtrados por el
+  // admin (nunca socio/socio_email/int_socio/int_propio/moneda/tasa_cambio/nota/cierre_tipo) —
+  // esta página ya NO consulta la colección `prestamos` en absoluto. Si el documento aún no
+  // existe (nunca se ha guardado desde que se agregó esta funcionalidad), se ve como "sin
+  // conexión" — el mismo mensaje amable de siempre. ──
   try{
-    db.collection('prestamos').where('responsable','==',CLIENTE).get()
-      .then(function(snap){
-        var loans=[];
-        snap.forEach(function(doc){loans.push(doc.data());});
+    db.collection('portal_clientes').doc('dayam').get()
+      .then(function(doc){
+        if(!doc.exists){showError();return;}
+        var data=doc.data()||{};
+        var loans=Array.isArray(data.prestamos)?data.prestamos:[];
         render(loans);
       })
       .catch(function(){showError();});
