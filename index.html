@@ -237,6 +237,15 @@ function hasPagoForPeriodo(l,periodo){
 }
 // Mes anterior a 'YYYY-MM' en el mismo formato.
 function prevMk(mk){var p=(mk+'').split('-');var y=parseInt(p[0],10),m=parseInt(p[1],10)-1;if(m<1){m=12;y--;}return y+'-'+(m<10?'0'+m:String(m));}
+// Mes siguiente a 'YYYY-MM' en el mismo formato.
+function nextMk(mk){var p=(mk+'').split('-');var y=parseInt(p[0],10),m=parseInt(p[1],10)+1;if(m>12){m=1;y++;}return y+'-'+(m<10?'0'+m:String(m));}
+// Texto 'Primer cobro: día D de MES AÑO' — el primer cobro es el mes siguiente a mes_comienzo
+// (misma regla que isCollectableFor). Sin mes de inicio el préstamo se cobra desde ya.
+function primerCobroTxt(dia,mesComienzo){
+  if(!mesComienzo)return 'Sin mes de inicio: se cobra desde el mes actual';
+  var p=nextMk(mesComienzo).split('-');
+  return 'Primer cobro: día '+dia+' de '+MESES[parseInt(p[1],10)-1]+' '+p[0];
+}
 // Nombre de mes en minúscula a partir de 'YYYY-MM' (ej. '2026-09' → 'septiembre'), para prosa.
 function mesNombreLargo(mk){if(!mk)return'';var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return(MESES[mo]||'').toLowerCase();}
 // Una cuota arrastrada {periodo,recibido,pagado_socio} está resuelta cuando ya hay un pago
@@ -906,7 +915,7 @@ function showLoanDetail(lid){
     if(!loan)return D(null,null,null);
     var iS=IS(loan),iP=IP(loan),iM=IM(loan);
     var ab=0;var pg=loan.pagos||[];for(i=0;i<pg.length;i++){if(pg[i].tipo!=='interes')ab+=pg[i].monto;}
-    if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:'',int_socio:loan.int_socio,int_propio:loan.int_propio};initE=true;}
+    if(!initE){ed={dia:loan.dia,mes:loan.mes_fin,año:loan.año,socio:loan.socio||'',nota:'',int_socio:loan.int_socio,int_propio:loan.int_propio,mes_comienzo:loan.mes_comienzo||''};initE=true;}
     if(!pm)pm=String(Math.round(IMc(loan))); // el pago se registra en COP (equivalente para USD)
     if(!pperiodo)pperiodo=defaultPeriodoParaPago(loan); // cuota arrastrada sin resolver más antigua, o el mes actual
     var m=D('modal',null,null);
@@ -960,6 +969,14 @@ function showLoanDetail(lid){
       var msel=MSEL(mopts,ed.mes);msel.addEventListener('change',function(e){ed.mes=e.target.value;});
       var yIn=INP({type:'number',value:String(ed.año)});yIn.addEventListener('input',function(e){ed.año=parseInt(e.target.value)||2026;});
       ediv.appendChild(R3(FLD('Día',dIn),FLD('Mes',msel),FLD('Año',yIn)));
+      // Mes de inicio editable (no cuenta como extensión) + primer cobro en vivo
+      var mcEd=INP({type:'month',value:ed.mes_comienzo});
+      var pcEd=D(null,{fontSize:'12px',color:'var(--acc)',fontWeight:'600',marginTop:'-6px',marginBottom:'10px'},null);
+      function updPcEd(){pcEd.textContent='📅 '+primerCobroTxt(ed.dia,ed.mes_comienzo);}
+      mcEd.addEventListener('change',function(e){ed.mes_comienzo=e.target.value;updPcEd();});
+      mcEd.addEventListener('input',function(e){ed.mes_comienzo=e.target.value;updPcEd();});
+      dIn.addEventListener('input',updPcEd);
+      ediv.appendChild(FLD('Mes de inicio',mcEd));updPcEd();ediv.appendChild(pcEd);
       // Campo Socio — permite transferir el préstamo a otro socio
       var sociosList=[],sociosSet={},si_ed;
       for(si_ed=0;si_ed<ST.loans.length;si_ed++){var sl_ed=ST.loans[si_ed];if(sl_ed.socio&&!sociosSet[sl_ed.socio]){sociosList.push(sl_ed.socio);sociosSet[sl_ed.socio]=1;}}
@@ -987,19 +1004,24 @@ function showLoanDetail(lid){
       ediv.appendChild(BTN('bb','Confirmar cambios',function(){
         function doSave(newSocio,newIs,newIp){
           var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){
-            var noteParts=['Plazo → día '+ed.dia+' '+ed.mes+' '+ed.año];
+            var plazoChanged=(ed.dia!==x.dia)||(ed.mes!==x.mes_fin)||(ed.año!==x.año);
+            var inicioChanged=(ed.mes_comienzo||'')!==(x.mes_comienzo||'');
+            var noteParts=[];
+            if(plazoChanged)noteParts.push('Plazo → día '+ed.dia+' '+ed.mes+' '+ed.año);
+            if(inicioChanged)noteParts.push('Inicio: '+(x.mes_comienzo||'—')+' → '+(ed.mes_comienzo||'—'));
             if(newSocio&&newSocio!==x.socio)noteParts.push('Socio: '+x.socio+' → '+newSocio);
             if(newIs!==null&&newIs!==undefined&&Math.abs(newIs-x.int_socio)>0.00001)noteParts.push('Socio %: '+(x.int_socio*100).toFixed(1)+'% → '+(newIs*100).toFixed(1)+'%');
             if(newIp!==null&&newIp!==undefined&&Math.abs(newIp-x.int_propio)>0.00001)noteParts.push('Propio %: '+(x.int_propio*100).toFixed(1)+'% → '+(newIp*100).toFixed(1)+'%');
+            if(!noteParts.length)noteParts.push('Plazo → día '+ed.dia+' '+ed.mes+' '+ed.año); // sin cambios: nota como antes
             if(ed.nota)noteParts.push('('+ed.nota+')');
             var note=noteParts.join(' | ');
             var c={};for(var k in x)c[k]=x[k];
-            var plazoChanged=(ed.dia!==x.dia)||(ed.mes!==x.mes_fin)||(ed.año!==x.año);
             if(plazoChanged){
               if(!x.mes_fin_original)c.mes_fin_original=x.mes_fin+' '+x.año;
               c.veces_extendido=(x.veces_extendido||0)+1;
             }
             c.dia=ed.dia;c.mes_fin=ed.mes;c.año=ed.año;
+            if(inicioChanged)c.mes_comienzo=ed.mes_comienzo||null; // corrección de inicio: NO suma a veces_extendido
             if(newSocio)c.socio=newSocio;
             if(newIs!==null&&newIs!==undefined)c.int_socio=newIs;
             if(newIp!==null&&newIp!==undefined)c.int_propio=newIp;
@@ -1191,13 +1213,24 @@ function showNewLoan(prefill){
   defHint.textContent='💡 Pre-cargado: tasa más usada (socio '+(defs.int_socio*100).toFixed(1)+'% / propio '+(defs.int_propio*100).toFixed(1)+'%)';
   m.appendChild(defHint);
   m.appendChild(prevDiv);
-  var dIn=INP({type:'number',value:'1',min:'1',max:'31'});dIn.addEventListener('input',function(e){fd=parseInt(e.target.value)||1;});
+  var dIn=INP({type:'number',value:'1',min:'1',max:'31'});dIn.addEventListener('input',function(e){fd=parseInt(e.target.value)||1;updPrimerCobro();});
   var mOpts=[];for(i=0;i<MESES.length;i++)mOpts.push([MESES[i],MESES[i].slice(0,3)]);
   var mSel=MSEL(mOpts,'JUNIO');mSel.addEventListener('change',function(e){fmf=e.target.value;});
   var yIn=INP({type:'number',value:String(fay)});yIn.addEventListener('input',function(e){fay=parseInt(e.target.value)||2026;});
   m.appendChild(R3(FLD('Día vence',dIn),FLD('Mes fin',mSel),FLD('Año',yIn)));
-  var mcIn=INP({type:'month',value:CURR_MK});mcIn.addEventListener('change',function(e){fmc=e.target.value;});
+  var mcIn=INP({type:'month',value:CURR_MK});
+  mcIn.addEventListener('change',function(e){fmc=e.target.value;updPrimerCobro();});
+  mcIn.addEventListener('input',function(e){fmc=e.target.value;updPrimerCobro();});
   m.appendChild(FLD('Mes de inicio',mcIn));
+  // Primer cobro en vivo (mes siguiente a 'Mes de inicio') + aviso a inicio de mes
+  var pcDiv=D(null,{fontSize:'12px',color:'var(--acc)',fontWeight:'600',marginTop:'-6px',marginBottom:'10px'},null);
+  function updPrimerCobro(){pcDiv.textContent='📅 '+primerCobroTxt(fd,fmc);}
+  updPrimerCobro();m.appendChild(pcDiv);
+  if(TODAY_DIA<=5){
+    var pcNote=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'-6px',marginBottom:'10px'},null);
+    pcNote.textContent='💡 Si el dinero se entregó el mes pasado, elige ese mes como inicio';
+    m.appendChild(pcNote);
+  }
   // ── Continuación de un préstamo existente (traspaso de cartera entre socios) ──
   var esContinuacion=false,continuacionDe='';
   var contCheckRow=D(null,{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'},null);
@@ -1237,9 +1270,10 @@ function showNewLoan(prefill){
     var l={id:GID(),año:fay,dia:fd,mes_fin:fmf,monto:fm,socio:fs,int_socio:fis,int_propio:fip,responsable:fr,mes_comienzo:fmc,status:'active',pagos:[],nota:fn,created_at:new Date().toISOString(),moneda:fmon,tasa_cambio:fmon==='USD'?ftc:null};
     if(esContinuacion&&continuacionDe)l.continuacion_de=continuacionDe;
     // Regla de apertura: si el día de cobro ya pasó (o es hoy) y el mes de inicio es
-    // el actual o anterior, marcar este mes como pagado para que el primer cobro real
-    // sea el mes siguiente. Se inserta un pago simbólico que satisface paidMth().
-    if(fd<=TODAY_DIA&&(!fmc||fmc<=CURR_MK)){
+    // el actual, marcar este mes como pagado (pago simbólico que satisface paidMth()).
+    // Si el inicio es un mes anterior, NO se marca: su primer cobro es el mes siguiente
+    // al inicio — este mes — tal como muestra 'Primer cobro'.
+    if(fd<=TODAY_DIA&&(!fmc||fmc===CURR_MK)){
       var _apM={id:GID(),tipo:'interes',monto:Math.round(IMc(l)),fecha:isoToday(),periodo:CURR_MK,nota:'Mes de apertura'};
       if(isUSD(l))_apM.monto_usd=Math.round(IM(l));
       l.pagos=[_apM];
