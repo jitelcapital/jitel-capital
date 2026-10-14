@@ -1369,6 +1369,28 @@ function showReset(){
         pNote.textContent='Estas cuotas pasarán a "Pendientes del mes anterior" en Cobros.';
         m.appendChild(pNote);
       }
+      // Cobrado sin girar hace más de GIRO_ALERTA_DIAS días, por socio — antes de confirmar.
+      var sgAl=alertasSinGirar();
+      if(sgAl.length>0){
+        var sgTtl=D(null,{fontSize:'12px',fontWeight:'700',color:'var(--c-amber-txt)',marginBottom:'8px'},null);
+        sgTtl.textContent='🏦 Cobrado sin girar hace más de '+GIRO_ALERTA_DIAS+' días:';
+        m.appendChild(sgTtl);
+        var sgList=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px',maxHeight:'200px',overflowY:'auto'},null);
+        for(var sgi=0;sgi<sgAl.length;sgi++){
+          var sga=sgAl[sgi];
+          var sgh=D(null,{display:'flex',justifyContent:'space-between',fontWeight:'700',fontSize:'12px',padding:'5px 0 2px'},null);
+          var sghl=S(null,null,null);sghl.textContent=sga.socio;var sghr=S('mn',{color:'var(--c-amber-txt)'},null);sghr.textContent=COP(sga.total);
+          sgh.appendChild(sghl);sgh.appendChild(sghr);sgList.appendChild(sgh);
+          for(var sgj=0;sgj<sga.cuotas.length;sgj++){
+            var sgc=sga.cuotas[sgj];
+            var sgr=D(null,{display:'flex',justifyContent:'space-between',fontSize:'11px',color:'var(--mut)',padding:'2px 0 2px 10px'},null);
+            var sgrl=S(null,null,null);sgrl.textContent='Día '+sgc.loan.dia+' · '+mesNombreLargo(sgc.periodo)+' · pagó hace '+sgc.dias+' días';
+            var sgrr=S('mn',null,null);sgrr.textContent=COP(sgc.monto);
+            sgr.appendChild(sgrl);sgr.appendChild(sgrr);sgList.appendChild(sgr);
+          }
+        }
+        m.appendChild(sgList);
+      }
       var brow2=D(null,{display:'flex',gap:'8px'},null);
       brow2.appendChild(BTN('br','Sí, reiniciar mes',function(){
         function doReset(){
@@ -1610,10 +1632,12 @@ function sumShowDesglose(){
   m.appendChild(tot);
   showModal(m);
 }
-// ── CONCILIACIÓN: dos toggles independientes por préstamo (recibido / pagado_socio) ──
+// ── CONCILIACIÓN: toggle de recibido por préstamo. pagado_socio YA NO se toca aquí: solo se
+// pone al guardar un giro (giroBtn / showGiroModal). ──
 // Estos campos viven en cada loan como booleans simples; se persisten en localStorage
 // y se incluyen en export/import CSV. NO afectan el array `pagos` ni la lógica de pagos.
 function toggleConcil(loanId,field){
+  if(field==='pagado_socio')return; // solo un giro pone pagado_socio (ver registrarGiro)
   var nl=[],i;
   for(i=0;i<ST.loans.length;i++){
     var x=ST.loans[i];
@@ -1624,6 +1648,7 @@ function toggleConcil(loanId,field){
 }
 // Toggle button pill — green when active, gray when pending. Auto-hides "pagado_socio" for Julian.
 function conciliBtn(ln,field,iconLbl){
+  if(field==='pagado_socio')return giroBtn(ln,CURR_MK); // sin giro no hay "Pagué socio"
   var active=!!ln[field];
   var b=document.createElement('button');b.type='button';
   function applyStyle(){
@@ -1652,6 +1677,7 @@ function conciliBtn(ln,field,iconLbl){
 // identificada por su id) — independiente de recibido/pagado_socio del mes actual del préstamo.
 function conciliBtnCuota(loan,cuotaId,field,iconLbl){
   var cuota=(loan.cuotas_pendientes||[]).filter(function(c){return c.id===cuotaId;})[0]||{};
+  if(field==='pagado_socio')return giroBtn(loan,cuota.periodo); // sin giro no hay "Pagué socio"
   var active=!!cuota[field];
   var b=document.createElement('button');b.type='button';
   function applyStyle(){
@@ -1682,6 +1708,526 @@ function conciliBtnCuota(loan,cuotaId,field,iconLbl){
   });
   return b;
 }
+
+// ── GIROS A SOCIOS ──
+// Cada pago a un socio queda como un "giro" con modalidad, en la colección Firestore `giros`
+// (aparte de ST.loans y de fbPushAll). Los giros NUNCA se editan ni se borran: para corregir uno
+// se crea otro con anula_a=<id>. pagado_socio (del mes y de cuotas_pendientes) solo se pone en
+// true al guardar un giro, y vuelve a false solo al anular el giro que la cubría.
+// Compatibilidad: sin giros todo funciona igual; las cuotas marcadas antes de existir los giros
+// siguen marcadas (se muestran como "girado" sin giro asociado).
+var GIROS=[];                    // todos los giros conocidos (Firestore + cache local)
+var GIROS_LSK='jitel_giros_v1';  // cache local: {giros:[...], pending:[ids sin escribir en la nube]}
+var GIROS_DESDE='2026-10';       // primer mes del historial de giros (no se importan anteriores)
+var GIRO_ALERTA_DIAS=3;          // aviso "cobrado sin girar" pasados estos días del pago del cliente
+var _pendingGiros=[];            // ids de giros que no se pudieron escribir en Firestore
+var GIRO_MODALIDADES=[['transferencia','Transferencia'],['efectivo','Efectivo'],['abono_tarjeta','Abono a tarjeta'],['otro','Otro']];
+var GIRO_TIPOS=[['intereses','Intereses'],['devolucion_capital','Devolución de capital'],['aporte_capital','Aporte de capital']];
+function giroOptLbl(opts,v){var i;for(i=0;i<opts.length;i++){if(opts[i][0]===v)return opts[i][1];}return v||'—';}
+function giroModalidadLbl(g){return giroOptLbl(GIRO_MODALIDADES,g.modalidad);}
+function giroTipoLbl(g){return giroOptLbl(GIRO_TIPOS,g.tipo);}
+function saveGirosLocal(){try{localStorage.setItem(GIROS_LSK,JSON.stringify({giros:GIROS,pending:_pendingGiros}));}catch(e){}}
+function sanitizeGiro(g){
+  if(!g||!g.id)return null;
+  g.monto=parseFloat(g.monto)||0;
+  if(!Array.isArray(g.cuotas))g.cuotas=[];
+  g.cuotas=g.cuotas.map(function(c){return {loanId:c.loanId||'',periodo:c.periodo||null,monto:parseFloat(c.monto)||0};});
+  return g;
+}
+function loadGirosLocal(){
+  try{
+    var r=localStorage.getItem(GIROS_LSK);if(!r)return;
+    var p=JSON.parse(r)||{};
+    GIROS=(Array.isArray(p.giros)?p.giros:[]).map(sanitizeGiro).filter(function(g){return !!g;});
+    _pendingGiros=Array.isArray(p.pending)?p.pending:[];
+  }catch(e){GIROS=[];_pendingGiros=[];}
+}
+// Agrega giros que aún no estén (por id). Nunca reemplaza uno existente: los giros no se editan.
+function mergeGiros(list){
+  var have={},i,n=0;for(i=0;i<GIROS.length;i++)have[GIROS[i].id]=true;
+  for(i=0;i<(list||[]).length;i++){var g=sanitizeGiro(list[i]);if(g&&!have[g.id]){GIROS.push(g);have[g.id]=true;n++;}}
+  return n;
+}
+function findGiroById(id){var i;for(i=0;i<GIROS.length;i++){if(GIROS[i].id===id)return GIROS[i];}return null;}
+// El giro que anula a 'id' (o null). Un giro está anulado si existe otro con anula_a === su id.
+function giroAnulacionDe(id){var i;for(i=0;i<GIROS.length;i++){if(GIROS[i].anula_a===id)return GIROS[i];}return null;}
+// Vigente = giro "real" (no es una anulación) y nadie lo ha anulado.
+function giroVigente(g){return !g.anula_a&&!giroAnulacionDe(g.id);}
+function girosDeSocio(socio){return GIROS.filter(function(g){return g.socio===socio;});}
+// Giro vigente de intereses que cubre la cuota (loanId, periodo), o null.
+function giroDeCuota(loanId,periodo){
+  var i,j,best=null;
+  for(i=0;i<GIROS.length;i++){
+    var g=GIROS[i];if(g.tipo!=='intereses'||!giroVigente(g))continue;
+    for(j=0;j<g.cuotas.length;j++){if(g.cuotas[j].loanId===loanId&&g.cuotas[j].periodo===periodo){if(!best||(g.creado_en||'')>(best.creado_en||''))best=g;}}
+  }
+  return best;
+}
+
+// ── Estado "girado" de una cuota (préstamo l, periodo 'YYYY-MM') ──
+// 1) si es una cuota arrastrada (cuotas_pendientes) → su propio pagado_socio;
+// 2) si el periodo aún no está archivado (ciclo en curso) → el pagado_socio del préstamo;
+// 3) periodo ya archivado y sin arrastre → se resolvió al cerrar el mes (girado).
+function cuotaArrastrada(l,periodo){var cps=l.cuotas_pendientes||[],i;for(i=0;i<cps.length;i++){if(cps[i].periodo===periodo)return cps[i];}return null;}
+function periodoArchivado(periodo){return !!(ST.archives&&ST.archives[periodo]);}
+function cuotaGirada(l,periodo){
+  if(isJulianLoan(l))return true;
+  var cp=cuotaArrastrada(l,periodo);
+  if(cp)return !!cp.pagado_socio;
+  if(!periodoArchivado(periodo))return !!l.pagado_socio;
+  return true;
+}
+// Pone/quita la marca de girado de una cuota en una COPIA ya clonada del préstamo (c). Solo la
+// llaman guardarGiro (true) y anularGiro (false) — no hay otra forma de cambiarla.
+function setCuotaGirada(c,periodo,val){
+  var cps=c.cuotas_pendientes||[];
+  if(cuotaArrastrada(c,periodo)){
+    c.cuotas_pendientes=cps.map(function(cu){if(cu.periodo!==periodo)return cu;var cc={};for(var k in cu)cc[k]=cu[k];cc.pagado_socio=val;return cc;});
+  }else if(!periodoArchivado(periodo)){
+    c.pagado_socio=val;
+  }else if(!val){
+    // Mes ya cerrado y resuelto: al anular su giro vuelve a quedar pendiente de girar (arrastre).
+    c.cuotas_pendientes=cps.concat([{id:GID(),periodo:periodo,recibido:true,pagado_socio:false}]);
+  }
+}
+// Fecha (YYYY-MM-DD) del pago del cliente más reciente para ese periodo, o null si no hay.
+function fechaPagoCliente(l,periodo){
+  var all=(l.pagos||[]).slice(),arc=ST.archives&&ST.archives[periodo]&&ST.archives[periodo][l.id],i,best=null;
+  if(arc)all=all.concat(arc);
+  for(i=0;i<all.length;i++){var p=all[i];if(p.tipo==='abono')continue;if(pagoPeriodo(p)!==periodo)continue;if(!best||(p.fecha||'')>best)best=p.fecha||'';}
+  return best;
+}
+function diasDesde(fecha){var d=parseLocalDate(fecha);if(!d)return 0;var t=parseLocalDate(isoToday());return Math.round((t-d)/86400000);}
+// Cuotas de un socio con pago del cliente registrado y pendientes de girar (mes actual y
+// arrastradas): [{loan, periodo, monto (interés socio COP), fechaPago, dias}].
+function cuotasPorGirar(socio){
+  var out=[],i,j;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];
+    if(l.socio!==socio||isJulianLoan(l)||!(IS(l)>0))continue;
+    var vistos={};
+    var cps=l.cuotas_pendientes||[];
+    for(j=0;j<cps.length;j++){vistos[cps[j].periodo]=true;}
+    var periodos=[];
+    for(j=0;j<cps.length;j++){if(!cps[j].pagado_socio&&hasPagoForPeriodo(l,cps[j].periodo))periodos.push(cps[j].periodo);}
+    var pg=l.pagos||[];
+    for(j=0;j<pg.length;j++){
+      var per=pagoPeriodo(pg[j]);
+      if(pg[j].tipo==='abono'||!per||vistos[per]||periodoArchivado(per))continue;
+      vistos[per]=true;
+      if(!l.pagado_socio)periodos.push(per);
+    }
+    for(j=0;j<periodos.length;j++){
+      var fp=fechaPagoCliente(l,periodos[j]);
+      out.push({loan:l,periodo:periodos[j],monto:Math.round(ISc(l)),fechaPago:fp,dias:fp?diasDesde(fp):0});
+    }
+  }
+  out.sort(function(a,b){return a.periodo===b.periodo?a.loan.dia-b.loan.dia:a.periodo.localeCompare(b.periodo);});
+  return out;
+}
+// Aviso "cobrado sin girar": por socio, cuotas con pago del cliente hace más de GIRO_ALERTA_DIAS
+// días y aún sin giro. Devuelve [{socio, cuotas:[...], total}] ordenado por total desc.
+function alertasSinGirar(){
+  var socios={},i,out=[];
+  for(i=0;i<ST.loans.length;i++){var s=ST.loans[i].socio;if(s)socios[s]=true;}
+  var ks=Object.keys(socios);
+  for(i=0;i<ks.length;i++){
+    var cs=cuotasPorGirar(ks[i]).filter(function(c){return c.dias>GIRO_ALERTA_DIAS;});
+    if(cs.length===0)continue;
+    var t=0,j;for(j=0;j<cs.length;j++)t+=cs[j].monto;
+    out.push({socio:ks[i],cuotas:cs,total:t});
+  }
+  out.sort(function(a,b){return b.total-a.total;});
+  return out;
+}
+// Banner compartido por Cobros y Socios: una fila por socio con el monto cobrado sin girar.
+function alertaSinGirarBanner(){
+  var al=alertasSinGirar();if(al.length===0)return null;
+  var box=D(null,{background:'var(--c-amber-bg)',border:'1px solid var(--acc)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'},null);
+  var t=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--c-amber-txt)',marginBottom:'6px'},null);
+  t.textContent='🏦 Cobrado sin girar hace más de '+GIRO_ALERTA_DIAS+' días';box.appendChild(t);
+  for(var i=0;i<al.length;i++){
+    (function(a,last){
+      var r=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',padding:'6px 0',borderTop:'1px solid rgba(200,148,0,.3)'},null);
+      var l=D(null,{flex:'1',minWidth:'0'},null);
+      var n=D(null,{fontWeight:'700',fontSize:'13px'},null);n.textContent=a.socio;
+      var s=D(null,{fontSize:'11px',color:'var(--mut)'},null);s.textContent=a.cuotas.length+' cuota'+(a.cuotas.length!==1?'s':'')+' · la más antigua hace '+Math.max.apply(null,a.cuotas.map(function(c){return c.dias;}))+' días';
+      l.appendChild(n);l.appendChild(s);
+      var v=S('mn',{fontWeight:'700',color:'var(--c-amber-txt)',fontSize:'13px'},null);v.textContent=COP(a.total);
+      r.appendChild(l);r.appendChild(v);
+      r.appendChild(BTN('bb','Registrar giro',function(e){e.stopPropagation();showGiroModal(a.socio,null);},{fontSize:'11px',padding:'6px 10px',flexShrink:'0'}));
+      box.appendChild(r);
+    })(al[i],i===al.length-1);
+  }
+  return box;
+}
+
+// Botón "🏦 Pagué socio" de una cuota (reemplaza el toque directo de pagado_socio). Si la cuota
+// ya está girada muestra ✓ y abre el giro que la cubre (para anularlo); si no, abre el modal de
+// giro con esa cuota marcada — solo si el cliente ya pagó esa cuota.
+function giroBtn(ln,periodo){
+  var girada=cuotaGirada(ln,periodo);
+  var b=document.createElement('button');b.type='button';
+  b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
+    (girada
+      ? 'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)'
+      : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
+  b.textContent=girada?'✓ 🏦 Girado':'○ 🏦 Pagué socio';
+  b.addEventListener('click',function(e){
+    e.stopPropagation();
+    var cur=findLoanById(ln.id)||ln;
+    if(cuotaGirada(cur,periodo)){
+      var g=giroDeCuota(cur.id,periodo);
+      if(g)showGiroDetail(g);
+      else showToast('Marcada como pagada al socio antes de los giros');
+      return;
+    }
+    if(!hasPagoForPeriodo(cur,periodo)){showToast('⚠️ Primero registra el pago del cliente');return;}
+    showGiroModal(cur.socio,{loanId:cur.id,periodo:periodo});
+  });
+  return b;
+}
+
+// ── Modal "Registrar giro" ──
+// pre: {loanId, periodo} para dejar esa cuota marcada (desde "Pagué socio"), o null.
+function showGiroModal(socio,pre){
+  var st={tipo:'intereses',fecha:isoToday(),modalidad:'transferencia',detalle:'',referencia:'',nota:'',monto:'',montoManual:false,sel:{},selCap:{},err:''};
+  var cuotas=cuotasPorGirar(socio);
+  function ck(c){return c.loan.id+'|'+c.periodo;}
+  if(pre){st.sel[pre.loanId+'|'+pre.periodo]=true;}
+  var capLoans=ST.loans.filter(function(l){return l.socio===socio&&!isJulianLoan(l)&&l.status==='active';}).sort(function(a,b){return a.dia-b.dia;});
+  var cur=null,montoIn=null;
+  function sugerido(){
+    var t=0,i;
+    if(st.tipo==='intereses'){for(i=0;i<cuotas.length;i++){if(st.sel[ck(cuotas[i])])t+=cuotas[i].monto;}}
+    else{for(i=0;i<capLoans.length;i++){if(st.selCap[capLoans[i].id])t+=Math.round(montoCOP(capLoans[i]));}}
+    return t;
+  }
+  function syncMonto(){if(!st.montoManual){st.monto=String(sugerido());if(montoIn)montoIn.value=st.monto;}}
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🏦 Registrar giro — '+socio;
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var tSel=MSEL(GIRO_TIPOS,st.tipo);tSel.addEventListener('change',function(e){st.tipo=e.target.value;st.montoManual=false;syncMonto();refresh();});
+    m.appendChild(FLD('Tipo de giro',tSel));
+    var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'8px 12px',marginBottom:'12px',maxHeight:'34vh',overflowY:'auto'},null);
+    function chkRow(on,txt,sub,amt,fn){
+      var r=D(null,{display:'flex',alignItems:'center',gap:'10px',padding:'7px 0',borderBottom:'1px solid var(--bor)',cursor:'pointer'},null);
+      var cb=document.createElement('input');cb.type='checkbox';cb.checked=on;cb.style.cssText='width:auto;flex-shrink:0';
+      r.addEventListener('click',function(e){if(e.target!==cb)cb.checked=!cb.checked;fn(cb.checked);});
+      var l=D(null,{flex:'1',minWidth:'0'},null);var l1=D(null,{fontSize:'13px',fontWeight:'600'},null);l1.textContent=txt;l.appendChild(l1);
+      if(sub){var l2=D(null,{fontSize:'11px',color:'var(--mut)'},null);l2.textContent=sub;l.appendChild(l2);}
+      var v=S('mn',{fontWeight:'700',fontSize:'13px'},null);v.textContent=COP(amt);
+      r.appendChild(cb);r.appendChild(l);r.appendChild(v);return r;
+    }
+    if(st.tipo==='intereses'){
+      var bt=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px',padding:'4px 0'},null);bt.textContent='Cuotas cobradas pendientes de girar';box.appendChild(bt);
+      if(cuotas.length===0){var none=D(null,{fontSize:'12px',color:'var(--mut)',padding:'8px 0'},null);none.textContent='No hay cuotas con pago del cliente pendientes de girar.';box.appendChild(none);}
+      for(var i=0;i<cuotas.length;i++){
+        (function(c){
+          box.appendChild(chkRow(!!st.sel[ck(c)],'Día '+c.loan.dia+' · '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0],
+            c.loan.responsable+(c.fechaPago?' · pagó el '+c.fechaPago+(c.dias>0?' (hace '+c.dias+' día'+(c.dias!==1?'s':'')+')':''):''),c.monto,
+            function(on){if(on)st.sel[ck(c)]=true;else delete st.sel[ck(c)];syncMonto();}));
+        })(cuotas[i]);
+      }
+    }else{
+      var bt2=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px',padding:'4px 0'},null);bt2.textContent='Préstamos asociados';box.appendChild(bt2);
+      if(capLoans.length===0){var none2=D(null,{fontSize:'12px',color:'var(--mut)',padding:'8px 0'},null);none2.textContent='Este socio no tiene préstamos activos.';box.appendChild(none2);}
+      for(var k=0;k<capLoans.length;k++){
+        (function(l){
+          box.appendChild(chkRow(!!st.selCap[l.id],'Préstamo día '+l.dia+' · '+fmtMesFinAño(l),l.responsable,Math.round(montoCOP(l)),
+            function(on){if(on)st.selCap[l.id]=true;else delete st.selCap[l.id];syncMonto();}));
+        })(capLoans[k]);
+      }
+    }
+    m.appendChild(box);
+    montoIn=INP({type:'number',min:'0',value:st.monto});
+    montoIn.addEventListener('input',function(e){st.monto=e.target.value;st.montoManual=true;});
+    var fIn=INP({type:'date',value:st.fecha});fIn.addEventListener('change',function(e){st.fecha=e.target.value;});
+    m.appendChild(R2(FLD('Monto girado (COP)',montoIn),FLD('Fecha',fIn)));
+    var mSel=MSEL(GIRO_MODALIDADES,st.modalidad);mSel.addEventListener('change',function(e){st.modalidad=e.target.value;st.err='';refresh();});
+    m.appendChild(FLD('Modalidad',mSel));
+    var refLbl='Referencia',refPh='',detLbl='',detPh='';
+    if(st.modalidad==='transferencia'||st.modalidad==='abono_tarjeta'){refLbl='Referencia * (n.º de comprobante o últimos dígitos)';refPh='Ej: 004512 o ****3421';}
+    if(st.modalidad==='efectivo'){detLbl='¿A quién se entregó? (o escribe una nota)';detPh='Ej: entregado a la esposa';}
+    if(st.modalidad==='otro'){detLbl='Detalle de la modalidad *';detPh='Ej: cruce de cuentas';}
+    if(detLbl){var dIn=INP({type:'text',value:st.detalle,placeholder:detPh});dIn.addEventListener('input',function(e){st.detalle=e.target.value;});m.appendChild(FLD(detLbl,dIn));}
+    if(st.modalidad!=='efectivo'){var rIn=INP({type:'text',value:st.referencia,placeholder:refPh});rIn.addEventListener('input',function(e){st.referencia=e.target.value;});m.appendChild(FLD(refLbl,rIn));}
+    var nIn=INP({type:'text',value:st.nota,placeholder:'Opcional'});nIn.addEventListener('input',function(e){st.nota=e.target.value;});
+    m.appendChild(FLD('Nota',nIn));
+    var errEl=D(null,{fontSize:'12px',color:'var(--red)',fontWeight:'600',minHeight:'16px',marginBottom:'8px'},null);errEl.textContent=st.err;errEl.setAttribute('data-giro-err','1');
+    m.appendChild(errEl);
+    var brow=D(null,{display:'flex',gap:'8px'},null);
+    brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
+    brow.appendChild(BTN('bg','💾 Guardar giro',function(){
+      var msg=validar();
+      if(msg){st.err=msg;errEl.textContent=msg;return;}
+      var g=guardarGiro();
+      closeModal();renderApp();
+      showToast('✅ Giro registrado — '+socio);
+      showGiroMsgModal(g);
+    },{flex:'2'}));
+    m.appendChild(brow);
+    return m;
+  }
+  function validar(){
+    var monto=parseFloat(st.monto);
+    var ref=(st.referencia||'').trim(),det=(st.detalle||'').trim(),nota=(st.nota||'').trim();
+    if(st.tipo==='intereses'&&Object.keys(st.sel).length===0)return 'Marca al menos una cuota.';
+    if(st.tipo!=='intereses'&&Object.keys(st.selCap).length===0)return 'Asocia al menos un préstamo.';
+    if(!(monto>0))return 'Ingresa un monto válido.';
+    if(!st.fecha)return 'Ingresa la fecha del giro.';
+    if((st.modalidad==='transferencia'||st.modalidad==='abono_tarjeta')&&!ref)return 'La referencia es obligatoria (n.º de comprobante o últimos dígitos).';
+    if(st.modalidad==='efectivo'&&!det&&!nota)return 'Indica a quién se entregó el efectivo o escribe una nota.';
+    if(st.modalidad==='otro'&&!det)return 'Describe la modalidad (detalle obligatorio).';
+    return '';
+  }
+  function guardarGiro(){
+    var cs=[],i;
+    if(st.tipo==='intereses'){for(i=0;i<cuotas.length;i++){if(st.sel[ck(cuotas[i])])cs.push({loanId:cuotas[i].loan.id,periodo:cuotas[i].periodo,monto:cuotas[i].monto});}}
+    else{for(i=0;i<capLoans.length;i++){if(st.selCap[capLoans[i].id])cs.push({loanId:capLoans[i].id,periodo:null,monto:Math.round(montoCOP(capLoans[i]))});}}
+    var g={id:GID(),socio:socio,socio_email:socioEmail(socio),fecha:st.fecha,monto:Math.round(parseFloat(st.monto)),
+      modalidad:st.modalidad,modalidad_detalle:(st.detalle||'').trim(),referencia:st.modalidad==='efectivo'?'':(st.referencia||'').trim(),
+      tipo:st.tipo,cuotas:cs,nota:(st.nota||'').trim(),creado_en:new Date().toISOString()}; // anula_a solo en anulaciones
+    registrarGiro(g,true);
+    return g;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  syncMonto();
+  refresh();
+}
+function socioEmail(socio){var k=(socio||'').toUpperCase();return (typeof SOCIOS_MAP!=='undefined'&&SOCIOS_MAP.hasOwnProperty(k))?SOCIOS_MAP[k]:null;}
+// Agrega el giro (local + nube) y aplica su efecto en las marcas de las cuotas:
+// marcar=true (giro de intereses) pone pagado_socio; marcar=false (anulación) lo quita de las
+// cuotas que ya no queden cubiertas por otro giro vigente.
+function registrarGiro(g,marcar){
+  GIROS.push(g);
+  if(g.tipo==='intereses'&&g.cuotas.length>0){
+    var porLoan={},i;
+    for(i=0;i<g.cuotas.length;i++){var c=g.cuotas[i];if(!porLoan[c.loanId])porLoan[c.loanId]=[];porLoan[c.loanId].push(c.periodo);}
+    ST.loans=ST.loans.map(function(x){
+      if(!porLoan[x.id])return x;
+      var cl={};for(var k in x)cl[k]=x[k];
+      for(var j=0;j<porLoan[x.id].length;j++){
+        var per=porLoan[x.id][j];
+        if(marcar)setCuotaGirada(cl,per,true);
+        else if(!giroDeCuota(x.id,per))setCuotaGirada(cl,per,false);
+      }
+      return cl;
+    });
+    saveST();
+  }
+  if(_pendingGiros.indexOf(g.id)<0)_pendingGiros.push(g.id);
+  saveGirosLocal();
+  fbCreateGiro(g);
+}
+// Anular: crea un giro nuevo con anula_a; las cuotas del giro anulado vuelven a pendientes.
+function showAnularGiro(g){
+  var motivo='';
+  var m=D('modal',{maxWidth:'440px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--red);font-size:17px;margin-bottom:8px';h2.textContent='Anular giro';m.appendChild(h2);
+  var info=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'12px',lineHeight:'1.5'},null);
+  info.textContent='Giro de '+COP(g.monto)+' a '+g.socio+' del '+g.fecha+' ('+giroModalidadLbl(g)+'). No se borra: queda registrado como anulado y sus cuotas vuelven a quedar pendientes de girar.';
+  m.appendChild(info);
+  var mi=INP({type:'text',placeholder:'Ej: monto equivocado, se registró dos veces...'});mi.addEventListener('input',function(e){motivo=e.target.value;});
+  m.appendChild(FLD('Motivo *',mi));
+  var err=D(null,{fontSize:'12px',color:'var(--red)',minHeight:'16px',marginBottom:'8px'},null);m.appendChild(err);
+  var brow=D(null,{display:'flex',gap:'8px'},null);
+  brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
+  brow.appendChild(BTN('br','Anular giro',function(){
+    if(!(motivo||'').trim()){err.textContent='Escribe el motivo de la anulación.';return;}
+    if(giroAnulacionDe(g.id)){closeModal();showToast('Este giro ya estaba anulado');return;}
+    var a={id:GID(),socio:g.socio,socio_email:g.socio_email||socioEmail(g.socio),fecha:isoToday(),monto:g.monto,
+      modalidad:g.modalidad,modalidad_detalle:g.modalidad_detalle||'',referencia:g.referencia||'',tipo:g.tipo,
+      cuotas:g.cuotas.slice(),nota:motivo.trim(),creado_en:new Date().toISOString(),anula_a:g.id};
+    registrarGiro(a,false);
+    closeModal();renderApp();showToast('↩️ Giro anulado');
+  },{flex:'1'}));
+  m.appendChild(brow);
+  showModal(m);
+}
+// Detalle de días/periodos de un giro, sin nombres de clientes: "Día 5 — octubre 2026".
+function giroLineas(g){
+  var out=[],i;
+  for(i=0;i<g.cuotas.length;i++){
+    var c=g.cuotas[i],l=findLoanById(c.loanId);
+    var dia=l?'Día '+l.dia:'Préstamo';
+    if(c.periodo)out.push({txt:dia+' — '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0],monto:c.monto});
+    else out.push({txt:(l?'Préstamo día '+l.dia:'Préstamo'),monto:c.monto});
+  }
+  return out;
+}
+function giroModalidadTxt(g){
+  var t=giroModalidadLbl(g);
+  if(g.modalidad==='efectivo'&&g.modalidad_detalle)t+=' · entregado a '+g.modalidad_detalle;
+  else if(g.modalidad==='otro'&&g.modalidad_detalle)t+=' · '+g.modalidad_detalle;
+  if(g.referencia)t+=' · Ref. '+g.referencia;
+  return t;
+}
+function waGiroMsg(g){
+  var titulo=g.tipo==='intereses'?'Giro de intereses':g.tipo==='devolucion_capital'?'Devolución de capital':'Aporte de capital';
+  var lines=['Hola '+g.socio+' 👋','','🏦 '+titulo,'💰 Monto: '+COP(g.monto),'📅 Fecha: '+fmtFechaLargaISO(g.fecha),'💳 Modalidad: '+giroModalidadTxt(g)];
+  var ls=giroLineas(g),i;
+  if(ls.length>0){lines.push('','Detalle:');for(i=0;i<ls.length;i++)lines.push('• '+ls[i].txt+': '+COP(ls[i].monto));}
+  lines.push('','✅ Confirma recibo 🙏');
+  return lines.join('\n');
+}
+function showGiroMsgModal(g){
+  var pv=false,cur=null;
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';h2.textContent='✅ Giro registrado';
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var msg=waGiroMsg(g);
+    var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+    var t=D(null,{fontWeight:'700',fontSize:'13px',marginBottom:'8px'},null);t.textContent='Mensaje para '+g.socio+' · '+COP(g.monto);box.appendChild(t);
+    var row=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+    row.appendChild(mkWaBtn(msg));row.appendChild(mkCpBtn(msg));
+    row.appendChild(BTN('bh',pv?'Ocultar':'👁 Ver mensaje',function(){pv=!pv;refresh();},{flex:'1'}));
+    box.appendChild(row);
+    if(pv){var pvb=D('pvb',null,null);pvb.textContent=msg;box.appendChild(pvb);}
+    m.appendChild(box);
+    m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+function showGiroDetail(g){
+  var anul=giroAnulacionDe(g.id);
+  var m=D('modal',{maxWidth:'460px'},null);
+  var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
+  var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🏦 Giro a '+g.socio;
+  hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+  var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px',fontSize:'13px',lineHeight:'1.7'},null);
+  function ln(a,b){var r=D(null,{display:'flex',justifyContent:'space-between',gap:'10px'},null);var x=S(null,{color:'var(--mut)'},null);x.textContent=a;var y=S(null,{textAlign:'right'},null);y.textContent=b;r.appendChild(x);r.appendChild(y);box.appendChild(r);}
+  ln('Tipo',giroTipoLbl(g));ln('Monto',COP(g.monto));ln('Fecha',g.fecha);ln('Modalidad',giroModalidadTxt(g));
+  if(g.nota)ln('Nota',g.nota);
+  var ls=giroLineas(g),i;
+  for(i=0;i<ls.length;i++)ln('• '+ls[i].txt,COP(ls[i].monto));
+  m.appendChild(box);
+  if(anul){var an=D(null,{fontSize:'12px',color:'var(--red)',marginBottom:'12px'},null);an.textContent='Anulado el '+anul.fecha+' — '+(anul.nota||'sin motivo');m.appendChild(an);}
+  var brow=D(null,{display:'flex',gap:'8px'},null);
+  brow.appendChild(BTN('bb','📲 Mensaje',function(){showGiroMsgModal(g);},{flex:'1'}));
+  if(!anul&&!g.anula_a)brow.appendChild(BTN('br','Anular giro',function(){showAnularGiro(g);},{flex:'1'}));
+  m.appendChild(brow);
+  showModal(m);
+}
+// ── Resumen mensual de giros de un socio (desde GIROS_DESDE hasta el mes actual) ──
+// generado = interés del socio de las cuotas de ese periodo; girado = cuotas de ese periodo en
+// giros de intereses vigentes. Los giros de capital se listan en el mes de su fecha.
+function cuotaExisteEn(l,mk){
+  if(isJulianLoan(l)||!(IS(l)>0)||!isCollectableFor(l,mk))return false;
+  if(l.status==='active')return true;
+  var closeMk=mkFromFecha(l.fecha_cierre)||loanEndMk(l);
+  if(!closeMk)return hasPagoForPeriodo(l,mk);
+  return mk<closeMk||(mk===closeMk&&hasPagoForPeriodo(l,mk));
+}
+function girosResumenMensual(socio){
+  var gs=girosDeSocio(socio),out=[],mk=CURR_MK,i,j;
+  // Desde GIROS_DESDE; un mes anterior solo aparece si algún giro cubre cuotas de ese periodo.
+  var desde=GIROS_DESDE;
+  for(i=0;i<gs.length;i++){for(j=0;j<gs[i].cuotas.length;j++){var cp0=gs[i].cuotas[j].periodo;if(cp0&&cp0<desde)desde=cp0;}}
+  while(mk>=desde){
+    var gen=0,gir=0,lista=[];
+    for(i=0;i<ST.loans.length;i++){var l=ST.loans[i];if(l.socio===socio&&cuotaExisteEn(l,mk))gen+=Math.round(ISc(l));}
+    for(i=0;i<gs.length;i++){
+      var g=gs[i];if(g.anula_a)continue;
+      var vig=giroVigente(g),parte=0,toca=false;
+      if(g.tipo==='intereses'){for(j=0;j<g.cuotas.length;j++){if(g.cuotas[j].periodo===mk){parte+=g.cuotas[j].monto;toca=true;}}}
+      else if(mkFromFecha(g.fecha)===mk){toca=true;parte=g.monto;}
+      if(!toca)continue;
+      if(vig&&g.tipo==='intereses')gir+=parte;
+      lista.push({giro:g,parte:parte,anulado:!vig,anulacion:giroAnulacionDe(g.id)});
+    }
+    lista.sort(function(a,b){return (b.giro.fecha||'').localeCompare(a.giro.fecha||'');});
+    // Antes de GIROS_DESDE no hay historial completo de giros: solo se muestra lo girado.
+    var completo=mk>=GIROS_DESDE;
+    if((completo&&gen>0)||lista.length>0)out.push({mk:mk,completo:completo,generado:gen,girado:gir,diferencia:gen-gir,giros:lista});
+    mk=prevMk(mk);
+  }
+  return out;
+}
+function girosSeccionSocio(socio){
+  var wrap=D(null,null,null);
+  var ttl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);ttl.textContent='Giros';wrap.appendChild(ttl);
+  var rows=girosResumenMensual(socio);
+  if(rows.length===0){var none=D(null,{fontSize:'12px',color:'var(--mut)',fontStyle:'italic',padding:'2px 0 10px'},null);none.textContent='Aún no hay giros registrados.';wrap.appendChild(none);return wrap;}
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var mb=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'8px 10px',marginBottom:'8px'},null);
+    var mh=D(null,{fontWeight:'700',fontSize:'12px',marginBottom:'4px'},null);mh.textContent=mesNombreLargo(r.mk).toUpperCase()+' '+r.mk.split('-')[0];mb.appendChild(mh);
+    var kg=D('g3',{gap:'6px',marginBottom:'6px'},null);
+    var kk=function(lbl,v,c){var d=D(null,null,null);var a=D(null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase'},null);a.textContent=lbl;var b=D('mn',{fontSize:'12px',fontWeight:'700',color:c},null);b.textContent=v===null?'—':COP(v);d.appendChild(a);d.appendChild(b);return d;};
+    kg.appendChild(kk('Generado',r.completo?r.generado:null,'var(--acc)'));kg.appendChild(kk('Girado',r.girado,'var(--grn)'));kg.appendChild(kk('Diferencia',r.completo?r.diferencia:null,r.diferencia>0?'var(--red)':'var(--mut)'));
+    mb.appendChild(kg);
+    for(var j=0;j<r.giros.length;j++){
+      (function(it){
+        var g=it.giro;
+        var gr=D(null,{display:'flex',justifyContent:'space-between',gap:'8px',padding:'5px 0',borderTop:'1px solid var(--bor)',fontSize:'11px',cursor:'pointer'},null);
+        gr.addEventListener('click',function(){showGiroDetail(g);});
+        var gl=D(null,{flex:'1',minWidth:'0',color:'var(--mut)'},null);
+        var gl1=D(null,it.anulado?{textDecoration:'line-through'}:null,null);gl1.textContent=g.fecha+' · '+(g.tipo==='intereses'?'':giroTipoLbl(g)+' · ')+giroModalidadTxt(g);
+        gl.appendChild(gl1);
+        if(it.anulado&&it.anulacion){var gl2=D(null,{color:'var(--red)'},null);gl2.textContent='Anulado: '+(it.anulacion.nota||'sin motivo');gl.appendChild(gl2);}
+        var gv=S('mn',{fontWeight:'700',color:it.anulado?'var(--mut)':'var(--grn)',textDecoration:it.anulado?'line-through':'none',flexShrink:'0'},null);
+        gv.textContent=COP(it.parte)+(it.parte!==g.monto?' de '+COP(g.monto):'');
+        gr.appendChild(gl);gr.appendChild(gv);mb.appendChild(gr);
+      })(r.giros[j]);
+    }
+    wrap.appendChild(mb);
+  }
+  return wrap;
+}
+
+// ── Firestore: los giros solo se CREAN (nunca update/delete). Reintento + cola visible, igual
+// que fbDeleteDoc. Antes de reintentar se comprueba si el documento ya existe (si la primera
+// escritura sí llegó, reintentar el set sería un update y las reglas lo rechazarían). ──
+function giroToDoc(g){
+  var d={id:g.id,socio:g.socio,socio_email:g.socio_email||null,fecha:g.fecha,monto:g.monto,modalidad:g.modalidad,
+    modalidad_detalle:g.modalidad_detalle||'',referencia:g.referencia||'',tipo:g.tipo,cuotas:g.cuotas,nota:g.nota||'',
+    creado_en:g.creado_en};
+  if(g.anula_a)d.anula_a=g.anula_a; // solo en anulaciones
+  return d;
+}
+function giroEscrito(id){_pendingGiros=_pendingGiros.filter(function(x){return x!==id;});saveGirosLocal();}
+function fbCreateGiro(g,attempt){
+  if(!FB.ready||!FB.db||!isAdmin())return; // modo local: queda en la cache local (y en pending)
+  attempt=attempt||0;
+  var ref=FB.db.collection('giros').doc(g.id);
+  var write=attempt===0?ref.set(giroToDoc(g)):ref.get().then(function(d){return d.exists?null:ref.set(giroToDoc(g));});
+  write.then(function(){giroEscrito(g.id);}).catch(function(e){
+    console.warn('[Firebase] Error guardando giro '+g.id+':',e&&e.message);
+    if(attempt<2){setTimeout(function(){fbCreateGiro(g,attempt+1);},1500*(attempt+1));}
+    else{
+      syncInd('local');
+      showSyncError('⚠️ No se pudo guardar el giro en la nube. Queda guardado en este dispositivo y se reintentará al sincronizar.');
+    }
+  });
+}
+// Reintenta los giros que quedaron sin escribir; se invoca desde fbPushAll y al cargar giros.
+function flushPendingGiros(){
+  if(!FB.ready||!FB.db||!isAdmin()||_pendingGiros.length===0)return;
+  var ids=_pendingGiros.slice(),i;
+  for(i=0;i<ids.length;i++){var g=findGiroById(ids[i]);if(g)fbCreateGiro(g,1);else giroEscrito(ids[i]);}
+}
+// Carga los giros al iniciar sesión de admin: cache local + Firestore (merge por id).
+function loadGiros(cb){
+  loadGirosLocal();
+  if(!FB.ready||!FB.db||!isAdmin()){if(cb)cb();return;}
+  FB.db.collection('giros').get().then(function(snap){
+    var list=[];snap.forEach(function(doc){var d=doc.data()||{};if(!d.id)d.id=doc.id;list.push(d);});
+    mergeGiros(list);saveGirosLocal();flushPendingGiros();
+    if(cb)cb();
+  }).catch(function(e){
+    console.warn('[Firebase] No se pudieron cargar los giros:',e&&e.message);
+    showSyncError('⚠️ No se pudieron cargar los giros desde la nube. Se muestran los guardados en este dispositivo.');
+    if(cb)cb();
+  });
+}
+function girosCsvRow(){return '"__GIROS__","'+JSON.stringify(GIROS).replace(/"/g,'""')+'",,,,,,,,,,,,,,,,,,';}
 
 // Creates a checkbox button wired to sumToggle. Initial state read from current scope.
 function sumCheckbox(loanId){
@@ -2054,6 +2600,8 @@ function vCobros(){
     w.appendChild(pbn);
   }
 
+  var sgBanner=alertaSinGirarBanner();if(sgBanner)w.appendChild(sgBanner); // cobrado sin girar > 3 días
+
   w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups);},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
 
   // ── PENDIENTES DEL MES ANTERIOR (cuotas arrastradas, agrupadas por periodo y día) ──
@@ -2115,7 +2663,7 @@ function vCobros(){
             topZ.appendChild(zInfo);topZ.appendChild(zAct);row.appendChild(topZ);
             var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
             concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré'));
-            if(!isJulianLoan(loan))concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'pagado_socio','🏦 Pagué socio'));
+            if(!isJulianLoan(loan))concilRow.appendChild(giroBtn(loan,cuota.periodo));
             row.appendChild(concilRow);
             perBox.appendChild(row);
           })(items[ii]);
@@ -2239,10 +2787,10 @@ function vCobros(){
               topZones.appendChild(zInfo);topZones.appendChild(zAction);
               row.appendChild(topZones);
               // Footer: toggle Cobré (marca recibido como confirmación rápida, sin registro
-              // formal en pagos[] ni mover el préstamo a "done") + toggle Pagué socio
+              // formal en pagos[] ni mover el préstamo a "done") + Pagué socio (abre el giro)
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
               concilRow.appendChild(conciliBtn(ln,'recibido','Cobré'));
-              if(!isJulianLoan(ln))concilRow.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
+              if(!isJulianLoan(ln))concilRow.appendChild(giroBtn(ln,CURR_MK));
               row.appendChild(concilRow);
               body.appendChild(row);
             })(pend[pi2]);
@@ -2283,11 +2831,11 @@ function vCobros(){
               dAct.appendChild(da2);
               dzones.appendChild(dInfo);dzones.appendChild(dAct);
               drWrap.appendChild(dzones);
-              // Footer: estado Cobré (✅ pagado) + toggle Pagué socio
+              // Footer: estado Cobré (✅ pagado) + Pagué socio (abre el modal de giro)
               var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid '+(needsGiro?'rgba(200,148,0,.3)':'var(--c-suc-bor)'),background:'rgba(0,0,0,.08)'},null);
               var cobreeDonePill=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c-paid-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor2)'},null);cobreeDonePill.textContent='✓ Cobré';
               concilRow2.appendChild(cobreeDonePill);
-              if(!isJulianLoan(ln))concilRow2.appendChild(conciliBtn(ln,'pagado_socio','🏦 Pagué socio'));
+              if(!isJulianLoan(ln))concilRow2.appendChild(giroBtn(ln,CURR_MK));
               drWrap.appendChild(concilRow2);
               body.appendChild(drWrap);
             })(done[di2]);
@@ -2750,6 +3298,7 @@ function vSocios(){
   for(i=0;i<closedKeys.length;i++){if(!sm[closedKeys[i]])list.push([closedKeys[i],{capital:0,intS:0,count:0,loans:[]}]);}
   list.sort(function(a,b){return b[1].capital-a[1].capital;});
   var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
+  var sgBanner=alertaSinGirarBanner();if(sgBanner)w.appendChild(sgBanner); // cobrado sin girar > 3 días
   for(var li=0;li<list.length;li++){
     (function(name,st2){
       var exp=false,pv=false;
@@ -2766,9 +3315,11 @@ function vSocios(){
         // ── Conciliation pendings — skip Julian (no external partner) ──
         if(!isJulian){
           var pendPagar=0,pendCobrar=0,lpi;
+          // Cliente pagó y aún no hay giro al socio (mes actual + arrastradas), en COP.
+          var porGirar=cuotasPorGirar(name);
+          for(lpi=0;lpi<porGirar.length;lpi++)pendPagar+=porGirar[lpi].monto;
           for(lpi=0;lpi<st2.loans.length;lpi++){
             var ln_c=st2.loans[lpi];
-            if(ln_c.recibido && !ln_c.pagado_socio)pendPagar+=ISc(ln_c);   // cliente pagó, yo aún no le pago al socio
             if(!ln_c.recibido)pendCobrar+=ISc(ln_c);                       // cliente aún no me paga
           }
           if(pendPagar>0){
@@ -2787,6 +3338,7 @@ function vSocios(){
         hdr2.appendChild(ht);hdr2.appendChild(hv);card.appendChild(hdr2);
         if(exp){
           card.appendChild(D('sep',null,null));
+          if(!isJulian)card.appendChild(BTN('bg','🏦 Registrar giro',function(){showGiroModal(name,null);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           for(var pi3=0;pi3<st2.loans.length;pi3++){
             (function(ln,idx){
               var lr=D(null,{display:'flex',alignItems:'center',padding:'7px 0',borderBottom:'1px solid var(--bor)',gap:'8px'},null);
@@ -2856,6 +3408,8 @@ function vSocios(){
             }
             card.appendChild(D('sep',null,null));
           }
+          // ── Giros por mes: generado vs girado, y lista de giros (anulados tachados) ──
+          if(!isJulian){card.appendChild(girosSeccionSocio(name));card.appendChild(D('sep',null,null));}
           // ── Historial mensual (foto por socio guardada en ST.snapshots al ejecutar "Nuevo mes") ──
           var histTtl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);
           histTtl.textContent='Historial mensual';card.appendChild(histTtl);
@@ -2973,6 +3527,7 @@ function exportBackupCSV(){
   // Also store full JSON of archives as last special row for lossless restore
   var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
   lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
+  lines.push(girosCsvRow()); // giros a socios (JSON), fila especial igual que __ARCHIVES__
   var csv=lines.join('\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
@@ -3023,12 +3578,16 @@ function importBackupCSV(file,onDone){
       function gInt(row,name){return parseInt(g(row,name))||0;}
       function gBool(row,name){var v=g(row,name);return v==='1'||v==='true';}
 
-      var loansMap={},archives={},skipped=0;
+      var loansMap={},archives={},skipped=0,girosCsv=[];
       for(var ri=1;ri<rows.length;ri++){
         var row=rows[ri];
         if(!row||!row[0]||row[0]==='')continue;
         if(row[0]==='__ARCHIVES__'){
           try{archives=JSON.parse(row[1]||'{}');}catch(er){archives={};}
+          continue;
+        }
+        if(row[0]==='__GIROS__'){
+          try{girosCsv=JSON.parse(row[1]||'[]');}catch(er){girosCsv=[];}
           continue;
         }
         // Validate minimum column count — skip malformed rows with a counter
@@ -3082,7 +3641,10 @@ function importBackupCSV(file,onDone){
       if(skipped>0)msg+='\n⚠️ '+skipped+' filas omitidas (formato inválido).';
       msg+='\n\nEsto reemplazará todos los datos actuales.';
       if(!confirm(msg))return;
-      ST.loans=loans;ST.archives=archives||{};saveST();renderApp();
+      ST.loans=loans;ST.archives=archives||{};saveST();
+      // Giros: solo se agregan los que falten (nunca se reemplazan ni se borran) y no se suben a la nube.
+      if(mergeGiros(girosCsv)>0)saveGirosLocal();
+      renderApp();
       showToast('✅ Backup restaurado — '+loans.length+' préstamos'+(skipped?' ('+skipped+' filas omitidas)':''));
       if(onDone)onDone();
     }catch(err){alert('Error al procesar el archivo: '+err.message+'\n\nVerifica que sea el CSV exportado desde JiTel Capital.');}
@@ -4097,6 +4659,7 @@ function gdriveBuildCSV(){
   }
   var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
   lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
+  lines.push(girosCsvRow()); // giros a socios (JSON), fila especial igual que __ARCHIVES__
   return lines.join('\n');
 }
 
@@ -4420,6 +4983,7 @@ function flushPendingDeletes(){
 function fbPushAll(){
   if(!FB.ready||!FB.db||!isAdmin())return;
   flushPendingDeletes(); // arrastra cualquier borrado pendiente que hubiera fallado antes
+  flushPendingGiros();   // y cualquier giro que no se pudo escribir
   try{
     var loans=ST.loans||[],i,chunk=400;
     // Escribe en lotes (límite Firestore 500 ops/batch).
@@ -4598,7 +5162,7 @@ function startApp(){
   }
   renderApp();
 }
-function bootData(){loadSociosMap();loadSTAsync(function(){startApp();});}
+function bootData(){loadSociosMap();loadGiros(function(){if(APP_STARTED)renderApp();});loadSTAsync(function(){startApp();});}
 
 // ── BOOT ──
 document.getElementById('btn-new').addEventListener('click',showNewLoan);
@@ -4626,6 +5190,7 @@ function bootLegacyLocal(){
     if(saved&&saved.loans&&saved.loans.length>0){ST=saved;}
     else ST={loans:[],archives:{},snapshots:{}};
   }catch(e){try{localStorage.removeItem(LSK);}catch(le){}ST={loans:[],archives:{},snapshots:{}};}
+  loadGirosLocal();
   syncInd('local');
   startApp();
 }

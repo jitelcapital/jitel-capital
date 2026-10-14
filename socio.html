@@ -282,7 +282,11 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           if(l.status==='active')loans.push(l);
         });
         loans.sort(function(a,b){return (a.dia||0)-(b.dia||0);});
-        renderPortal(info,loans,allLoans);
+        // Giros de este socio (misma regla: solo los suyos, por socio_email). Si no se pueden
+        // leer, el portal se muestra igual, sin la sección de giros.
+        db.collection('giros').where('socio_email','==',email).get()
+          .then(function(gs){var giros=[];gs.forEach(function(d){var g=d.data()||{};if(!g.id)g.id=d.id;giros.push(g);});renderPortal(info,loans,allLoans,giros);})
+          .catch(function(){renderPortal(info,loans,allLoans,null);});
       })
       .catch(function(e){
         showError('No se pudieron cargar los préstamos: '+(e&&e.message||''));
@@ -342,7 +346,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
 
   // ── Vista del portal ──
-  function renderPortal(info,loans,allLoans){
+  function renderPortal(info,loans,allLoans,giros){
     G.innerHTML='';
     var nombre=info.nombre||'Socio';
     allLoans=allLoans||loans;
@@ -608,6 +612,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     }
     G.appendChild(c4);
 
+    // ── MIS GIROS — mes a mes: generado, girado y pendiente, y la lista de giros. ──
+    if(giros)G.appendChild(misGirosCard(allLoans,giros,CURR_MK));
+
     // ── PRÉSTAMOS FINALIZADOS (historial) — nunca nombra al cliente ni al socio entrante ──
     var closedLoans=[],ci2;
     for(ci2=0;ci2<allLoans.length;ci2++){if(allLoans[ci2].status==='paid')closedLoans.push(allLoans[ci2]);}
@@ -650,6 +657,76 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     ftCambiar.addEventListener('click',showChangePassword);
     ft.appendChild(ftCambiar);
     G.appendChild(ft);
+  }
+
+  // ── Mis giros ──
+  // Mismo criterio que index.html (girosResumenMensual): generado = interés de las cuotas de
+  // ese periodo; girado = cuotas de ese periodo en giros de intereses vigentes (un giro está
+  // anulado si otro tiene anula_a con su id). Nunca muestra nombres de clientes ni de otros socios.
+  var GIROS_DESDE='2026-10';
+  var MODALIDAD_LBL={transferencia:'Transferencia',efectivo:'Efectivo',abono_tarjeta:'Abono a tarjeta',otro:'Otro'};
+  function prevMk(mk){var p=(mk+'').split('-');var y=parseInt(p[0],10),m=parseInt(p[1],10)-1;if(m<1){m=12;y--;}return y+'-'+(m<10?'0'+m:String(m));}
+  function mkFromFecha(f){if(!f||typeof f!=='string')return null;var p=f.slice(0,10).split('-');return p.length===3?p[0]+'-'+p[1]:null;}
+  function tienePagoPeriodo(l,mk){var p=l.pagos||[],i;for(i=0;i<p.length;i++){if((p[i].periodo||mkFromFecha(p[i].fecha))===mk)return true;}return false;}
+  function cuotaExisteEn(l,mk){
+    if(!(l.int_socio>0))return false;
+    if(l.mes_comienzo&&l.mes_comienzo>=mk)return false;
+    if(l.status==='active')return true;
+    var closeMk=mkFromFecha(l.fecha_cierre)||loanEndMk(l);
+    if(!closeMk)return tienePagoPeriodo(l,mk);
+    return mk<closeMk||(mk===closeMk&&tienePagoPeriodo(l,mk));
+  }
+  function mesLargo(mk){var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return (MESES[mo]||'')+' '+p[0];}
+  function misGirosCard(allLoans,giros,currMk){
+    var byId={},i,j;for(i=0;i<allLoans.length;i++)byId[allLoans[i].id]=allLoans[i];
+    var anulados={};for(i=0;i<giros.length;i++){if(giros[i].anula_a)anulados[giros[i].anula_a]=true;}
+    var card=el('div','card',null,null);
+    card.appendChild(el('div','sec-title',null,'🏦 Mis giros'));
+    var mk=currMk,hay=false,desde=GIROS_DESDE;
+    // Desde GIROS_DESDE; un mes anterior solo aparece si algún giro cubre cuotas de ese periodo.
+    for(i=0;i<giros.length;i++){var cs0=Array.isArray(giros[i].cuotas)?giros[i].cuotas:[];for(j=0;j<cs0.length;j++){if(cs0[j].periodo&&cs0[j].periodo<desde)desde=cs0[j].periodo;}}
+    while(mk>=desde){
+      var gen=0,gir=0,lista=[];
+      for(i=0;i<allLoans.length;i++){if(cuotaExisteEn(allLoans[i],mk))gen+=Math.round(montoCOP(allLoans[i])*(allLoans[i].int_socio||0));}
+      for(i=0;i<giros.length;i++){
+        var g=giros[i];if(g.anula_a)continue;
+        var cs=Array.isArray(g.cuotas)?g.cuotas:[],parte=0,dias=[],toca=false;
+        if(g.tipo==='intereses'){for(j=0;j<cs.length;j++){if(cs[j].periodo===mk){toca=true;parte+=(+cs[j].monto||0);var lo=byId[cs[j].loanId];dias.push(lo?'Día '+lo.dia:'Préstamo');}}}
+        else if(mkFromFecha(g.fecha)===mk){toca=true;parte=+g.monto||0;for(j=0;j<cs.length;j++){var lc=byId[cs[j].loanId];dias.push(lc?'Préstamo día '+lc.dia:'Préstamo');}}
+        if(!toca)continue;
+        if(!anulados[g.id]&&g.tipo==='intereses')gir+=parte;
+        lista.push({g:g,parte:parte,dias:dias,anulado:!!anulados[g.id]});
+      }
+      if((mk>=GIROS_DESDE&&gen>0)||lista.length>0){
+        hay=true;
+        var mb=el('div',null,{background:'var(--c2)',borderRadius:'10px',padding:'10px 12px',marginBottom:'10px'},null);
+        mb.appendChild(el('div',null,{fontWeight:'700',fontSize:'12px',marginBottom:'6px'},mesLargo(mk)));
+        var pend=gen-gir;if(pend<0)pend=0;
+        var completo=mk>=GIROS_DESDE; // antes de GIROS_DESDE no hay historial completo: solo lo girado
+        var g3=el('div','g3',null,null);
+        var k=function(lbl,v,c){var d=el('div',null,null,null);d.appendChild(el('div',null,{fontSize:'9px',color:'var(--mut)',textTransform:'uppercase'},lbl));d.appendChild(el('div','mn',{fontSize:'12px',fontWeight:'700',color:c},v===null?'—':COP(v)));return d;};
+        g3.appendChild(k('Generado',completo?gen:null,'var(--acc)'));g3.appendChild(k('Girado',gir,'var(--grn)'));g3.appendChild(k('Pendiente',completo?pend:null,pend>0?'var(--red)':'var(--mut)'));
+        mb.appendChild(g3);
+        lista.sort(function(a,b){return (b.g.fecha||'').localeCompare(a.g.fecha||'');});
+        for(j=0;j<lista.length;j++){
+          var it=lista[j],gg=it.g;
+          var tipoTxt=gg.tipo==='devolucion_capital'?'Devolución de capital · ':gg.tipo==='aporte_capital'?'Aporte de capital · ':'';
+          var r=el('div',null,{display:'flex',justifyContent:'space-between',gap:'8px',padding:'6px 0',borderTop:'1px solid var(--bor)',fontSize:'11px'},null);
+          var lft=el('div',null,{flex:'1',minWidth:'0',color:'var(--mut)'},null);
+          lft.appendChild(el('div',null,it.anulado?{textDecoration:'line-through'}:null,(gg.fecha||'')+' · '+tipoTxt+(MODALIDAD_LBL[gg.modalidad]||gg.modalidad||'')));
+          if(it.dias.length)lft.appendChild(el('div',null,it.anulado?{textDecoration:'line-through'}:null,it.dias.join(', ')));
+          if(it.anulado)lft.appendChild(el('div',null,{color:'var(--red)'},'Anulado'));
+          r.appendChild(lft);
+          r.appendChild(el('div','mn',{fontWeight:'700',color:it.anulado?'var(--mut)':'var(--grn)',textDecoration:it.anulado?'line-through':'none',flexShrink:'0'},COP(it.parte)+(it.parte!==(+gg.monto||0)?' de '+COP(gg.monto):'')));
+          mb.appendChild(r);
+        }
+        card.appendChild(mb);
+      }
+      mk=prevMk(mk);
+    }
+    if(!hay)card.appendChild(el('div',null,{color:'var(--mut)',fontSize:'13px',textAlign:'center',padding:'12px 0'},'Aún no hay giros registrados.'));
+    card.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',textAlign:'center',marginTop:'4px'},'Historial de giros desde octubre de 2026'));
+    return card;
   }
 
   // ── Cambio de contraseña ──
