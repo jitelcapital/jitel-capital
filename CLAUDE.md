@@ -209,22 +209,28 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 - `portal_clientes/dayam` → **copia pública** para `dayam.html`, construida por `buildPortalClienteDoc('DAYAM')` en cada sync. Solo campos no sensibles: `id, dia, capital (COP), pago_mensual (COP), mes_fin, año, mes_comienzo, status, continuacion_de, recibido, pagos:[{periodo, fecha}], cuotas_pendientes:[{periodo, recibido}]`. **Nunca** incluir socio, socio_email, tasas, moneda, tasa_cambio, nota ni cierre_tipo.
 - `pagos/{loanId}/pagos/{pagoId}` → copia normalizada creada solo por la migración inicial (no se sincroniza en vivo)
 
-**Reglas de Firestore vigentes** (se configuran en Firebase Console; **no están versionadas en este repo**). Esto es lo que la app asume:
+**Reglas de Firestore vigentes** — copia en [`firestore.rules`](firestore.rules).
 
-| Colección | Admin | Socio con sesión | Público (sin sesión) |
-|-----------|-------|------------------|----------------------|
-| `usuarios/{uid}` | lee/escribe | lee su propio perfil | — |
-| `socios` | lee/escribe | lee el suyo (`where email == su correo`) | — |
-| `prestamos` | lee/escribe/borra | lee solo los suyos (`where socio_email == su correo`) | — |
-| `giros` | lee y **solo crea** (sin update ni delete) | lee solo los suyos (`where socio_email == su correo`) | — |
-| `config/global` | lee/escribe | — | — |
-| `portal_clientes/dayam` | escribe | — | lee (solo lectura) |
+> Las reglas vigentes se publican a mano en Firebase Console. firestore.rules es una copia de referencia: cualquier cambio debe publicarse en la consola y actualizarse aquí en el mismo commit.
 
-Cualquier cambio de código que lea o escriba Firestore debe respetar esta tabla. En particular: no consultar `prestamos` ni `giros` sin el filtro `socio_email` desde `socio.html`, no hacer `update`/`delete` en `giros`, y `dayam.html` solo lee `portal_clientes/dayam`.
+- **Admin** (`isAdmin()`): usuario con sesión cuyo `usuarios/{uid}.perfil.rol == 'admin'`.
+- **Mi email** (`esMiEmail(x)`): usuario con sesión cuyo correo del token, **en minúsculas**, es igual a `x`. Por eso `socio_email` y `socios.email` deben guardarse en minúsculas (`SOCIOS_MAP` ya los pasa a minúsculas).
+
+| Ruta | Lectura | Escritura |
+|------|---------|-----------|
+| `usuarios/{uid}` | el propio usuario (`auth.uid == uid`) o admin | solo el propio usuario (`auth.uid == uid`) |
+| `pagos/{loanId}/pagos/{pagoId}` | admin | admin |
+| `config/{docId}` | admin | admin |
+| `socios/{code}` | admin, o el socio cuyo `email` es su correo | admin |
+| `prestamos/{loanId}` | admin, o el socio cuyo `socio_email` es su correo | admin (crear, editar y borrar) |
+| `giros/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | **solo crear**, admin; `update` y `delete` prohibidos para todos |
+| `portal_clientes/{clienteId}` | **cualquiera, sin sesión** | admin |
+
+Cualquier cambio de código que lea o escriba Firestore debe respetar estas reglas. En particular: desde `socio.html` las consultas a `prestamos`, `giros` y `socios` deben filtrar por el correo del socio (`where socio_email == …` / `where email == …`), porque una consulta que pueda devolver documentos ajenos se rechaza completa; nunca hacer `update`/`delete` en `giros`; y todo lo que se escriba en `portal_clientes` es público.
 
 **Funciones de consola** (expuestas en `window`): `migrarAFirebase()`, `jitelBootstrapAdmin('Julián')`, `jitelSocioAdd(code, email, NOMBRE)`, `jitelLogout()`.
 
-**App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol.
+**App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol (`firestore.rules`).
 
 ---
 
