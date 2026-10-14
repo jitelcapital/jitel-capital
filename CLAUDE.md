@@ -2,7 +2,7 @@
 
 ## Descripción del negocio
 
-**JiTel Capital** es una app de gestión de cartera de préstamos informales en Colombia. Permite registrar préstamos a clientes, llevar el cobro mensual de intereses, hacer seguimiento de pagos a socios inversores, generar imágenes para WhatsApp y hacer backups en Google Drive.
+**JiTel Capital** es una app de gestión de cartera de préstamos informales en Colombia. Permite registrar préstamos a clientes, llevar el cobro mensual de intereses, registrar los giros (pagos) a socios inversores, generar imágenes para WhatsApp y hacer backups en Google Drive.
 
 Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_propio`). El socio inversor recibe `int_socio × monto` y el propietario retiene `int_propio × monto` como ganancia neta.
 
@@ -10,10 +10,13 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 
 ## Arquitectura
 
-- **Un solo archivo**: `index.html` (~3.300 líneas), sin framework ni build system
-- **JS embebido** en `<script>` al final del HTML; estilo ES5 estricto (sin `const`/`let`, sin arrow functions, sin template literals)
-- **Persistencia**: en migración a **Firebase** (Auth + Firestore). `localStorage` (`jitel_v1`) se mantiene como red de seguridad / fallback. Ver sección "Firebase" abajo.
-- **Despliegue**: GitHub Pages (rama `main`) — `https://julianjimenez91.github.io/jitel-capital/`
+- **Tres páginas, sin framework ni build system**:
+  - `index.html` (~5.200 líneas) — app de administración (solo admin).
+  - `socio.html` — portal de solo lectura para cada socio (login con email/contraseña).
+  - `dayam.html` — portal público de solo lectura para el cliente DAYAM (sin login).
+- **JS embebido** en `<script>` al final de cada HTML; estilo ES5 estricto (sin `const`/`let`, sin arrow functions, sin template literals)
+- **Persistencia**: **Firebase** (Auth + Firestore) como fuente principal; `localStorage` (`jitel_v1`) se mantiene como red de seguridad / fallback. Ver sección "Firebase" abajo.
+- **Despliegue**: GitHub Pages (rama `main`) del repo `jitelcapital/jitel-capital`. El link del portal de socio que copia la app es `https://jitelcapital.github.io/jitel-capital/socio.html`.
 - **Sin librerías externas**: SVG nativo, Canvas nativo, Google Identity Services vía CDN para OAuth2
 
 ---
@@ -22,11 +25,11 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 
 | Pestaña | Función |
 |---------|---------|
-| **Cobros** | Vista diaria de cobros agrupados por día. Acordeones colapsables por día. Botón Pagar por grupo, conciliación (✓ Recibí / 🏦 Pagué socio), sumador temporal de selección múltiple, notificaciones WhatsApp, mensaje multi-día. |
-| **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs financieros, gráfico histórico SVG de evolución (Ganancia/Capital/Préstamos, últimos 6 meses), preferencias de app, backup Google Drive, reinicio mensual. |
-| **Préstamos** | Lista completa de préstamos (activos + pagados) con búsqueda, filtros por estado/socio/cliente. Cada fila abre modal de detalle con historial de pagos, extensión de plazo y cambio de socio. |
-| **Socios** | Resumen por socio inversor: capital aportado, interés mensual, detalle de préstamos. Exporta imagen paginada (10 filas/página) para compartir por WhatsApp. |
-| **Clientes** | Resumen por cliente/responsable: préstamos activos, cuota total mensual. Exporta imagen paginada (10 filas/página) con estado de cuenta. |
+| **Cobros** | Vista del mes agrupada por día de cobro (acordeones). Pago rápido/por grupo, toggle "Cobré", botón "🏦 Pagué socio" (abre el modal de giro), sumador temporal, mensaje multi-día. Sección "📦 Pendientes del mes anterior" (cuotas arrastradas) y aviso "Cobrado sin girar hace más de 3 días". |
+| **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs, gráfico histórico SVG (últimos 6 meses), preferencias, backup Google Drive, "Nuevo mes" (cierre mensual). |
+| **Préstamos** | Lista completa (activos + cerrados) con búsqueda y filtros. Cada fila abre `showLoanDetail`: historial de pagos, registrar pago (con periodo), Actualizar/Extender (plazo, mes de inicio, socio, tasas) y cerrar préstamo. |
+| **Socios** | Por socio: capital, interés mensual, préstamos, finalizados, sección **Giros** por mes, historial mensual (`ST.snapshots`), botón "🏦 Registrar giro", imagen paginada para WhatsApp. Aviso "Cobrado sin girar" arriba. |
+| **Clientes** | Por cliente/responsable: préstamos activos, cuota total mensual. Imagen paginada (10 filas/página) con estado de cuenta. |
 
 ---
 
@@ -34,9 +37,10 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 
 ### Cálculo de intereses
 ```js
-function IM(l)  // Interés mensual total cobrado al cliente = monto × (int_socio + int_propio)
+function IM(l)  // Interés mensual total cobrado al cliente = monto × (int_socio + int_propio)  (moneda nativa)
 function IS(l)  // Interés del socio inversor              = monto × int_socio
 function IP(l)  // Interés propio (ganancia neta)          = monto × int_propio
+// Versiones en COP (convierten USD con la tasa fija del préstamo): IMc, ISc, IPc, montoCOP
 ```
 
 ### Detección de préstamos directos
@@ -47,15 +51,19 @@ function isJulianLoan(l)
 // SIEMPRE usar esta función — nunca comparar socio o int_socio por separado
 ```
 
-### Estado de pago del mes actual
+### Periodo de pago y estado del mes
 ```js
-function paidMth(l)
-// true si el arreglo l.pagos contiene al menos un pago con fecha en el mes/año actuales
+function pagoPeriodo(p)            // 'YYYY-MM' de la CUOTA que paga: p.periodo, o el mes de p.fecha (pagos viejos)
+function paidMth(l)                // true si l.pagos tiene un pago con periodo === CURR_MK
+function hasPagoForPeriodo(l,mk)   // busca en l.pagos Y en ST.archives[mk][l.id]
+function isCollectableFor(l,mk)    // false si mes_comienzo >= mk (el primer cobro es el mes siguiente al inicio)
+function isCollectable(l)          // isCollectableFor(l, CURR_MK)
+function aplicarPagoALoan(c,pago)  // punto ÚNICO para registrar un pago en una copia del préstamo
 ```
 
 ### Persistencia
 ```js
-function saveST()    // Serializa ST a localStorage — llamar tras toda mutación de ST
+function saveST()    // localStorage (siempre) + sync Firestore con debounce (solo admin) — llamar tras toda mutación de ST
 function renderApp() // Re-renderiza la vista activa completa — COLAPSA acordeones abiertos
                      // Preferir actualizaciones DOM in-place cuando sea posible
 ```
@@ -66,11 +74,9 @@ function renderApp() // Re-renderiza la vista activa completa — COLAPSA acorde
 
 ```js
 var ST = {
-  loans: [/* array de objetos préstamo */],
-  archives: {
-    "2026-04": { loanId: [pagos...] },  // pagos del mes archivado por préstamo
-    "2026-05": { ... }
-  }
+  loans: [/* préstamos */],
+  archives:  { "2026-09": { loanId: [pagos...] } },   // pagos archivados por mes al cerrar
+  snapshots: { "2026-09": { SOCIO: {capital, count, intS, loanIds} } }  // foto mensual por socio
 };
 ```
 
@@ -78,41 +84,85 @@ var ST = {
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `id` | string | UUID generado con `GID()` |
+| `id` | string | Generado con `GID()` |
 | `año` | number | Año de vencimiento |
 | `dia` | number | Día de cobro mensual (1–31) |
 | `mes_fin` | string | Mes de vencimiento en español mayúsculas (e.g. `'JULIO'`) |
-| `mes_comienzo` | string\|null | Mes de inicio `'YYYY-MM'` — puede ser null |
-| `monto` | number | Capital prestado en COP |
+| `mes_comienzo` | string\|null | Mes de inicio `'YYYY-MM'`. El primer cobro es el **mes siguiente**. Editable desde Actualizar (no cuenta como extensión; queda en `nota`) |
+| `monto` | number | Capital en la moneda nativa |
+| `moneda` / `tasa_cambio` | string / number\|null | `'COP'` (default) o `'USD'` con tasa fija COP por USD |
 | `socio` | string | Nombre del socio inversor (e.g. `'VICTOR'`, `'JULIAN'`) |
-| `int_socio` | number | Tasa mensual del socio (e.g. `0.035` = 3.5%) |
-| `int_propio` | number | Tasa mensual propia (e.g. `0.015` = 1.5%) |
+| `socio_email` | string\|null | Email del socio (de la colección `socios`); lo agrega `loanToDoc` al escribir en Firestore. Las reglas filtran por este campo |
+| `int_socio` / `int_propio` | number | Tasas mensuales (e.g. `0.035`) |
 | `responsable` | string | Nombre del cliente/deudor |
-| `status` | string | `'active'` o `'paid'` |
-| `pagos` | array | Historial de pagos del mes actual: `[{fecha, monto, tipo, nota}]` |
-| `recibido` | boolean | Conciliación: cliente pagó este mes |
-| `pagado_socio` | boolean | Conciliación: socio fue pagado este mes |
-| `nota` | string | Nota libre del préstamo |
+| `status` | string | `'active'` o `'paid'` (cerrado) |
+| `pagos` | array | Pagos del ciclo en curso: `[{id, tipo, monto, fecha, periodo, nota, monto_usd?}]` |
+| `recibido` | boolean | Conciliación: cliente pagó este mes (toggle "Cobré") |
+| `pagado_socio` | boolean | Giro al socio del ciclo en curso. **Solo lo pone un giro** (ver "Giros") |
+| `cuotas_pendientes` | array | Cuotas arrastradas de meses cerrados: `[{id, periodo, recibido, pagado_socio}]` |
+| `veces_extendido` / `mes_fin_original` | number / string | Extensiones de plazo |
+| `cierre_tipo` / `fecha_cierre` | string / string | Al cerrar: `'finalizado'` o `'traspaso'`, y fecha ISO |
+| `continuacion_de` | string | id del préstamo original cuando este es su continuación (traspaso) |
+| `nota` | string | Nota libre; acumula cambios de plazo, inicio, socio y tasas |
 | `created_at` | string | ISO timestamp de creación |
 
-### Tipos de pago (`pagos[i].tipo`)
-- `'interes'` — pago mensual de intereses (el más común)
-- `'abono'` — abono a capital
-- `'cancelacion'` — cancelación total del préstamo
+### Pagos (`pagos[i]`)
+- `tipo`: `'interes'` (el más común), `'abono'` (abono a capital), `'total'` (pago total, cierra el préstamo).
+- `periodo`: `'YYYY-MM'` de la cuota que paga (puede ser un mes anterior: pago tardío o cuota arrastrada). Pagos viejos sin `periodo` usan el mes de `fecha`.
+- Si el periodo ya está archivado, `aplicarPagoALoan` también lo agrega en `ST.archives[periodo]`.
+- "Mes de apertura": al crear un préstamo cuyo día de cobro ya pasó y cuyo inicio es el mes actual, se inserta un pago simbólico con esa nota.
 
-### Archivos mensuales (`ST.archives`)
-- Clave: `'YYYY-MM'` (e.g. `'2026-05'`)
-- Valor: objeto `{ loanId: pagos[] }` — snapshot de los pagos de ese mes para todos los préstamos
-- Se crea al ejecutar "Reinicio mensual" — no modificar su estructura
+---
+
+## Cierre mensual ("Nuevo mes", `showReset`)
+
+- Se **elige el mes a cerrar** (sugerido: mes anterior si hoy es día 1–5; si no, el actual).
+- Antes de confirmar muestra las cuotas sin cobrar o sin girar del mes (`loansPendientesParaCierre`) y las **cobradas sin girar hace más de 3 días**, por socio.
+- Al confirmar (`doReset`), en este orden:
+  1. `generarArrastrePendientes(mk)`: cada cuota sin resolver del mes pasa a `loan.cuotas_pendientes` con su `recibido`/`pagado_socio`.
+  2. `ST.snapshots[mk] = buildSociosSnapshot()` (pide confirmación si ya existía).
+  3. `ST.archives[mk]` = pagos de todos los préstamos.
+  4. Préstamos activos: `pagos=[]`, `recibido=false`, `pagado_socio=false`. Los cerrados conservan sus pagos.
+- Una cuota arrastrada está resuelta cuando tiene pago para su periodo **y** (`pagado_socio` o `isJulianLoan`). Las sin resolver se ven en Cobros → "Pendientes del mes anterior".
+
+---
+
+## Giros a socios (colección `giros`)
+
+Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026** (`GIROS_DESDE`); no se importaron giros anteriores.
+
+- **Sin giro no hay "Pagué socio"**: `pagado_socio` (del mes y de `cuotas_pendientes`) solo se pone en `true` al guardar un giro (`registrarGiro`) y vuelve a `false` solo al anular el giro que la cubría. `toggleConcil`, `conciliBtn` y `conciliBtnCuota` ignoran el campo `pagado_socio`; el botón es `giroBtn(loan, periodo)`.
+- **Documento**: `{id, socio, socio_email, fecha, monto (COP), modalidad, modalidad_detalle, referencia, tipo, cuotas:[{loanId, periodo, monto}], nota, creado_en, anula_a?}`.
+  - `modalidad`: `'transferencia' | 'efectivo' | 'abono_tarjeta' | 'otro'`.
+  - `tipo`: `'intereses' | 'devolucion_capital' | 'aporte_capital'`. En capital, `cuotas` lleva los préstamos asociados con `periodo: null`.
+  - `anula_a` solo existe en anulaciones.
+- **Obligatorios**: referencia en transferencia y abono a tarjeta; a quién se entregó o nota en efectivo; `modalidad_detalle` en otro.
+- **Nunca se editan ni se borran**. Para corregir: "Anular giro" pide motivo y crea un giro nuevo con `anula_a = <id>`. Un giro está anulado si existe otro con `anula_a` igual a su id (`giroVigente`). Las cuotas del anulado vuelven a pendientes de girar (si el mes ya estaba cerrado, se agrega una cuota arrastrada).
+- **Estado girado de una cuota** (`cuotaGirada(l, periodo)`): la cuota arrastrada de ese periodo si existe; si el periodo no está archivado, `l.pagado_socio`; si está archivado y sin arrastre, se considera resuelta.
+- **Cuotas por girar** (`cuotasPorGirar(socio)`): con pago del cliente registrado y sin girar (mes en curso + arrastradas). El aviso (`alertasSinGirar`) muestra las de más de 3 días.
+- **Escritura**: fuera de `fbPushAll`. `fbCreateGiro` hace `set` con 2 reintentos (antes de reintentar comprueba si el doc ya existe, porque un segundo `set` sería un update y las reglas lo rechazan). Si falla, aviso rojo visible y cola `_pendingGiros`, que `flushPendingGiros` reintenta en cada `fbPushAll`.
+- **Carga**: `loadGiros` al iniciar sesión de admin (Firestore + cache local `jitel_giros_v1`). En modo sin Firebase solo la cache local.
+- **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes).
+- **Backup CSV**: fila especial `__GIROS__` (JSON), como `__ARCHIVES__`. Al importar solo se agregan los que falten; no se suben a la nube.
+- Compatibilidad: cuotas marcadas antes de los giros siguen marcadas (se ven "✓ Girado" sin giro asociado).
+
+---
+
+## Traspasos y cierre de préstamos
+
+- "✓ Cerrar préstamo" (`showCloseLoanModal`) pone `status='paid'`, `cierre_tipo` (`'finalizado'` o `'traspaso'`) y `fecha_cierre`, y ofrece los mensajes de cierre (cliente y/o socio).
+- Un préstamo nuevo puede marcarse como **continuación** de otro (`continuacion_de`) para traspasos de cartera entre socios.
+- En `buildClienteImage` una continuación se ve como fila normal, sin etiquetas. En `dayam.html` sí hereda el estado del original.
+- En Socios y en `socio.html` los finalizados muestran "✅ Finalizado" o "✅ Liquidado en su totalidad" (traspaso), sin nombrar al cliente ni al socio entrante.
 
 ---
 
 ## Convención Julián
 
 Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del propietario** sin socio externo. En estos casos:
-- `IS(l) === 0` — no hay pago a socio
+- `IS(l) === 0` — no hay pago a socio ni giros
 - `IP(l) === IM(l)` — toda la ganancia es propia
-- El botón "🏦 Pagué socio" se oculta en la UI (`isJulianLoan` guard en `conciliBtn`)
+- El botón "🏦 Pagué socio" se oculta y la cuota se considera girada (`cuotaGirada`)
 - La lógica de notificación WhatsApp lo excluye de los mensajes a socios
 
 **Regla**: siempre usar `isJulianLoan(l)` para esta detección. Nunca comparar `l.socio` o `l.int_socio` directamente en otro lugar.
@@ -123,63 +173,77 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 | Funcionalidad | Descripción técnica |
 |---------------|---------------------|
-| **Pago unificado** | Registrar pago auto-setea `recibido=true`; botón "💰 Recibí" eliminado |
-| **Conciliación in-place** | `conciliBtn()` actualiza DOM y `ST.loans` sin llamar `renderApp()` — el acordeón no colapsa |
+| **Pago unificado** | Registrar pago auto-setea `recibido=true` cuando el periodo es el mes actual |
+| **Conciliación in-place** | `conciliBtn()` (solo `recibido`) actualiza DOM y `ST.loans` sin `renderApp()` |
+| **Giros** | Ver sección "Giros a socios" |
 | **Sumador temporal** | Checkboxes en Cobros acumulan selección; barra flotante muestra total; multi-pago en un click |
-| **Paginado imágenes** | `buildSocioImage()` y `buildClienteImage()` generan array de dataUrls (10 filas/página) con navegador de páginas en el modal |
-| **Google Drive backup** | OAuth2 via GIS; renovación automática de token cuando quedan <30 min; reintento silencioso × 3 antes de toast de error; `setInterval` cada 45 min |
-| **Mensaje multi-día** | `showMensajeMultidia()` en Cobros: selector de socio + rango de días + mensaje consolidado WhatsApp |
-| **Gráfico histórico SVG** | `vEvolucion()` en Resumen: tabs Ganancia/Capital/Préstamos, últimos 6 meses, barras doradas (mes actual) vs azules (anteriores), indicadores de variación y mejor mes |
-| **Cambio de socio** | Modal de extensión permite cambiar el socio de un préstamo con recálculo de tasas y confirmación |
-| **Ordenación automática** | Préstamos de cada cliente ordenados por `dia` ascendente |
-| **Token Drive** | Renovación proactiva: `setInterval` 45 min + guard <30 min restantes |
+| **Paginado imágenes** | `buildSocioImage()` y `buildClienteImage()` generan array de dataUrls (10 filas/página) |
+| **Google Drive backup** | OAuth2 via GIS; renovación automática de token cuando quedan <30 min; reintento silencioso × 3; `setInterval` cada 45 min |
+| **Mensaje multi-día** | `showMensajeMultidia()` en Cobros |
+| **Gráfico histórico SVG** | `vEvolucion()` en Resumen |
+| **Actualizar/Extender** | Plazo, mes de inicio (con "Primer cobro" en vivo), socio y tasas; los cambios quedan en `nota` |
+| **Primer cobro** | En +Nuevo, texto en vivo "Primer cobro: día D de MES AÑO" (mes siguiente al inicio) |
 
 ---
 
-## Firebase (migración en curso — Día 1 hecho)
+## Firebase
 
-**SDK**: v12.16.0 vía CDN, **capa compat** (`firebase-app-compat/auth-compat/firestore-compat.js`) cargada en `<head>`. La capa compat mantiene exactamente la misma API namespaced que v8 (`firebase.initializeApp/auth()/firestore()`, `.collection()`, `.doc()`, etc.), así que el código de negocio no cambia. (Reemplazó al SDK v8 anterior, que se usaba por un bug histórico de CORS/XHR en Safari iOS con v9 compat; ver historial git.) Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
+**SDK**: v12.16.0 vía CDN, **capa compat** (`firebase-app-compat/auth-compat/firestore-compat.js`). La capa compat mantiene la API namespaced de v8 (`firebase.initializeApp/auth()/firestore()`, `.collection()`, `.doc()`). Config en `FIREBASE_CONFIG` (proyecto `jitel-capital`).
 
 **Objeto global `FB`**: `{ready, app, auth, db, user, perfil}`. `isAdmin()` = `FB.perfil.rol==='admin'`.
 
-**Arranque (boot)**: IIFE al final del script.
-- Si el SDK no carga → `bootLegacyLocal()` (localStorage, sin login — la app nunca queda inutilizable).
-- Si carga → `fbInit()`, gatea con `onAuthStateChanged`: sin sesión → `showLoginScreen()`; admin → `bootData()` (app completa); socio/sin perfil → `showSocioPlaceholder()` (vista de socio es Día 2).
-- `startApp()` corre una sola vez (`APP_STARTED`): navbar, botón logout (🚪 en topbar), timers de Drive, `renderApp()`.
+**Arranque (boot)**: IIFE al final del script de `index.html`.
+- Si el SDK no carga → `bootLegacyLocal()` (localStorage + cache local de giros, sin login — la app nunca queda inutilizable).
+- Si carga → `fbInit()`, gatea con `onAuthStateChanged`: sin sesión → `showLoginScreen()`; admin → `bootData()` (`loadSociosMap` + `loadGiros` + `loadSTAsync` → `startApp`); socio/sin perfil → `showSocioPlaceholder()` (los socios usan `socio.html`).
 
-**Lectura (Fase 5)**: `loadSTAsync(cb)` → Firestore primero (`loadFromFirestore`), si vacío/falla usa `loadST()` (localStorage), si nada usa `mkInit()`. `loadST` queda intacto como fallback síncrono.
+**Lectura**: `loadSTAsync(cb)` → Firestore primero (`loadFromFirestore`), si vacío/falla usa `loadST()` (localStorage), si nada usa `mkInit()`.
 
-**Escritura**: `saveST()` = `saveLocalOnly()` (siempre) + `fbSyncDebounced()` (best-effort, solo admin, 1.5s debounce → `fbPushAll()` escribe docs `prestamos/{id}` + `config/global` en lotes). Nunca bloquea ni lanza. `saveLocalOnly()` para sembrado sin tocar Firebase.
+**Escritura**: `saveST()` = `saveLocalOnly()` (siempre) + `fbSyncDebounced()` (solo admin, 1.5s → `fbPushAll()`: docs `prestamos/{id}` + `config/global` en lotes, luego `pushPortalClientes()`). Nunca bloquea ni lanza. Los borrados de préstamos van aparte con `fbDeleteDoc` (reintento + cola `_pendingDeletes`); los giros con `fbCreateGiro` (ver "Giros").
 
 **Estructura Firestore**:
 - `usuarios/{uid}` → `{ perfil: { nombre, rol:'admin'|'socio'|'cliente', socioNombre } }`
-- `prestamos/{loanId}` → todos los campos de un loan (incluye array `pagos`)
-- `pagos/{loanId}/pagos/{pagoId}` → copia normalizada (se llena en migración; para vistas de socio en Día 2)
-- `config/global` → `{ currMk, archives, ... }`
+- `socios/{code}` → `{ email, nombre, createdAt }` — se crea con `jitelSocioAdd(code, email, NOMBRE)`; alimenta `SOCIOS_MAP` (nombre → email)
+- `prestamos/{loanId}` → todos los campos de un loan + `socio_email`
+- `giros/{giroId}` → giros a socios (solo creación)
+- `config/global` → `{ currMk, archives, snapshots, updatedAt }`
+- `portal_clientes/dayam` → **copia pública** para `dayam.html`, construida por `buildPortalClienteDoc('DAYAM')` en cada sync. Solo campos no sensibles: `id, dia, capital (COP), pago_mensual (COP), mes_fin, año, mes_comienzo, status, continuacion_de, recibido, pagos:[{periodo, fecha}], cuotas_pendientes:[{periodo, recibido}]`. **Nunca** incluir socio, socio_email, tasas, moneda, tasa_cambio, nota ni cierre_tipo.
+- `pagos/{loanId}/pagos/{pagoId}` → copia normalizada creada solo por la migración inicial (no se sincroniza en vivo)
 
-**Funciones de consola** (expuestas en `window`):
-- `migrarAFirebase()` — migra localStorage→Firestore con progreso; solo admin.
-- `jitelBootstrapAdmin('Julián')` — crea el perfil admin del usuario actual (arranque inicial, uso único).
-- `jitelLogout()` — cierra sesión.
+**Reglas de Firestore vigentes** (se configuran en Firebase Console; **no están versionadas en este repo**). Esto es lo que la app asume:
 
-**Setup en Firebase Console** (no en código): habilitar Auth correo/contraseña; agregar dominio `julianjimenez91.github.io` a Authorized domains; crear Firestore; crear usuarios; configurar reglas de seguridad por rol (Día 2).
+| Colección | Admin | Socio con sesión | Público (sin sesión) |
+|-----------|-------|------------------|----------------------|
+| `usuarios/{uid}` | lee/escribe | lee su propio perfil | — |
+| `socios` | lee/escribe | lee el suyo (`where email == su correo`) | — |
+| `prestamos` | lee/escribe/borra | lee solo los suyos (`where socio_email == su correo`) | — |
+| `giros` | lee y **solo crea** (sin update ni delete) | lee solo los suyos (`where socio_email == su correo`) | — |
+| `config/global` | lee/escribe | — | — |
+| `portal_clientes/dayam` | escribe | — | lee (solo lectura) |
 
-**App Check**: desactivado intencionalmente. La seguridad se gestiona exclusivamente con reglas de Firestore por rol. App Check con reCAPTCHA v3 requiere Firebase SDK v9+ (modular) para funcionar de forma confiable; en v8 genera errores 400 por incompatibilidades de dominio y proveedor que no se pueden resolver solo desde el código. Mejora futura: migrar a Firebase v9 modular y habilitar App Check con `initializeAppCheck` + `ReCaptchaV3Provider`.
+Cualquier cambio de código que lea o escriba Firestore debe respetar esta tabla. En particular: no consultar `prestamos` ni `giros` sin el filtro `socio_email` desde `socio.html`, no hacer `update`/`delete` en `giros`, y `dayam.html` solo lee `portal_clientes/dayam`.
 
-**Pendiente Día 2**: vista/portal de socio dentro de la app, reglas de Firestore por rol, sync de subcolección `pagos` en escrituras en vivo.
+**Funciones de consola** (expuestas en `window`): `migrarAFirebase()`, `jitelBootstrapAdmin('Julián')`, `jitelSocioAdd(code, email, NOMBRE)`, `jitelLogout()`.
+
+**App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol.
+
+---
 
 ## Reglas permanentes
 
 1. **No romper la paginación de imágenes** — `buildSocioImage` y `buildClienteImage` ya funcionan correctamente con `MAX_ROWS=10` y el patrón `onDone(dataUrls[])`. No cambiar su firma ni lógica interna salvo indicación explícita.
 
-2. **No tocar la lógica de pagos** — las funciones `IM`, `IS`, `IP`, `toggleConcil`, `showPaymentConfirm`, el flujo de registro de pagos en Cobros — solo modificar si se indica explícitamente.
+2. **No tocar la lógica de pagos** — las funciones `IM`, `IS`, `IP`, `aplicarPagoALoan`, `toggleConcil`, `showPaymentConfirm`, el flujo de registro de pagos en Cobros — solo modificar si se indica explícitamente.
 
-3. **Mantener `isJulianLoan` consistente** — cualquier feature que filtre o trate diferente los préstamos sin socio externo debe usar esta función, no comparaciones directas.
+3. **`pagado_socio` solo lo pone un giro** — no agregar ningún otro camino que lo marque o desmarque. Los giros nunca se editan ni se borran: se anulan con `anula_a`.
 
-4. **Evitar `renderApp()` en handlers** — llama a re-render completo y colapsa acordeones. Preferir actualización DOM in-place (ver patrón de `conciliBtn`).
+4. **Mantener `isJulianLoan` consistente** — cualquier feature que filtre o trate diferente los préstamos sin socio externo debe usar esta función, no comparaciones directas.
 
-5. **ES5 estricto** — sin `const`/`let`, sin arrow functions `=>`, sin template literals `` ` ``, sin spread `...`, sin destructuring. Todo con `var` y funciones nombradas o anónimas clásicas.
+5. **Evitar `renderApp()` en handlers** — llama a re-render completo y colapsa acordeones. Preferir actualización DOM in-place (ver patrón de `conciliBtn`).
 
-6. **Un solo commit al final** — nunca commits intermedios durante una sesión de cambios múltiples. Mensaje de commit descriptivo en español o inglés técnico.
+6. **ES5 estricto** — sin `const`/`let`, sin arrow functions `=>`, sin template literals `` ` ``, sin spread `...`, sin destructuring. Todo con `var` y funciones nombradas o anónimas clásicas. No declarar `function` dentro de bloques `for`/`if` (usar `var f=function(){}`).
 
-7. **`git push` al finalizar cada tarea** — confirmar push exitoso antes de reportar la tarea como completada.
+7. **Sin nombres de clientes** en nada que vea un socio (`socio.html`, imágenes y mensajes de socio), ni datos sensibles en `portal_clientes/dayam`.
+
+8. **Un solo commit al final** — nunca commits intermedios durante una sesión de cambios múltiples. Mensaje de commit descriptivo en español o inglés técnico.
+
+9. **`git push` al finalizar cada tarea** — confirmar push exitoso antes de reportar la tarea como completada.
