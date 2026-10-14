@@ -1231,30 +1231,112 @@ function showNewLoan(prefill){
     m.appendChild(pcNote);
   }
   // ── Continuación de un préstamo existente (traspaso de cartera entre socios) ──
-  var esContinuacion=false,continuacionDe='';
-  var contCheckRow=D(null,{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'},null);
-  var contCheck=document.createElement('input');contCheck.type='checkbox';contCheck.style.cssText='width:auto;flex-shrink:0';
-  var contLbl=document.createElement('label');contLbl.textContent='Es continuación de un préstamo existente';contLbl.style.cssText='font-size:13px;color:var(--txt)';
-  contCheckRow.appendChild(contCheck);contCheckRow.appendChild(contLbl);
-  var contSelWrap=D(null,{display:'none',marginBottom:'12px'},null);
-  function rebuildContSel(){
-    contSelWrap.innerHTML='';
-    var candidatos=[],ci;
-    for(ci=0;ci<ST.loans.length;ci++){var cl=ST.loans[ci];if(cl.responsable&&fr&&cl.responsable.toUpperCase()===fr.toUpperCase())candidatos.push(cl);}
-    if(candidatos.length===0){
-      var none=D(null,{fontSize:'12px',color:'var(--mut)'},null);none.textContent='No hay préstamos de este cliente para continuar.';
-      contSelWrap.appendChild(none);continuacionDe='';return;
-    }
-    var opts=[['','Selecciona...']];
-    for(ci=0;ci<candidatos.length;ci++){var cl2=candidatos[ci];opts.push([cl2.id,(cl2.socio||'—')+' · '+COP(montoCOP(cl2))+' · '+(cl2.status==='active'?'Activo':'Cerrado')+' · día '+cl2.dia]);}
-    var contSel=MSEL(opts,continuacionDe);
-    contSel.addEventListener('change',function(e){continuacionDe=e.target.value;});
-    contSelWrap.appendChild(FLD('Préstamo original',contSel));
+  // Lista propia de filas tocables (sin <input type=checkbox> ni <select>: con el CSS global de
+  // inputs, Safari de iPhone no dibuja la marca). Candidatos: préstamos del mismo cliente activos
+  // o cerrados en los últimos CONT_DIAS_CERRADO días, ordenados por día y luego capital. Arriba,
+  // resaltados como "Coincide", los que tienen el mismo día y capital del formulario.
+  var CONT_DIAS_CERRADO=60;
+  var esContinuacion=false,continuacionDe='',contManual=false,contQuery='';
+  var contCheckRow=D(null,{display:'flex',alignItems:'center',gap:'10px',padding:'10px',marginBottom:'8px',borderRadius:'10px',cursor:'pointer',userSelect:'none',WebkitUserSelect:'none',touchAction:'manipulation'},null);
+  contCheckRow.setAttribute('role','checkbox');contCheckRow.setAttribute('data-cont-toggle','1');
+  var contMark=S(null,{width:'24px',height:'24px',borderRadius:'7px',flexShrink:'0',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'15px',fontWeight:'800'},null);contMark.textContent='✓';
+  var contLbl=D(null,{fontSize:'13px',color:'var(--txt)',fontWeight:'600'},null);contLbl.textContent='Es continuación de un préstamo existente';
+  contCheckRow.appendChild(contMark);contCheckRow.appendChild(contLbl);
+  function paintSel(row,mark,on){
+    row.style.background=on?'var(--c-paid-bg)':'var(--c2)';
+    row.style.border='2px solid '+(on?'var(--grn)':'var(--bor)');
+    mark.style.background=on?'var(--grn)':'transparent';
+    mark.style.border='2px solid '+(on?'var(--grn)':'var(--mut)');
+    mark.style.color=on?'#fff':'transparent';
+    row.setAttribute('aria-checked',on?'true':'false');row.setAttribute('data-on',on?'1':'0');
   }
-  contCheck.addEventListener('change',function(e){
-    esContinuacion=e.target.checked;
+  paintSel(contCheckRow,contMark,false);
+  var contSelWrap=D(null,{display:'none',marginBottom:'12px'},null);
+  var contSearch=INP({type:'text',placeholder:'Buscar por día, monto o socio (ej: 10, 6.500, victor)'});
+  contSearch.setAttribute('autocomplete','off');contSearch.setAttribute('data-cont-search','1');
+  contSearch.addEventListener('input',function(e){contQuery=e.target.value;renderContList();});
+  var contInfo=D(null,{fontSize:'11px',color:'var(--mut)',margin:'6px 0'},null);
+  var contList=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'4px 8px',maxHeight:'46vh',overflowY:'auto',WebkitOverflowScrolling:'touch'},null);
+  contList.setAttribute('data-cont-list','1');
+  contSelWrap.appendChild(FLD('Préstamo original',contSearch));contSelWrap.appendChild(contInfo);contSelWrap.appendChild(contList);
+  function contCapitalForm(){return Math.round(fmon==='USD'?fmCOP:fm)||0;}
+  function contCandidatos(){
+    var out=[],ci,hoy=parseLocalDate(isoToday());
+    for(ci=0;ci<ST.loans.length;ci++){
+      var cl=ST.loans[ci];
+      if(!cl.responsable||!fr||cl.responsable.toUpperCase()!==fr.trim().toUpperCase())continue;
+      if(cl.status!=='active'){
+        var fc=parseLocalDate(cl.fecha_cierre);
+        if(!fc||(hoy-fc)/86400000>CONT_DIAS_CERRADO)continue; // cerrados: solo los de los últimos 60 días
+      }
+      out.push(cl);
+    }
+    out.sort(function(a,b){return a.dia!==b.dia?a.dia-b.dia:montoCOP(a)-montoCOP(b);});
+    return out;
+  }
+  function contCoincide(cl){var cap=contCapitalForm();return cap>0&&cl.dia===fd&&Math.round(montoCOP(cl))===cap;}
+  // Búsqueda: texto → socio/estado/vencimiento; número corto (1–2 dígitos) → día exacto;
+  // número con puntos o de 3+ dígitos → monto (ej. "6.500" encuentra $ 6.500.000).
+  function contMatchQuery(cl,q){
+    q=(q||'').trim().toLowerCase();if(!q)return true;
+    var digits=q.replace(/[.\s$]/g,'');
+    if(/^\d+$/.test(digits)){
+      if(q.indexOf('.')<0&&digits.length<=2)return cl.dia===parseInt(digits,10);
+      var md=String(Math.round(montoCOP(cl)));
+      return COP(montoCOP(cl)).indexOf(q)>=0||md.indexOf(digits)===0;
+    }
+    var hay=((cl.socio||'')+' '+(cl.status==='active'?'activo':'cerrado')+' vence '+fmtMesFinAño(cl)).toLowerCase();
+    return hay.indexOf(q)>=0;
+  }
+  function contLabel(cl){return 'Día '+cl.dia+' · '+COP(montoCOP(cl))+' · '+(cl.socio||'—')+' · vence '+fmtMesFinAño(cl)+' · '+(cl.status==='active'?'Activo':'Cerrado');}
+  function contRow(cl,match){
+    var on=continuacionDe===cl.id;
+    var r=D(null,{display:'flex',alignItems:'center',gap:'10px',padding:'10px',margin:'6px 0',borderRadius:'10px',cursor:'pointer',userSelect:'none',WebkitUserSelect:'none',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'},null);
+    r.setAttribute('role','radio');r.setAttribute('data-cont-row',cl.id);
+    var mark=S(null,{width:'24px',height:'24px',borderRadius:'50%',flexShrink:'0',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',fontWeight:'800'},null);mark.textContent='✓';
+    var tx=D(null,{flex:'1',minWidth:'0',fontSize:'13px',fontWeight:'600',lineHeight:'1.35'},null);tx.textContent=contLabel(cl);
+    r.appendChild(mark);r.appendChild(tx);
+    if(match){var bd=S(null,{fontSize:'10px',fontWeight:'800',padding:'3px 8px',borderRadius:'20px',background:'var(--c-amber-bg)',color:'var(--c-amber-txt)',border:'1px solid var(--acc)',flexShrink:'0'},null);bd.textContent='Coincide';r.appendChild(bd);}
+    if(cl.status!=='active')tx.style.color='var(--mut)';
+    paintSel(r,mark,on);
+    if(match&&!on)r.style.border='2px solid var(--acc)';
+    r.addEventListener('click',function(){
+      continuacionDe=(continuacionDe===cl.id)?'':cl.id; // tocar de nuevo la seleccionada la quita
+      contManual=true;renderContList();
+    });
+    return r;
+  }
+  function renderContList(){
+    contList.innerHTML='';
+    var cands=contCandidatos(),i;
+    if(cands.length===0){
+      contInfo.textContent='No hay préstamos de este cliente para continuar (activos o cerrados en los últimos '+CONT_DIAS_CERRADO+' días).';
+      continuacionDe='';return;
+    }
+    // Si cambió el cliente y la selección ya no es de sus préstamos, se quita.
+    if(continuacionDe&&!cands.some(function(c){return c.id===continuacionDe;})){continuacionDe='';contManual=false;}
+    var matches=[],rest=[];
+    for(i=0;i<cands.length;i++){if(contCoincide(cands[i]))matches.push(cands[i]);else rest.push(cands[i]);}
+    // Sugerencia automática: un único préstamo que coincide → preseleccionado (si no se eligió a mano).
+    if(!contManual&&matches.length===1)continuacionDe=matches[0].id;
+    var shown=0,q=contQuery;
+    for(i=0;i<matches.length;i++){if(contMatchQuery(matches[i],q)){contList.appendChild(contRow(matches[i],true));shown++;}}
+    if(shown>0&&rest.length>0){var sep=D(null,{fontSize:'10px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px',padding:'6px 2px 0'},null);sep.textContent='Todos los préstamos del cliente';contList.appendChild(sep);}
+    for(i=0;i<rest.length;i++){if(contMatchQuery(rest[i],q)){contList.appendChild(contRow(rest[i],false));shown++;}}
+    if(shown===0){var nn=D(null,{fontSize:'12px',color:'var(--mut)',padding:'10px 2px'},null);nn.textContent='Ningún préstamo coincide con la búsqueda.';contList.appendChild(nn);}
+    var sel=continuacionDe?findLoanById(continuacionDe):null;
+    contInfo.textContent=(sel?'✓ Seleccionado: '+contLabel(sel)+' · ':'')+shown+' de '+cands.length+' préstamo'+(cands.length!==1?'s':'')+(matches.length?' · '+matches.length+' coincide'+(matches.length!==1?'n':'')+' con día y capital':'');
+    contInfo.style.color=sel?'var(--grn)':'var(--mut)';
+  }
+  function rebuildContSel(){renderContList();}
+  // La sugerencia se recalcula cuando cambian día, monto o moneda del formulario.
+  function contAuto(){if(esContinuacion)renderContList();}
+  dIn.addEventListener('input',contAuto);mIn.addEventListener('input',contAuto);usdIn.addEventListener('input',contAuto);monSel.addEventListener('change',contAuto);
+  contCheckRow.addEventListener('click',function(){
+    esContinuacion=!esContinuacion;
+    paintSel(contCheckRow,contMark,esContinuacion);
     contSelWrap.style.display=esContinuacion?'block':'none';
-    if(esContinuacion)rebuildContSel();else continuacionDe='';
+    if(esContinuacion)renderContList();else{continuacionDe='';contManual=false;}
   });
   m.appendChild(contCheckRow);m.appendChild(contSelWrap);
   var nIn=INP({type:'text',placeholder:'Observación...'});nIn.addEventListener('input',function(e){fn=e.target.value;});
