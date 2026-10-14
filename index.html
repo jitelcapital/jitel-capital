@@ -250,7 +250,9 @@ function primerCobroTxt(dia,mesComienzo){
 function mesNombreLargo(mk){if(!mk)return'';var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return(MESES[mo]||'').toLowerCase();}
 // Una cuota arrastrada {periodo,recibido,pagado_socio} está resuelta cuando ya hay un pago
 // registrado para ese periodo Y (ya se giró al socio, o el préstamo es directo de Julián).
-function cuotaResuelta(l,cuota){return hasPagoForPeriodo(l,cuota.periodo)&&(cuota.pagado_socio||isJulianLoan(l));}
+// Una cuota que no genera interés para el socio (p.ej. solo tiene el pago simbólico "Mes de
+// apertura") no requiere giro: con el pago registrado ya queda resuelta.
+function cuotaResuelta(l,cuota){return hasPagoForPeriodo(l,cuota.periodo)&&(cuota.pagado_socio||isJulianLoan(l)||!cuotaGeneraInteresSocio(l,cuota.periodo));}
 // Cuotas arrastradas SIN resolver de un préstamo (compatibilidad: [] si no existe el campo).
 function cuotasSinResolver(l){var cps=l.cuotas_pendientes||[],i,out=[];for(i=0;i<cps.length;i++){if(!cuotaResuelta(l,cps[i]))out.push(cps[i]);}return out;}
 // Periodo por defecto al abrir el formulario de un pago: el de la cuota arrastrada sin resolver
@@ -1310,7 +1312,7 @@ function loansPendientesParaCierre(mk){
     var l=ST.loans[i];
     if(l.status!=='active'||!isCollectableFor(l,mk))continue;
     var tienePago=hasPagoForPeriodo(l,mk);
-    var girado=!!l.pagado_socio||isJulianLoan(l);
+    var girado=!!l.pagado_socio||isJulianLoan(l)||!cuotaGeneraInteresSocio(l,mk); // sin interés para el socio → nada que girar
     if(!tienePago||!girado)out.push({loan:l,tienePago:tienePago,girado:girado});
   }
   return out;
@@ -1790,36 +1792,67 @@ function setCuotaGirada(c,periodo,val){
     c.cuotas_pendientes=cps.concat([{id:GID(),periodo:periodo,recibido:true,pagado_socio:false}]);
   }
 }
-// Fecha (YYYY-MM-DD) del pago del cliente más reciente para ese periodo, o null si no hay.
-function fechaPagoCliente(l,periodo){
-  var all=(l.pagos||[]).slice(),arc=ST.archives&&ST.archives[periodo]&&ST.archives[periodo][l.id],i,best=null;
+// ── ¿Qué cuota es girable? — FUENTE ÚNICA para: la lista "Cuotas cobradas pendientes de girar"
+// y el monto sugerido del modal de giro, el aviso "Cobrado sin girar" (Cobros y Socios), el
+// listado del modal de "Nuevo mes" y el "Generado" de la sección Giros. (socio.html replica
+// la misma regla en su propia cuotaGirable.) ──
+// El pago simbólico "Mes de apertura" no es dinero recibido.
+function esPagoApertura(p){return !!p&&p.nota==='Mes de apertura';}
+// Pagos (no abonos a capital) de un préstamo para ese periodo: l.pagos + ST.archives[periodo].
+function pagosDePeriodo(l,periodo){
+  var all=(l.pagos||[]).slice(),arc=ST.archives&&ST.archives[periodo]&&ST.archives[periodo][l.id],i,out=[];
   if(arc)all=all.concat(arc);
-  for(i=0;i<all.length;i++){var p=all[i];if(p.tipo==='abono')continue;if(pagoPeriodo(p)!==periodo)continue;if(!best||(p.fecha||'')>best)best=p.fecha||'';}
+  for(i=0;i<all.length;i++){if(all[i].tipo!=='abono'&&pagoPeriodo(all[i])===periodo)out.push(all[i]);}
+  return out;
+}
+function soloPagoApertura(l,periodo){
+  var ps=pagosDePeriodo(l,periodo),i;if(ps.length===0)return false;
+  for(i=0;i<ps.length;i++){if(!esPagoApertura(ps[i]))return false;}
+  return true;
+}
+// Base: la cuota (l, periodo) genera interés para el socio — préstamo con socio externo,
+// cobrable en ese periodo (mes_comienzo < periodo) y que no sea solo el "Mes de apertura".
+function cuotaGeneraInteresSocio(l,periodo){
+  return !!periodo&&!isJulianLoan(l)&&IS(l)>0&&isCollectableFor(l,periodo)&&!soloPagoApertura(l,periodo);
+}
+// Girable = genera interés para el socio Y está dentro del libro de giros: periodo desde
+// GIROS_DESDE, o arrastrada explícitamente por un cierre de mes (cuotas_pendientes).
+function cuotaGirable(l,periodo){
+  if(!cuotaGeneraInteresSocio(l,periodo))return false;
+  return periodo>=GIROS_DESDE||!!cuotaArrastrada(l,periodo);
+}
+// Fecha (YYYY-MM-DD) del pago REAL del cliente más reciente para ese periodo (sin abonos ni
+// "Mes de apertura"), o null si no hay.
+function fechaPagoCliente(l,periodo){
+  var ps=pagosDePeriodo(l,periodo),i,best=null;
+  for(i=0;i<ps.length;i++){if(esPagoApertura(ps[i]))continue;if(!best||(ps[i].fecha||'')>best)best=ps[i].fecha||'';}
   return best;
 }
 function diasDesde(fecha){var d=parseLocalDate(fecha);if(!d)return 0;var t=parseLocalDate(isoToday());return Math.round((t-d)/86400000);}
-// Cuotas de un socio con pago del cliente registrado y pendientes de girar (mes actual y
-// arrastradas): [{loan, periodo, monto (interés socio COP), fechaPago, dias}].
+// Cuotas de un socio girables (cuotaGirable), con pago real del cliente y pendientes de girar
+// (mes en curso y arrastradas): [{loan, periodo, monto (interés socio COP), fechaPago, dias}].
 function cuotasPorGirar(socio){
   var out=[],i,j;
   for(i=0;i<ST.loans.length;i++){
     var l=ST.loans[i];
-    if(l.socio!==socio||isJulianLoan(l)||!(IS(l)>0))continue;
+    if(l.socio!==socio)continue;
     var vistos={};
     var cps=l.cuotas_pendientes||[];
     for(j=0;j<cps.length;j++){vistos[cps[j].periodo]=true;}
     var periodos=[];
-    for(j=0;j<cps.length;j++){if(!cps[j].pagado_socio&&hasPagoForPeriodo(l,cps[j].periodo))periodos.push(cps[j].periodo);}
+    for(j=0;j<cps.length;j++){if(!cps[j].pagado_socio)periodos.push(cps[j].periodo);}
     var pg=l.pagos||[];
     for(j=0;j<pg.length;j++){
-      var per=pagoPeriodo(pg[j]);
+      var per=pagoPeriodo(pg[j]); // periodo de la cuota (o el mes de su fecha), nunca la fecha de hoy
       if(pg[j].tipo==='abono'||!per||vistos[per]||periodoArchivado(per))continue;
       vistos[per]=true;
       if(!l.pagado_socio)periodos.push(per);
     }
     for(j=0;j<periodos.length;j++){
+      if(!cuotaGirable(l,periodos[j]))continue;
       var fp=fechaPagoCliente(l,periodos[j]);
-      out.push({loan:l,periodo:periodos[j],monto:Math.round(ISc(l)),fechaPago:fp,dias:fp?diasDesde(fp):0});
+      if(!fp)continue; // sin pago real del cliente → aún no hay nada que girar
+      out.push({loan:l,periodo:periodos[j],monto:Math.round(ISc(l)),fechaPago:fp,dias:diasDesde(fp)});
     }
   }
   out.sort(function(a,b){return a.periodo===b.periodo?a.loan.dia-b.loan.dia:a.periodo.localeCompare(b.periodo);});
@@ -1866,6 +1899,14 @@ function alertaSinGirarBanner(){
 // ya está girada muestra ✓ y abre el giro que la cubre (para anularlo); si no, abre el modal de
 // giro con esa cuota marcada — solo si el cliente ya pagó esa cuota.
 function giroBtn(ln,periodo){
+  if(!cuotaGirable(ln,periodo)&&!cuotaGirada(ln,periodo)){
+    // No genera giro (mes de apertura, préstamo aún no cobrable o periodo anterior al libro de giros).
+    var nb=document.createElement('button');nb.type='button';
+    nb.style.cssText='flex:1;min-width:0;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:transparent;color:var(--mut);border:1px dashed var(--bor);opacity:.8';
+    nb.textContent='🏦 Sin giro';
+    nb.addEventListener('click',function(e){e.stopPropagation();showToast(soloPagoApertura(ln,periodo)?'Mes de apertura: no hay interés que girar':'Esta cuota no genera giro al socio');});
+    return nb;
+  }
   var girada=cuotaGirada(ln,periodo);
   var b=document.createElement('button');b.type='button';
   b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
@@ -1882,7 +1923,7 @@ function giroBtn(ln,periodo){
       else showToast('Marcada como pagada al socio antes de los giros');
       return;
     }
-    if(!hasPagoForPeriodo(cur,periodo)){showToast('⚠️ Primero registra el pago del cliente');return;}
+    if(!fechaPagoCliente(cur,periodo)){showToast('⚠️ Primero registra el pago del cliente');return;}
     showGiroModal(cur.socio,{loanId:cur.id,periodo:periodo});
   });
   return b;
@@ -1894,16 +1935,25 @@ function showGiroModal(socio,pre){
   var st={tipo:'intereses',fecha:isoToday(),modalidad:'transferencia',detalle:'',referencia:'',nota:'',monto:'',montoManual:false,sel:{},selCap:{},err:''};
   var cuotas=cuotasPorGirar(socio);
   function ck(c){return c.loan.id+'|'+c.periodo;}
-  if(pre){st.sel[pre.loanId+'|'+pre.periodo]=true;}
+  // Solo se preselecciona si la cuota tocada está en la lista de girables.
+  if(pre){var pk=pre.loanId+'|'+pre.periodo;if(cuotas.some(function(c){return ck(c)===pk;}))st.sel[pk]=true;}
   var capLoans=ST.loans.filter(function(l){return l.socio===socio&&!isJulianLoan(l)&&l.status==='active';}).sort(function(a,b){return a.dia-b.dia;});
-  var cur=null,montoIn=null;
+  var cur=null,montoIn=null,selInfo=null;
   function sugerido(){
     var t=0,i;
     if(st.tipo==='intereses'){for(i=0;i<cuotas.length;i++){if(st.sel[ck(cuotas[i])])t+=cuotas[i].monto;}}
     else{for(i=0;i<capLoans.length;i++){if(st.selCap[capLoans[i].id])t+=Math.round(montoCOP(capLoans[i]));}}
     return t;
   }
-  function syncMonto(){if(!st.montoManual){st.monto=String(sugerido());if(montoIn)montoIn.value=st.monto;}}
+  function nSel(){return Object.keys(st.tipo==='intereses'?st.sel:st.selCap).length;}
+  // Resumen bajo la lista: "N cuotas seleccionadas · $total" (= monto sugerido).
+  function syncSelInfo(){
+    if(!selInfo)return;
+    var n=nSel(),cap=st.tipo!=='intereses';
+    selInfo.textContent=n+' '+(cap?'préstamo':'cuota')+(n!==1?'s':'')+' seleccionad'+(cap?'o':'a')+(n!==1?'s':'')+' · '+COP(sugerido());
+    selInfo.style.color=n>0?'var(--grn)':'var(--mut)';
+  }
+  function syncMonto(){if(!st.montoManual){st.monto=String(sugerido());if(montoIn)montoIn.value=st.monto;}syncSelInfo();}
   function render(){
     var m=D('modal',null,null);
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
@@ -1911,22 +1961,37 @@ function showGiroModal(socio,pre){
     hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
     var tSel=MSEL(GIRO_TIPOS,st.tipo);tSel.addEventListener('change',function(e){st.tipo=e.target.value;st.montoManual=false;syncMonto();refresh();});
     m.appendChild(FLD('Tipo de giro',tSel));
-    var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'8px 12px',marginBottom:'12px',maxHeight:'34vh',overflowY:'auto'},null);
-    function chkRow(on,txt,sub,amt,fn){
-      var r=D(null,{display:'flex',alignItems:'center',gap:'10px',padding:'7px 0',borderBottom:'1px solid var(--bor)',cursor:'pointer'},null);
-      var cb=document.createElement('input');cb.type='checkbox';cb.checked=on;cb.style.cssText='width:auto;flex-shrink:0';
-      r.addEventListener('click',function(e){if(e.target!==cb)cb.checked=!cb.checked;fn(cb.checked);});
-      var l=D(null,{flex:'1',minWidth:'0'},null);var l1=D(null,{fontSize:'13px',fontWeight:'600'},null);l1.textContent=txt;l.appendChild(l1);
-      if(sub){var l2=D(null,{fontSize:'11px',color:'var(--mut)'},null);l2.textContent=sub;l.appendChild(l2);}
-      var v=S('mn',{fontWeight:'700',fontSize:'13px'},null);v.textContent=COP(amt);
-      r.appendChild(cb);r.appendChild(l);r.appendChild(v);return r;
+    var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'6px 10px',marginBottom:'6px',maxHeight:'40vh',overflowY:'auto',WebkitOverflowScrolling:'touch'},null);
+    // Fila seleccionable completa (sin <input type=checkbox>: el CSS global de inputs con
+    // -webkit-appearance:none hace que Safari de iPhone no dibuje la marca). Se actualiza in-place.
+    function selRow(on,txt,sub,amt,fn){
+      var r=D(null,{display:'flex',alignItems:'center',gap:'10px',padding:'10px',margin:'6px 0',borderRadius:'10px',cursor:'pointer',userSelect:'none',WebkitUserSelect:'none',touchAction:'manipulation',WebkitTapHighlightColor:'transparent'},null);
+      r.setAttribute('role','checkbox');r.setAttribute('data-sel-row','1');
+      var mark=S(null,{width:'24px',height:'24px',borderRadius:'7px',flexShrink:'0',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'15px',fontWeight:'800',lineHeight:'1'},null);
+      var l=D(null,{flex:'1',minWidth:'0'},null);var l1=D(null,{fontSize:'13px',fontWeight:'600',lineHeight:'1.35'},null);l1.textContent=txt;l.appendChild(l1);
+      if(sub){var l2=D(null,{fontSize:'11px',color:'var(--mut)',marginTop:'2px'},null);l2.textContent=sub;l.appendChild(l2);}
+      var v=S('mn',{fontWeight:'700',fontSize:'13px',flexShrink:'0'},null);v.textContent=COP(amt);
+      function paint(){
+        r.style.background=on?'var(--c-paid-bg)':'var(--card)';
+        r.style.border='2px solid '+(on?'var(--grn)':'var(--bor)');
+        mark.style.background=on?'var(--grn)':'transparent';
+        mark.style.border='2px solid '+(on?'var(--grn)':'var(--mut)');
+        mark.style.color=on?'#fff':'transparent';
+        mark.textContent='✓';
+        v.style.color=on?'var(--grn)':'var(--txt)';
+        r.setAttribute('aria-checked',on?'true':'false');r.setAttribute('data-on',on?'1':'0');
+      }
+      r.addEventListener('click',function(){on=!on;paint();fn(on);});
+      paint();
+      r.appendChild(mark);r.appendChild(l);r.appendChild(v);return r;
     }
+    function capVence(l){return 'Capital '+COP(montoCOP(l))+' · vence '+fmtMesFinAño(l);}
     if(st.tipo==='intereses'){
       var bt=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px',padding:'4px 0'},null);bt.textContent='Cuotas cobradas pendientes de girar';box.appendChild(bt);
       if(cuotas.length===0){var none=D(null,{fontSize:'12px',color:'var(--mut)',padding:'8px 0'},null);none.textContent='No hay cuotas con pago del cliente pendientes de girar.';box.appendChild(none);}
       for(var i=0;i<cuotas.length;i++){
         (function(c){
-          box.appendChild(chkRow(!!st.sel[ck(c)],'Día '+c.loan.dia+' · '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0],
+          box.appendChild(selRow(!!st.sel[ck(c)],'Día '+c.loan.dia+' · '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0]+' — '+capVence(c.loan),
             c.loan.responsable+(c.fechaPago?' · pagó el '+c.fechaPago+(c.dias>0?' (hace '+c.dias+' día'+(c.dias!==1?'s':'')+')':''):''),c.monto,
             function(on){if(on)st.sel[ck(c)]=true;else delete st.sel[ck(c)];syncMonto();}));
         })(cuotas[i]);
@@ -1936,14 +2001,17 @@ function showGiroModal(socio,pre){
       if(capLoans.length===0){var none2=D(null,{fontSize:'12px',color:'var(--mut)',padding:'8px 0'},null);none2.textContent='Este socio no tiene préstamos activos.';box.appendChild(none2);}
       for(var k=0;k<capLoans.length;k++){
         (function(l){
-          box.appendChild(chkRow(!!st.selCap[l.id],'Préstamo día '+l.dia+' · '+fmtMesFinAño(l),l.responsable,Math.round(montoCOP(l)),
+          box.appendChild(selRow(!!st.selCap[l.id],'Día '+l.dia+' — '+capVence(l),l.responsable,Math.round(montoCOP(l)),
             function(on){if(on)st.selCap[l.id]=true;else delete st.selCap[l.id];syncMonto();}));
         })(capLoans[k]);
       }
     }
     m.appendChild(box);
+    selInfo=D(null,{fontSize:'12px',fontWeight:'700',textAlign:'right',marginBottom:'12px'},null);selInfo.setAttribute('data-sel-info','1');
+    m.appendChild(selInfo);
     montoIn=INP({type:'number',min:'0',value:st.monto});
     montoIn.addEventListener('input',function(e){st.monto=e.target.value;st.montoManual=true;});
+    syncSelInfo();
     var fIn=INP({type:'date',value:st.fecha});fIn.addEventListener('change',function(e){st.fecha=e.target.value;});
     m.appendChild(R2(FLD('Monto girado (COP)',montoIn),FLD('Fecha',fIn)));
     var mSel=MSEL(GIRO_MODALIDADES,st.modalidad);mSel.addEventListener('change',function(e){st.modalidad=e.target.value;st.err='';refresh();});
@@ -2119,7 +2187,7 @@ function showGiroDetail(g){
 // generado = interés del socio de las cuotas de ese periodo; girado = cuotas de ese periodo en
 // giros de intereses vigentes. Los giros de capital se listan en el mes de su fecha.
 function cuotaExisteEn(l,mk){
-  if(isJulianLoan(l)||!(IS(l)>0)||!isCollectableFor(l,mk))return false;
+  if(!cuotaGirable(l,mk))return false;
   if(l.status==='active')return true;
   var closeMk=mkFromFecha(l.fecha_cierre)||loanEndMk(l);
   if(!closeMk)return hasPagoForPeriodo(l,mk);
@@ -2815,7 +2883,7 @@ function vCobros(){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
           for(var di2=0;di2<done.length;di2++){
             (function(ln){
-              var needsGiro=!isJulianLoan(ln)&&!ln.pagado_socio;
+              var needsGiro=cuotaGirable(ln,CURR_MK)&&!ln.pagado_socio;
               var drWrap=D(null,{background:needsGiro?'rgba(200,148,0,.06)':'var(--c-suc-bg)',border:'1px solid '+(needsGiro?'rgba(200,148,0,.4)':'var(--c-suc-bor)'),borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
               // Header zones (same shape as pending, less prominent action)
               var dzones=D(null,{display:'flex',alignItems:'stretch',padding:'8px 10px',gap:'10px'},null);
