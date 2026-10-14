@@ -342,16 +342,13 @@ function fmtMesFinAño(l){return(l.mes_fin||'').slice(0,3)+' '+(l.año||'');}
 // "Día X · MES AÑO" — vencimiento completo de un préstamo, usado en mensajes/prosa (no en tablas
 // con columnas DÍA/MES FIN separadas, donde solo se usa fmtMesFinAño en la columna de mes).
 function fmtDiaMesAño(l){return'Día '+l.dia+' · '+fmtMesFinAño(l);}
-// ── Caption de fila para el cliente (buildClienteImage / dayam.html) ──
-// Un préstamo con continuacion_de NUNCA muestra "🆕 Préstamo nuevo": mientras aún no sea cobrable,
-// se usa el estado del préstamo ORIGINAL para este mes (para el cliente es un solo crédito continuo).
+// ── Caption de fila para el cliente (buildClienteImage) ──
+// Un préstamo con continuacion_de (traspaso) se ve SIEMPRE como una fila normal, sin ninguna
+// etiqueta: para el cliente es el mismo crédito de siempre. (dayam.html tiene su propia lógica
+// por préstamo, donde la continuación sí hereda el estado del original.)
 // Devuelve null (sin caption especial, se ve como cualquier préstamo normal) o {text,color,bg}.
 function clienteRowCaption(l){
-  if(isCollectable(l))return null;
-  if(l.continuacion_de){
-    var orig=findLoanById(l.continuacion_de);
-    if(orig)return paidMth(orig)?{text:'✅ Pagado este mes',color:'#0a6a2a',bg:'#eafaf0'}:null;
-  }
+  if(isCollectable(l)||l.continuacion_de)return null;
   return{text:'🆕 Préstamo nuevo — su primer cobro es el próximo mes',color:'#b06a00',bg:'#fff7e6'};
 }
 
@@ -3244,8 +3241,7 @@ function buildClienteImage(name, loans, onDone) {
     var footerH = 20 * SCALE;
     var totalRowH = isLast ? rH : 0;
 
-    // Alturas por fila: las filas con caption especial (préstamo nuevo, o continuación ya pagada
-    // este mes) suman una línea extra (noteH). El conteo de filas por página no cambia.
+    // Alturas por fila: las filas con caption especial (préstamo nuevo) suman una línea extra (noteH). El conteo de filas por página no cambia.
     var rowH = [], rowsH = 0, rr;
     for(rr=0; rr<rowCount; rr++){
       var _lr = sl[startRow+rr];
@@ -3322,7 +3318,7 @@ function buildClienteImage(name, loans, onDone) {
       var gi = startRow + ri;
       var l  = sl[gi];
       var hhR = rowH[ri];
-      var capInfo = clienteRowCaption(l); // null, o {text,color,bg} — nunca "nuevo" si es continuacion_de
+      var capInfo = clienteRowCaption(l); // null, o {text,color,bg} — siempre null si es continuacion_de
 
       // Fondo de fila: color de la caption si lleva una, alternado si no.
       ctx.fillStyle = capInfo ? capInfo.bg : (ri%2===0 ? '#ffffff' : '#f7fafc');
@@ -3346,7 +3342,7 @@ function buildClienteImage(name, loans, onDone) {
         cx += cW[ci3];
       }
 
-      // Caption discreta (préstamo nuevo, o continuación ya pagada este mes vía el original).
+      // Caption discreta (solo préstamo nuevo; nunca en una continuación).
       if(capInfo){
         ctx.font = 'bold '+fsNote+'px -apple-system,sans-serif';
         ctx.fillStyle = capInfo.color;
