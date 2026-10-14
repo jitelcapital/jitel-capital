@@ -5003,6 +5003,8 @@ function fbPushAll(){
 }
 
 // ── Helper de arranque: crea el perfil admin para el usuario actual (uso único) ──
+// Ya NO funciona con las reglas vigentes (firestore.rules): solo un admin puede escribir en
+// usuarios. Se conserva como referencia; el admin ya existe.
 function jitelBootstrapAdmin(nombre){
   if(!FB.ready||!FB.db){console.error('Firebase no está inicializado.');return;}
   if(!FB.user){console.error('Inicia sesión primero.');return;}
@@ -5051,6 +5053,7 @@ function jitelSocioAdd(code,email,nombre){
   if(!FB.ready||!FB.db){console.error('Firebase no está inicializado.');return;}
   if(!FB.user){console.error('Inicia sesión primero.');return;}
   if(!isAdmin()){console.error('Solo admin puede crear socios.');return;}
+  email=(email||'').trim().toLowerCase(); // las reglas comparan contra el correo de la sesión en minúsculas
   if(!code||!email){console.error('Uso: jitelSocioAdd("codigo","email","NOMBRE")');return;}
   var doc={email:email,nombre:(nombre||code).toUpperCase(),createdAt:Date.now()};
   FB.db.collection('socios').doc(code).set(doc).then(function(){

@@ -218,7 +218,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 | Ruta | Lectura | Escritura |
 |------|---------|-----------|
-| `usuarios/{uid}` | el propio usuario (`auth.uid == uid`) o admin | solo el propio usuario (`auth.uid == uid`) |
+| `usuarios/{uid}` | el propio usuario (`auth.uid == uid`) o admin | solo admin (nadie puede escribir su propio perfil, para que no pueda darse `rol: 'admin'`) |
 | `pagos/{loanId}/pagos/{pagoId}` | admin | admin |
 | `config/{docId}` | admin | admin |
 | `socios/{code}` | admin, o el socio cuyo `email` es su correo | admin |
@@ -229,6 +229,8 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 Cualquier cambio de código que lea o escriba Firestore debe respetar estas reglas. En particular: desde `socio.html` las consultas a `prestamos`, `giros` y `socios` deben filtrar por el correo del socio (`where socio_email == …` / `where email == …`), porque una consulta que pueda devolver documentos ajenos se rechaza completa; nunca hacer `update`/`delete` en `giros`; y todo lo que se escriba en `portal_clientes` es público.
 
 **Funciones de consola** (expuestas en `window`): `migrarAFirebase()`, `jitelBootstrapAdmin('Julián')`, `jitelSocioAdd(code, email, NOMBRE)`, `jitelLogout()`.
+- `jitelBootstrapAdmin` **ya no funciona con las reglas vigentes**: escribía el propio `usuarios/{uid}` desde un usuario que aún no era admin, y eso ya no está permitido. El admin ya existe; un perfil nuevo se crea desde Firebase Console o con una sesión admin.
+- `jitelSocioAdd` guarda el email con `trim()` y `toLowerCase()`, porque las reglas comparan contra el correo de la sesión en minúsculas.
 
 **App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol (`firestore.rules`).
 
