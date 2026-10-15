@@ -1731,16 +1731,19 @@ function toggleConcil(loanId,field){
   ST.loans=nl;saveST();renderApp();
 }
 // Toggle button pill — green when active, gray when pending. Auto-hides "pagado_socio" for Julian.
-function conciliBtn(ln,field,iconLbl){
+// opts.aviso: "Cobré" como aviso rápido de una cuota SIN pago registrado — marcado se ve ámbar
+// "✓ Cobré · falta registrar" para no confundirlo con un pago. Solo cambia la apariencia.
+function conciliBtn(ln,field,iconLbl,opts){
   if(field==='pagado_socio')return giroBtn(ln,CURR_MK); // sin giro no hay "Pagué socio"
+  var aviso=!!(opts&&opts.aviso);
   var active=!!ln[field];
   var b=document.createElement('button');b.type='button';
   function applyStyle(){
     b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
       (active
-        ? 'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)'
+        ? (aviso?'background:var(--c-amber-bg);color:var(--c-amber-txt);border:1px solid var(--acc)':'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)')
         : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
-    b.textContent=(active?'✓ ':'○ ')+iconLbl;
+    b.textContent=(active?'✓ ':'○ ')+iconLbl+(active&&aviso?' · falta registrar':'');
   }
   applyStyle();
   b.addEventListener('click',function(e){
@@ -1759,17 +1762,18 @@ function conciliBtn(ln,field,iconLbl){
 }
 // Igual que conciliBtn, pero para una cuota arrastrada específica de un préstamo (loan.cuotas_pendientes,
 // identificada por su id) — independiente de recibido/pagado_socio del mes actual del préstamo.
-function conciliBtnCuota(loan,cuotaId,field,iconLbl){
+function conciliBtnCuota(loan,cuotaId,field,iconLbl,opts){
   var cuota=(loan.cuotas_pendientes||[]).filter(function(c){return c.id===cuotaId;})[0]||{};
   if(field==='pagado_socio')return giroBtn(loan,cuota.periodo); // sin giro no hay "Pagué socio"
+  var aviso=!!(opts&&opts.aviso);
   var active=!!cuota[field];
   var b=document.createElement('button');b.type='button';
   function applyStyle(){
     b.style.cssText='flex:1;min-width:0;border:none;border-radius:6px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'+
       (active
-        ? 'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)'
+        ? (aviso?'background:var(--c-amber-bg);color:var(--c-amber-txt);border:1px solid var(--acc)':'background:var(--c-paid-bg);color:var(--grn);border:1px solid var(--c-suc-bor2)')
         : 'background:var(--c2);color:var(--mut);border:1px solid var(--bor)');
-    b.textContent=(active?'✓ ':'○ ')+iconLbl;
+    b.textContent=(active?'✓ ':'○ ')+iconLbl+(active&&aviso?' · falta registrar':'');
   }
   applyStyle();
   b.addEventListener('click',function(e){
@@ -2011,14 +2015,62 @@ function giroBtn(ln,periodo){
   return b;
 }
 
+// ── Cobros: solo se muestra el paso que sigue de cada cuota ──
+// 'sin_pago'  → el cliente no ha pagado (sin pago registrado del periodo): "✓ Pagar" + "Cobré".
+// 'por_girar' → pago registrado, cuotaGirable y sin giro: "🏦 Girar a socio · $monto".
+// 'girado'    → etiqueta "✓ Girado · fecha · modalidad" (abre el detalle del giro).
+// 'no_gira'   → préstamo de Julián o solo "Mes de apertura": sin botón de giro.
+function cuotaEstadoCobros(l,periodo){
+  if(!hasPagoForPeriodo(l,periodo))return 'sin_pago';
+  if(isJulianLoan(l))return 'no_gira';
+  if(cuotaGirada(l,periodo))return 'girado';
+  if(!cuotaGirable(l,periodo)||!fechaPagoCliente(l,periodo))return 'no_gira';
+  return 'por_girar';
+}
+function girarSocioBtn(ln,periodo,css){
+  return BTN('bg','🏦 Girar a socio · '+COP(Math.round(ISc(ln))),function(e){
+    if(e)e.stopPropagation();
+    showGiroModal(ln.socio,{loanId:ln.id,periodo:periodo});
+  },css||{width:'100%',minHeight:'38px',fontSize:'12px'});
+}
+function giradoLabel(ln,periodo){
+  var g=giroDeCuota(ln.id,periodo);
+  var t=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c-paid-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor2)',cursor:'pointer',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);
+  t.textContent=g?('✓ Girado · '+g.fecha+' · '+giroModalidadLbl(g)):'✓ Girado';
+  t.setAttribute('data-girado','1');
+  t.addEventListener('click',function(e){e.stopPropagation();if(g)showGiroDetail(g);else showToast('Marcada como pagada al socio antes de los giros');});
+  return t;
+}
+// "🏦 Girar a socios del día": abre el registro de giro de cada socio, uno tras otro, con sus
+// cuotas de ese día ya marcadas. items: [{loan, periodo}].
+function girarSociosDelDia(items,dia){
+  var porSocio={},orden=[],i;
+  for(i=0;i<items.length;i++){var s=items[i].loan.socio;if(!porSocio[s]){porSocio[s]=[];orden.push(s);}porSocio[s].push(items[i]);}
+  var k=0;
+  function next(){
+    if(k>=orden.length){showToast('✅ Giros del día '+dia+' terminados');return;}
+    var soc=orden[k++];
+    var cs=porSocio[soc].filter(function(it){var l=findLoanById(it.loan.id);return l&&cuotaEstadoCobros(l,it.periodo)==='por_girar';});
+    if(cs.length===0){next();return;}
+    showGiroModal(soc,{cuotas:cs.map(function(it){return {loanId:it.loan.id,periodo:it.periodo};}),paso:{i:k,n:orden.length,dia:dia},onNext:next});
+  }
+  next();
+}
+
 // ── Modal "Registrar giro" ──
 // pre: {loanId, periodo} para dejar esa cuota marcada (desde "Pagué socio"), o null.
 function showGiroModal(socio,pre){
   var st={tipo:'intereses',fecha:isoToday(),modalidad:'transferencia',detalle:'',referencia:'',nota:'',monto:'',montoManual:false,sel:{},selCap:{},err:''};
   var cuotas=cuotasPorGirar(socio);
   function ck(c){return c.loan.id+'|'+c.periodo;}
-  // Solo se preselecciona si la cuota tocada está en la lista de girables.
-  if(pre){var pk=pre.loanId+'|'+pre.periodo;if(cuotas.some(function(c){return ck(c)===pk;}))st.sel[pk]=true;}
+  // Solo se preselecciona si la cuota tocada está en la lista de girables. pre.cuotas permite
+  // varias (girar a socios del día); pre.onNext encadena con el siguiente socio.
+  if(pre){
+    var pks=(pre.cuotas||[{loanId:pre.loanId,periodo:pre.periodo}]).map(function(c){return c.loanId+'|'+c.periodo;});
+    for(var pki=0;pki<pks.length;pki++){if(cuotas.some(function(c){return ck(c)===pks[pki];}))st.sel[pks[pki]]=true;}
+  }
+  var chainNext=(pre&&pre.onNext)||null;
+  var chainLbl=(pre&&pre.paso&&pre.paso.i<pre.paso.n)?'Siguiente socio →':'Listo ✓'; // el último socio cierra con "Listo"
   var capLoans=ST.loans.filter(function(l){return l.socio===socio&&!isJulianLoan(l)&&l.status==='active';}).sort(function(a,b){return a.dia-b.dia;});
   var cur=null,montoIn=null,selInfo=null;
   function sugerido(){
@@ -2041,6 +2093,7 @@ function showGiroModal(socio,pre){
     var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
     var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';h2.textContent='🏦 Registrar giro — '+socio;
     hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    if(pre&&pre.paso){var ps=D(null,{fontSize:'12px',color:'var(--mut)',marginTop:'-6px',marginBottom:'10px'},null);ps.textContent='Giros del día '+pre.paso.dia+' · socio '+pre.paso.i+' de '+pre.paso.n;m.appendChild(ps);}
     var tSel=MSEL(GIRO_TIPOS,st.tipo);tSel.addEventListener('change',function(e){st.tipo=e.target.value;st.montoManual=false;syncMonto();refresh();});
     m.appendChild(FLD('Tipo de giro',tSel));
     var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'6px 10px',marginBottom:'6px',maxHeight:'40vh',overflowY:'auto',WebkitOverflowScrolling:'touch'},null);
@@ -2109,14 +2162,15 @@ function showGiroModal(socio,pre){
     var errEl=D(null,{fontSize:'12px',color:'var(--red)',fontWeight:'600',minHeight:'16px',marginBottom:'8px'},null);errEl.textContent=st.err;errEl.setAttribute('data-giro-err','1');
     m.appendChild(errEl);
     var brow=D(null,{display:'flex',gap:'8px'},null);
-    brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
+    if(chainNext)brow.appendChild(BTN('bh','Omitir socio',function(){closeModal();chainNext();},{flex:'1'}));
+    else brow.appendChild(BTN('bh','Cancelar',closeModal,{flex:'1'}));
     brow.appendChild(BTN('bg','💾 Guardar giro',function(){
       var msg=validar();
       if(msg){st.err=msg;errEl.textContent=msg;return;}
       var g=guardarGiro();
       closeModal();renderApp();
       showToast('✅ Giro registrado — '+socio);
-      showGiroMsgModal(g);
+      showGiroMsgModal(g,chainNext,chainLbl);
     },{flex:'2'}));
     m.appendChild(brow);
     return m;
@@ -2223,7 +2277,7 @@ function waGiroMsg(g){
   lines.push('','✅ Confirma recibo 🙏');
   return lines.join('\n');
 }
-function showGiroMsgModal(g){
+function showGiroMsgModal(g,next,nextLbl){
   var pv=false,cur=null;
   function render(){
     var m=D('modal',null,null);
@@ -2239,7 +2293,8 @@ function showGiroMsgModal(g){
     box.appendChild(row);
     if(pv){var pvb=D('pvb',null,null);pvb.textContent=msg;box.appendChild(pvb);}
     m.appendChild(box);
-    m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
+    if(next)m.appendChild(BTN('ba',nextLbl||'Siguiente socio →',function(){closeModal();next();},{width:'100%'}));
+    else m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
     return m;
   }
   function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
@@ -2792,6 +2847,8 @@ function vCobros(){
             var zAct=D(null,{display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',gap:'6px',flexShrink:'0',minWidth:'95px'},null);
             var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IMc(loan));
             zAct.appendChild(lamt);
+            var estA=cuotaEstadoCobros(loan,cuota.periodo); // solo se muestra el paso que sigue
+            if(estA==='por_girar')zAct.appendChild(girarSocioBtn(loan,cuota.periodo,{fontSize:'11px',padding:'7px 10px',minHeight:'34px'}));
             if(!tienePago){
               zAct.appendChild(BTN('ba','Registrar pago',function(){
                 var pago={id:GID(),tipo:'interes',monto:Math.round(IMc(loan)),fecha:isoToday(),periodo:cuota.periodo,nota:'Interés cuota arrastrada de '+mesNombreLargo(cuota.periodo)};
@@ -2811,10 +2868,13 @@ function vCobros(){
               },{fontSize:'11px',padding:'7px 10px',minHeight:'34px'}));
             }
             topZ.appendChild(zInfo);topZ.appendChild(zAct);row.appendChild(topZ);
-            var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
-            concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré'));
-            if(!isJulianLoan(loan))concilRow.appendChild(giroBtn(loan,cuota.periodo));
-            row.appendChild(concilRow);
+            // Footer: "Cobré" (aviso) solo si aún no hay pago registrado; "Girado" si ya se giró.
+            if(estA==='sin_pago'||estA==='girado'){
+              var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
+              if(estA==='sin_pago')concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré',{aviso:true}));
+              else concilRow.appendChild(giradoLabel(loan,cuota.periodo));
+              row.appendChild(concilRow);
+            }
             perBox.appendChild(row);
           })(items[ii]);
         }
@@ -2861,8 +2921,8 @@ function vCobros(){
         else if(urg==='pronto')urgLabel=' — pronto';
       }
       var dt=D(null,{fontWeight:'600',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);dt.textContent='Día '+g.dia+urgLabel;
-      var nCobrados=0,nGirados=0,gcj;for(gcj=0;gcj<g.loans.length;gcj++){if(paidMth(g.loans[gcj]))nCobrados++;if(g.loans[gcj].pagado_socio)nGirados++;}
-      var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'')+' · '+nCobrados+' cobrado'+(nCobrados!==1?'s':'')+' · '+nGirados+' girado'+(nGirados!==1?'s':'');
+      var nCobrados=0,nGirados=0,nAvisados=0,gcj;for(gcj=0;gcj<g.loans.length;gcj++){if(paidMth(g.loans[gcj]))nCobrados++;else if(g.loans[gcj].recibido)nAvisados++;if(g.loans[gcj].pagado_socio)nGirados++;}
+      var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'')+' · '+nCobrados+' cobrado'+(nCobrados!==1?'s':'')+' · '+nGirados+' girado'+(nGirados!==1?'s':'')+(nAvisados>0?' · '+nAvisados+' avisado'+(nAvisados!==1?'s':'')+' sin registrar':'');
       diInfo.appendChild(dt);diInfo.appendChild(ds);
       dhl.appendChild(dn);dhl.appendChild(diInfo);
 
@@ -2936,11 +2996,10 @@ function vCobros(){
               zAction.appendChild(lamt);zAction.appendChild(lpay);
               topZones.appendChild(zInfo);topZones.appendChild(zAction);
               row.appendChild(topZones);
-              // Footer: toggle Cobré (marca recibido como confirmación rápida, sin registro
-              // formal en pagos[] ni mover el préstamo a "done") + Pagué socio (abre el giro)
+              // Footer: toggle Cobré (aviso rápido: marca recibido, que dayam.html usa para "Pagado
+              // este mes", sin registro formal en pagos[]). Sin pago aún → no hay "Pagué socio".
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
-              concilRow.appendChild(conciliBtn(ln,'recibido','Cobré'));
-              if(!isJulianLoan(ln))concilRow.appendChild(giroBtn(ln,CURR_MK));
+              concilRow.appendChild(conciliBtn(ln,'recibido','Cobré',{aviso:true}));
               row.appendChild(concilRow);
               body.appendChild(row);
             })(pend[pi2]);
@@ -2957,6 +3016,18 @@ function vCobros(){
             body.appendChild(bbox);
           }
         }
+        // Con todos los pagos del día ya registrados, el paso que sigue es girar a los socios.
+        var porGirarDia=[],pgd;
+        for(pgd=0;pgd<done.length;pgd++){if(cuotaEstadoCobros(done[pgd],CURR_MK)==='por_girar')porGirarDia.push({loan:done[pgd],periodo:CURR_MK});}
+        if(pend.length===0&&porGirarDia.length>1){
+          var gTot=0,gSoc={},gsn=0,gq;for(gq=0;gq<porGirarDia.length;gq++){gTot+=Math.round(ISc(porGirarDia[gq].loan));if(!gSoc[porGirarDia[gq].loan.socio]){gSoc[porGirarDia[gq].loan.socio]=1;gsn++;}}
+          var gbox=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'10px',padding:'12px',marginBottom:'8px'},null);
+          var gbt=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--grn)',marginBottom:'4px'},null);gbt.textContent='🏦 Girar a socios del día '+g.dia;
+          var gbs=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);gbs.textContent=porGirarDia.length+' cuotas · '+gsn+' socio'+(gsn!==1?'s':'')+' · '+COP(gTot);
+          gbox.appendChild(gbt);gbox.appendChild(gbs);
+          gbox.appendChild(BTN('bg','🏦 Girar a socios del día',function(){girarSociosDelDia(porGirarDia,g.dia);},{width:'100%',minHeight:'40px'}));
+          body.appendChild(gbox);
+        }
         // 📲 Enviar resumen de cobros — visible solo si hay al menos 1 pago registrado ese día
         if(done.length>0){
           body.appendChild(BTN('bb','📲 Enviar resumen de cobros',function(){showResumenCobrosCliente(g);},{width:'100%',minHeight:'40px',marginBottom:'4px'}));
@@ -2965,7 +3036,8 @@ function vCobros(){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
           for(var di2=0;di2<done.length;di2++){
             (function(ln){
-              var needsGiro=cuotaGirable(ln,CURR_MK)&&!ln.pagado_socio;
+              var estD=cuotaEstadoCobros(ln,CURR_MK);
+              var needsGiro=estD==='por_girar';
               var drWrap=D(null,{background:needsGiro?'rgba(200,148,0,.06)':'var(--c-suc-bg)',border:'1px solid '+(needsGiro?'rgba(200,148,0,.4)':'var(--c-suc-bor)'),borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
               // Header zones (same shape as pending, less prominent action)
               var dzones=D(null,{display:'flex',alignItems:'stretch',padding:'8px 10px',gap:'10px'},null);
@@ -2981,12 +3053,13 @@ function vCobros(){
               dAct.appendChild(da2);
               dzones.appendChild(dInfo);dzones.appendChild(dAct);
               drWrap.appendChild(dzones);
-              // Footer: estado Cobré (✅ pagado) + Pagué socio (abre el modal de giro)
-              var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid '+(needsGiro?'rgba(200,148,0,.3)':'var(--c-suc-bor)'),background:'rgba(0,0,0,.08)'},null);
-              var cobreeDonePill=D(null,{flex:'1',textAlign:'center',fontSize:'11px',fontWeight:'700',padding:'7px 6px',borderRadius:'6px',background:'var(--c-paid-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor2)'},null);cobreeDonePill.textContent='✓ Cobré';
-              concilRow2.appendChild(cobreeDonePill);
-              if(!isJulianLoan(ln))concilRow2.appendChild(giroBtn(ln,CURR_MK));
-              drWrap.appendChild(concilRow2);
+              // Footer: solo el paso que sigue — "🏦 Girar a socio" o la etiqueta "✓ Girado".
+              // (El pago ya está registrado: "Cobré" no se muestra. Sin giro → sin footer.)
+              if(estD==='por_girar'||estD==='girado'){
+                var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid '+(needsGiro?'rgba(200,148,0,.3)':'var(--c-suc-bor)'),background:'rgba(0,0,0,.08)'},null);
+                concilRow2.appendChild(estD==='por_girar'?girarSocioBtn(ln,CURR_MK):giradoLabel(ln,CURR_MK));
+                drWrap.appendChild(concilRow2);
+              }
               body.appendChild(drWrap);
             })(done[di2]);
           }
