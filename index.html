@@ -36,6 +36,23 @@ select option{background:var(--card)}
 .br{background:#7b1c2f;color:#fca5a5}
 .bw{background:var(--wa);color:#fff}
 .bp{background:#2a1a4a;color:var(--pur);border:1px solid #4a2a7a}
+/* ── Estado de cada cuota en Cobros: borde izquierdo grueso + etiqueta con ícono y texto
+   (nunca solo el color). Ámbar y naranja piden acción; verde apagado = no queda nada. ── */
+:root{--st-pend:#4a9eff;--st-pend-bg:#0e2a4a;--st-aviso:#f0b030;--st-aviso-bg:#3a2a00;--st-girar:#ff8c42;--st-girar-bg:#3d1f08;--st-ok:#6fb98a;--st-ok-bg:#12261a}
+.cq{background:var(--c2);border-radius:8px;margin-bottom:8px;overflow:hidden;border-left:5px solid var(--bor)}
+.cq-pend{border-left-color:var(--st-pend)}
+.cq-aviso{border-left-color:var(--st-aviso)}
+.cq-girar{border-left-color:var(--st-girar)}
+.cq-ok{border-left-color:var(--st-ok)}
+.cq-ok>*:not(.cq-tagrow){opacity:.8} /* más tenue, pero la etiqueta conserva su contraste */
+.cq-tagrow{padding:8px 10px 0}
+.cq-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;letter-spacing:.2px}
+.cq-tag-pend{color:var(--st-pend);background:var(--st-pend-bg)}
+.cq-tag-aviso{color:var(--st-aviso);background:var(--st-aviso-bg)}
+.cq-tag-girar{color:var(--st-girar);background:var(--st-girar-bg)}
+.cq-tag-ok{color:var(--st-ok);background:var(--st-ok-bg)}
+.bo{background:var(--st-girar-bg);color:var(--st-girar);border:1px solid var(--st-girar)}
+.chip-girar{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:800;color:var(--st-girar);background:var(--st-girar-bg);border:1px solid var(--st-girar);white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px}
 .ta{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e3a1e;color:var(--grn)}
 .tp{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:#0e1e38;color:var(--blu)}
@@ -109,6 +126,7 @@ select option{background:var(--card)}
   .bb{background:#d8ecff;color:#1a5aaa;border-color:#7ab0e8}
   .br{background:#fce8ec;color:#b02040;border-color:var(--red)}
   .bp{background:#f0ebff;color:#5a30c0;border-color:#9b6dff}
+  :root{--st-pend:#1a5aaa;--st-pend-bg:#dcebff;--st-aviso:#8a5200;--st-aviso-bg:#fff3d1;--st-girar:#b4410a;--st-girar-bg:#ffe8d6;--st-ok:#2f7a4d;--st-ok-bg:#e3f2e8}
   .ta{background:#d0f0dc;color:#1a7a40}
   .tp{background:#d8ecff;color:#1a5aaa}
   .tx{background:#f0ebff;color:#5a30c0}
@@ -1790,6 +1808,7 @@ function conciliBtn(ln,field,iconLbl,opts){
     ST.loans=nl;saveST();
     active=!!ln[field];
     applyStyle();
+    if(opts&&opts.onChange)opts.onChange(active); // solo presentación (p.ej. etiqueta de estado de la tarjeta)
   });
   return b;
 }
@@ -1826,6 +1845,7 @@ function conciliBtnCuota(loan,cuotaId,field,iconLbl,opts){
     ST.loans=nl;saveST();
     active=!!cuota[field];
     applyStyle();
+    if(opts&&opts.onChange)opts.onChange(active); // solo presentación
   });
   return b;
 }
@@ -2060,8 +2080,21 @@ function cuotaEstadoCobros(l,periodo){
   if(!cuotaGirable(l,periodo)||!fechaPagoCliente(l,periodo))return 'no_gira';
   return 'por_girar';
 }
+// Presentación del estado de una cuota (solo apariencia; el estado sale de cuotaEstadoCobros):
+// 'pend' azul ⏳ · 'aviso' ámbar 💬 · 'girar' naranja 🏦 · 'ok' verde apagado ✓.
+var CQ_ESTADOS={pend:'⏳ Pendiente de pago',aviso:'💬 Cobré · falta registrar',girar:'🏦 Falta girar al socio',ok:'✓ Completo'};
+var CQ_ORDEN={girar:0,aviso:1,pend:2,ok:3};
+function cqKind(estado,recibido){return estado==='sin_pago'?(recibido?'aviso':'pend'):(estado==='por_girar'?'girar':'ok');}
+// Tarjeta de cuota con la etiqueta de estado arriba. Devuelve {card, set(kind)}.
+function cqCard(kind){
+  var card=D('cq',null,null),tr=D('cq-tagrow',null,null),tag=S(null,null,null);
+  tr.appendChild(tag);card.appendChild(tr);
+  function set(k){card.className='cq cq-'+k;tag.className='cq-tag cq-tag-'+k;tag.textContent=CQ_ESTADOS[k];card.setAttribute('data-estado',k);}
+  set(kind);
+  return {card:card,set:set};
+}
 function girarSocioBtn(ln,periodo,css){
-  return BTN('bg','🏦 Girar a socio · '+COP(Math.round(ISc(ln))),function(e){
+  return BTN('bo','🏦 Girar a socio · '+COP(Math.round(ISc(ln))),function(e){
     if(e)e.stopPropagation();
     showGiroModal(ln.socio,{loanId:ln.id,periodo:periodo});
   },css||{width:'100%',minHeight:'38px',fontSize:'12px'});
@@ -2858,7 +2891,11 @@ function vCobros(){
     periodos.sort(function(a,b){return b.localeCompare(a);});
     for(var pki=0;pki<periodos.length;pki++){
       (function(per){
-        var items=byPeriodo[per].slice().sort(function(a,b){return a.loan.dia-b.loan.dia;});
+        // Primero lo que pide acción (girar, aviso, pendiente) y al final lo completo; luego por día.
+        var items=byPeriodo[per].slice().sort(function(a,b){
+          var ka=CQ_ORDEN[cqKind(cuotaEstadoCobros(a.loan,a.cuota.periodo),a.cuota.recibido)],kb=CQ_ORDEN[cqKind(cuotaEstadoCobros(b.loan,b.cuota.periodo),b.cuota.recibido)];
+          return ka!==kb?ka-kb:a.loan.dia-b.loan.dia;
+        });
         var perBox=D(null,{marginBottom:'10px'},null);
         var perHdr=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'1px'},null);
         perHdr.textContent=mesNombreLargo(per)+' '+per.split('-')[0];perBox.appendChild(perHdr);
@@ -2866,18 +2903,17 @@ function vCobros(){
           (function(item){
             var loan=item.loan,cuota=item.cuota;
             var tienePago=hasPagoForPeriodo(loan,cuota.periodo);
-            var row=D(null,{background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',overflow:'hidden'},null);
+            var estA=cuotaEstadoCobros(loan,cuota.periodo); // solo se muestra el paso que sigue
+            var cqA=cqCard(cqKind(estA,cuota.recibido)),row=cqA.card;
             var topZ=D(null,{display:'flex',alignItems:'stretch',padding:'10px',gap:'10px'},null);
             var zInfo=D(null,{flex:'1',cursor:'pointer',minWidth:'0',display:'flex',flexDirection:'column',justifyContent:'center'},null);
             zInfo.addEventListener('click',function(){showLoanDetail(loan.id);});
             var l1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)',marginBottom:'1px'},null);l1.textContent=loan.socio||'—';
             var l2=D(null,{fontSize:'11px',color:'var(--mut)'},null);l2.textContent='Día '+loan.dia+' · '+loan.responsable;
-            var l3=S(null,{fontSize:'10px',color:tienePago?'var(--acc)':'var(--red)'},null);l3.textContent=tienePago?'Falta girar al socio':'Sin cobrar';
-            zInfo.appendChild(l1);zInfo.appendChild(l2);zInfo.appendChild(l3);
+            zInfo.appendChild(l1);zInfo.appendChild(l2); // el estado va en la etiqueta de arriba
             var zAct=D(null,{display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',gap:'6px',flexShrink:'0',minWidth:'95px'},null);
             var lamt=D('mn',{fontWeight:'700',color:'var(--acc)',fontSize:'15px',lineHeight:'1'},null);lamt.textContent=COP(IMc(loan));
             zAct.appendChild(lamt);
-            var estA=cuotaEstadoCobros(loan,cuota.periodo); // solo se muestra el paso que sigue
             if(estA==='por_girar')zAct.appendChild(girarSocioBtn(loan,cuota.periodo,{fontSize:'11px',padding:'7px 10px',minHeight:'34px'}));
             if(!tienePago){
               zAct.appendChild(BTN('ba','Registrar pago',function(){
@@ -2901,7 +2937,7 @@ function vCobros(){
             // Footer: "Cobré" (aviso) solo si aún no hay pago registrado; "Girado" si ya se giró.
             if(estA==='sin_pago'||estA==='girado'){
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
-              if(estA==='sin_pago')concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré',{aviso:true}));
+              if(estA==='sin_pago')concilRow.appendChild(conciliBtnCuota(loan,cuota.id,'recibido','Cobré',{aviso:true,onChange:function(on){cqA.set(on?'aviso':'pend');}}));
               else concilRow.appendChild(giradoLabel(loan,cuota.periodo));
               row.appendChild(concilRow);
             }
@@ -2953,6 +2989,8 @@ function vCobros(){
       var dt=D(null,{fontWeight:'600',fontSize:'14px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'},null);dt.textContent='Día '+g.dia+urgLabel;
       var nCobrados=0,nGirados=0,nAvisados=0,gcj;for(gcj=0;gcj<g.loans.length;gcj++){if(paidMth(g.loans[gcj]))nCobrados++;else if(g.loans[gcj].recibido)nAvisados++;if(g.loans[gcj].pagado_socio)nGirados++;}
       var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'')+' · '+nCobrados+' cobrado'+(nCobrados!==1?'s':'')+' · '+nGirados+' girado'+(nGirados!==1?'s':'')+(nAvisados>0?' · '+nAvisados+' avisado'+(nAvisados!==1?'s':'')+' sin registrar':'');
+      var nPorGirar=0;for(gcj=0;gcj<g.loans.length;gcj++){if(cuotaEstadoCobros(g.loans[gcj],CURR_MK)==='por_girar')nPorGirar++;}
+      if(nPorGirar>0){var chipG=S('chip-girar',null,null);chipG.textContent='🏦 '+nPorGirar+' por girar';ds.appendChild(chipG);}
       diInfo.appendChild(dt);diInfo.appendChild(ds);
       dhl.appendChild(dn);dhl.appendChild(diInfo);
 
@@ -3001,8 +3039,8 @@ function vCobros(){
           var ph=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);ph.textContent='Pendientes';body.appendChild(ph);
           for(var pi2=0;pi2<pend.length;pi2++){
             (function(ln){
-              // Wrapper card with explicit zones
-              var row=D(null,{background:'var(--c2)',borderRadius:'8px',marginBottom:'8px',overflow:'hidden'},null);
+              // Tarjeta con etiqueta de estado: ⏳ Pendiente de pago (azul) o 💬 Cobré · falta registrar (ámbar)
+              var cqP=cqCard(ln.recibido?'aviso':'pend'),row=cqP.card;
               // Top: 2-zone layout (info left | action right)
               var topZones=D(null,{display:'flex',alignItems:'stretch',padding:'10px',gap:'10px'},null);
               // Selector checkbox at very leftmost edge
@@ -3029,7 +3067,7 @@ function vCobros(){
               // Footer: toggle Cobré (aviso rápido: marca recibido, que dayam.html usa para "Pagado
               // este mes", sin registro formal en pagos[]). Sin pago aún → no hay "Pagué socio".
               var concilRow=D(null,{display:'flex',gap:'6px',padding:'8px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.15)'},null);
-              concilRow.appendChild(conciliBtn(ln,'recibido','Cobré',{aviso:true}));
+              concilRow.appendChild(conciliBtn(ln,'recibido','Cobré',{aviso:true,onChange:function(on){cqP.set(on?'aviso':'pend');}}));
               row.appendChild(concilRow);
               body.appendChild(row);
             })(pend[pi2]);
@@ -3051,11 +3089,11 @@ function vCobros(){
         for(pgd=0;pgd<done.length;pgd++){if(cuotaEstadoCobros(done[pgd],CURR_MK)==='por_girar')porGirarDia.push({loan:done[pgd],periodo:CURR_MK});}
         if(pend.length===0&&porGirarDia.length>1){
           var gTot=0,gSoc={},gsn=0,gq;for(gq=0;gq<porGirarDia.length;gq++){gTot+=Math.round(ISc(porGirarDia[gq].loan));if(!gSoc[porGirarDia[gq].loan.socio]){gSoc[porGirarDia[gq].loan.socio]=1;gsn++;}}
-          var gbox=D(null,{background:'var(--c-suc-bg)',border:'1px solid var(--c-suc-bor)',borderRadius:'10px',padding:'12px',marginBottom:'8px'},null);
-          var gbt=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--grn)',marginBottom:'4px'},null);gbt.textContent='🏦 Girar a socios del día '+g.dia;
+          var gbox=D(null,{background:'var(--st-girar-bg)',border:'1px solid var(--st-girar)',borderRadius:'10px',padding:'12px',marginBottom:'8px'},null);
+          var gbt=D(null,{fontSize:'13px',fontWeight:'700',color:'var(--st-girar)',marginBottom:'4px'},null);gbt.textContent='🏦 Girar a socios del día '+g.dia;
           var gbs=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);gbs.textContent=porGirarDia.length+' cuotas · '+gsn+' socio'+(gsn!==1?'s':'')+' · '+COP(gTot);
           gbox.appendChild(gbt);gbox.appendChild(gbs);
-          gbox.appendChild(BTN('bg','🏦 Girar a socios del día',function(){girarSociosDelDia(porGirarDia,g.dia);},{width:'100%',minHeight:'40px'}));
+          gbox.appendChild(BTN('bo','🏦 Girar a socios del día',function(){girarSociosDelDia(porGirarDia,g.dia);},{width:'100%',minHeight:'40px'}));
           body.appendChild(gbox);
         }
         // 📲 Enviar resumen de cobros — visible solo si hay al menos 1 pago registrado ese día
@@ -3064,11 +3102,14 @@ function vCobros(){
         }
         if(done.length>0){
           var dh2=D(null,{fontSize:'11px',color:'var(--grn)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:pend.length?'10px':'0'},null);dh2.textContent='✓ Ya pagaron';body.appendChild(dh2);
-          for(var di2=0;di2<done.length;di2++){
+          // Primero las que faltan por girar, al final las completas (copia: done se usa en otros lados).
+          var doneOrd=done.slice().sort(function(a,b){return CQ_ORDEN[cqKind(cuotaEstadoCobros(a,CURR_MK),true)]-CQ_ORDEN[cqKind(cuotaEstadoCobros(b,CURR_MK),true)];});
+          for(var di2=0;di2<doneOrd.length;di2++){
             (function(ln){
               var estD=cuotaEstadoCobros(ln,CURR_MK);
               var needsGiro=estD==='por_girar';
-              var drWrap=D(null,{background:needsGiro?'rgba(200,148,0,.06)':'var(--c-suc-bg)',border:'1px solid '+(needsGiro?'rgba(200,148,0,.4)':'var(--c-suc-bor)'),borderRadius:'8px',marginBottom:'6px',overflow:'hidden'},null);
+              // 🏦 Falta girar al socio (naranja) o ✓ Completo (verde apagado, más tenue)
+              var drWrap=cqCard(cqKind(estD,true)).card;
               // Header zones (same shape as pending, less prominent action)
               var dzones=D(null,{display:'flex',alignItems:'stretch',padding:'8px 10px',gap:'10px'},null);
               dzones.appendChild(sumCheckbox(ln.id));
@@ -3079,19 +3120,19 @@ function vCobros(){
               var dCap=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace'},null);dCap.textContent='Capital: '+COP(montoCOP(ln))+(isUSD(ln)?' · '+USD(ln.monto):'');
               dInfo.appendChild(dl1);dInfo.appendChild(dl2);dInfo.appendChild(dCap);
               var dAct=D(null,{textAlign:'right',display:'flex',alignItems:'center',flexShrink:'0'},null);
-              var da2=S('mn',{color:'var(--grn)',fontWeight:'700',fontSize:'14px'},null);da2.textContent=COP(IMc(ln));
+              var da2=S('mn',{color:needsGiro?'var(--txt)':'var(--st-ok)',fontWeight:'700',fontSize:'14px'},null);da2.textContent=COP(IMc(ln));
               dAct.appendChild(da2);
               dzones.appendChild(dInfo);dzones.appendChild(dAct);
               drWrap.appendChild(dzones);
               // Footer: solo el paso que sigue — "🏦 Girar a socio" o la etiqueta "✓ Girado".
               // (El pago ya está registrado: "Cobré" no se muestra. Sin giro → sin footer.)
               if(estD==='por_girar'||estD==='girado'){
-                var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid '+(needsGiro?'rgba(200,148,0,.3)':'var(--c-suc-bor)'),background:'rgba(0,0,0,.08)'},null);
+                var concilRow2=D(null,{display:'flex',gap:'6px',padding:'7px 10px',borderTop:'1px solid var(--bor)',background:'rgba(0,0,0,.08)'},null);
                 concilRow2.appendChild(estD==='por_girar'?girarSocioBtn(ln,CURR_MK):giradoLabel(ln,CURR_MK));
                 drWrap.appendChild(concilRow2);
               }
               body.appendChild(drWrap);
-            })(done[di2]);
+            })(doneOrd[di2]);
           }
           body.appendChild(BTN('bh','📋 Ver notificaciones',function(){showWaModal(done,g.dia);},{width:'100%',fontSize:'12px',marginTop:'6px'}));
         }
