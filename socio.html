@@ -36,6 +36,9 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Segoe
 .lrow .lest{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;white-space:nowrap}
 .lest.ok{color:var(--grn);background:var(--c-suc-bg);border:1px solid var(--c-suc-bor)}
 .lest.pend{color:#f0a020;background:var(--c-day-bg);border:1px solid var(--acc)}
+.lest.nuevo{color:var(--blu);background:rgba(74,158,255,.12);border:1px solid var(--blu)}
+.lest-wrap{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.lest-sub{font-size:10px;color:var(--mut);white-space:nowrap}
 .footer{font-size:11px;color:var(--mut);text-align:center;line-height:1.6;margin-top:20px;padding:0 8px}
 .err{text-align:center;padding:40px 20px;color:var(--mut)}
 .err .err-ico{font-size:42px;margin-bottom:12px}
@@ -561,10 +564,24 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
             linfo.appendChild(vpTag);
           }
           lrow.appendChild(linfo);
-          var estCls,estTxt;
-          if(isCollectable(ln)&&ln.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
+          var estCls,estTxt,estSub='';
+          if(!isCollectable(ln)){
+            // Empezó este mes: aún no se cobra → "🆕 Nuevo" (neutro, no pendiente). Igual para
+            // continuaciones, sin distinguirlas. Primer pago = mes siguiente a mes_comienzo.
+            estCls='nuevo';estTxt='🆕 Nuevo';
+            var pmp=(ln.mes_comienzo+'').split('-'),pmy=parseInt(pmp[0],10),pmm=parseInt(pmp[1],10)+1;
+            if(pmm>12){pmm=1;pmy++;}
+            var pmn=MESES[pmm-1]||'';
+            if(pmn&&pmy)estSub='Primer pago: '+pmn.charAt(0)+pmn.slice(1).toLowerCase()+' '+pmy;
+          }
+          else if(ln.pagado_socio){estCls='ok';estTxt='✅ Pagado';}
           else{estCls='pend';estTxt='⏳ Pendiente';}
-          lrow.appendChild(el('div','lest '+estCls,null,estTxt));
+          if(estSub){
+            var estW=el('div','lest-wrap',null,null);
+            estW.appendChild(el('div','lest '+estCls,null,estTxt));
+            estW.appendChild(el('div','lest-sub',null,estSub));
+            lrow.appendChild(estW);
+          }else lrow.appendChild(el('div','lest '+estCls,null,estTxt));
 
           // Detalle expandible (todos los socios): comparación hasta-hoy vs hasta-el-final + progreso
           lrow.style.cursor='pointer';
