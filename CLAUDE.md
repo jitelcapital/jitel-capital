@@ -167,11 +167,11 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - Un préstamo nuevo puede marcarse como **continuación** de otro (`continuacion_de`) para traspasos de cartera entre socios.
 - En `buildClienteImage` una continuación se ve como fila normal, sin etiquetas. En `dayam.html` sí hereda el estado del original.
 - En la pestaña Socios (admin) los finalizados muestran "✅ Finalizado" o "✅ Liquidado en su totalidad" (traspaso), sin nombrar al cliente ni al socio entrante. El admin sigue viendo el traspaso con todo su detalle.
-- **`socio.html` nunca muestra traspasos**: ningún texto visible con "traspaso", "continuación" ni "liquidado", y todos los cerrados se ven como "✅ Finalizado".
+- **`socio.html` nunca muestra traspasos**: ningún texto visible con "traspaso", "continuación", "renovación" ni "liquidado", y todos los cerrados se ven como "✅ Finalizado".
 - `socio.html` → tarjeta **"Movimiento del mes"** (`movimientoMesCard`, debajo de "Tu cartera"), con selector "Este mes" / "Mes anterior":
-  - **Nuevos**: préstamos con `mes_comienzo` igual al mes. Una continuación (`continuacion_de`) cuenta como nuevo normal si el original **no** es de este socio (no está entre sus préstamos). Si el original **sí** es suyo (renovación propia), no cuenta.
-  - **Cerrados**: `status === 'paid'` con `fecha_cierre` dentro del mes, cualquier `cierre_tipo` (un préstamo suyo cerrado por traspaso cuenta como cerrado normal). Excepción: el original de una renovación propia no cuenta, para que la renovación no aparezca como capital que sale.
-  - **Capital neto** = capital de nuevos − capital de cerrados (COP): "entró" o "salió".
+  - **Nuevos**: todo préstamo con `mes_comienzo` igual al mes, incluidas las continuaciones (`continuacion_de`), sea el original de otro socio o del mismo.
+  - **Cerrados**: todo préstamo `status === 'paid'` cuyo mes de cierre es el mes, sea cual sea `cierre_tipo`. Mes de cierre = mes de `fecha_cierre`, o su mes de fin (`loanEndMk`) si no la tiene, igual que "Préstamos finalizados".
+  - **Capital neto** = capital de nuevos − capital de cerrados (COP): "entró" o "salió". Si el préstamo sigue con el mismo socio, la continuación (nueva) y el original (cerrado) se compensan solos.
   - Al tocar cada número se ve la lista (día, periodo o fecha de cierre y capital), sin nombres de clientes.
 
 ---
