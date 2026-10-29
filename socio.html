@@ -116,11 +116,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var mo=idx+1;
     return loan.año+'-'+(mo<10?'0'+mo:String(mo));
   }
+  // Plan del préstamo contado igual que mesesCobrados: desde el mes siguiente a mes_comienzo
+  // (barra de progreso, meses del plan y "Si llega hasta el final"). Un préstamo que empezó
+  // este mes queda en 0% con todo el plan por delante.
   function planProgress(loan,currMk){
     var endMk=loanEndMk(loan);
     if(!loan.mes_comienzo||!endMk)return null;
-    var total=monthsElapsed(loan.mes_comienzo,endMk);
-    var elapsed=monthsElapsed(loan.mes_comienzo,currMk);
+    var total=mesesCobrados(loan.mes_comienzo,endMk);
+    var elapsed=mesesCobrados(loan.mes_comienzo,currMk);
     if(elapsed<0)elapsed=0;
     if(elapsed>total)elapsed=total;
     var pct=total>0?Math.round((elapsed/total)*100):0;
