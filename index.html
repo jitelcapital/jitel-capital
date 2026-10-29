@@ -656,20 +656,24 @@ function sanitizeLoan(l){
 // ── MODAL ──
 var MC=document.getElementById('modals');
 var AM=null;
-// Cierre anti "toque fantasma" en iOS: el overlay se oculta y deja de recibir toques al instante,
-// pero se elimina del DOM ~350 ms después, para que el click sintetizado no caiga en lo de abajo.
+// Cierre anti "toque fantasma" en iOS: el overlay se oculta al instante pero SIGUE atrapando
+// toques (sin pointer-events:none) ~350 ms antes de eliminarse, para que el click sintetizado
+// caiga en el overlay y no en lo que hay debajo.
 var CIERRE_OVERLAY_MS=350;
+function bloquearToque(ev){ev.preventDefault();ev.stopPropagation();}
 function cerrarOverlay(el,e){
   if(e&&e.preventDefault){e.preventDefault();e.stopPropagation();}
-  if(!el)return;
-  el.style.pointerEvents='none';el.style.opacity='0';
+  if(!el||el.dataset.cerrando==='1')return;
+  el.dataset.cerrando='1';el.style.opacity='0';
+  el.addEventListener('click',bloquearToque,true);
+  el.addEventListener('touchend',bloquearToque,true);
   setTimeout(function(){el.remove();},CIERRE_OVERLAY_MS);
 }
 function closeModal(e){var el=AM;AM=null;cerrarOverlay(el,e);}
 function showModal(inner){
   closeModal();
   var bg=D('mbg',null,null);
-  bg.addEventListener('click',function(e){if(e.target===bg)closeModal(e);});
+  bg.addEventListener('click',function(e){if(e.target===bg&&bg.dataset.cerrando!=='1')closeModal(e);}); // ignora toques mientras se cierra
   bg.appendChild(inner);MC.appendChild(bg);AM=bg;
 }
 function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw,old);else if(AM){while(AM.firstChild)AM.removeChild(AM.firstChild);AM.appendChild(nw);}}
@@ -1214,8 +1218,8 @@ function showNewLoan(prefill){
   // Allow calculator to pre-fill monto and tasas
   var pfill=(prefill&&typeof prefill==='object')?prefill:{};
   var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf,fay,fmc=CURR_MK,fn='',fmon='COP',ftc=0,fmCOP=0;
-  // Vencimiento por defecto: mes siguiente al actual + plazo habitual (siempre futuro)
-  var vIdx=TODAY.getFullYear()*12+TODAY.getMonth()+1+defs.plazo;
+  // Vencimiento por defecto: el plazo se mide desde mes_comienzo (por defecto el mes actual)
+  var vIdx=TODAY.getFullYear()*12+TODAY.getMonth()+defs.plazo;
   fmf=MESES[vIdx%12];fay=Math.floor(vIdx/12);
   var m=D('modal',null,null);
   var hdr=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'14px'},null);
