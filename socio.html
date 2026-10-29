@@ -105,6 +105,10 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     var n=(y2-y1)*12+(m2-m1)+1;
     return n>0?n:0;
   }
+  // Meses COBRADOS hasta uptoMk: el mes de mes_comienzo no se cobra, se cobra desde el mes
+  // siguiente (un préstamo que empezó este mes suma 0). Base de "Rendimiento acumulado",
+  // "Generado hasta hoy" e "Intereses recibidos"/"meses activos" de los finalizados.
+  function mesesCobrados(mesComienzo,uptoMk){var n=monthsElapsed(mesComienzo,uptoMk)-1;return n>0?n:0;}
   function loanEndMk(loan){
     if(!loan.mes_fin||!loan.año)return null;
     var idx=MESES.indexOf((loan.mes_fin+'').toUpperCase());
@@ -450,7 +454,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     for(ai=0;ai<allLoans.length;ai++){
       var al=allLoans[ai];
       var uptoMk=(al.status==='paid')?(loanEndMk(al)||CURR_MK):CURR_MK;
-      var mElT=monthsElapsed(al.mes_comienzo,uptoMk);
+      var mElT=mesesCobrados(al.mes_comienzo,uptoMk);
       rendimientoTotal+=mElT*(al.int_socio||0)*montoCOP(al);
     }
     var projMensual=0;
@@ -593,7 +597,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           var detailEl=null,openD=false;
           var buildDetail=function(){
             var det=el('div',null,{background:'var(--c2)',border:'1px solid var(--bor)',borderRadius:'10px',padding:'12px',marginTop:'-4px',marginBottom:'11px'},null);
-            var mElG=monthsElapsed(ln.mes_comienzo,CURR_MK);
+            var mElG=mesesCobrados(ln.mes_comienzo,CURR_MK);
             var generado=mElG*(ln.int_socio||0)*montoCOP(ln);
             var prog=planProgress(ln,CURR_MK);
 
@@ -647,7 +651,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       for(ci2=0;ci2<closedLoans.length;ci2++){
         (function(cl,idx){
           var endMk=loanEndMk(cl);
-          var mesesAct=(cl.mes_comienzo&&endMk)?monthsElapsed(cl.mes_comienzo,endMk):0;
+          var mesesAct=(cl.mes_comienzo&&endMk)?mesesCobrados(cl.mes_comienzo,endMk):0;
           var totIntNative=mesesAct*(cl.int_socio||0)*(cl.monto||0);
           var row=el('div',null,{padding:'10px 0',borderBottom:idx<closedLoans.length-1?'1px solid var(--bor)':'none'},null);
           var top=el('div',null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'8px'},null);
