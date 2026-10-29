@@ -509,22 +509,27 @@ function doCopy(msg,btn){
 }
 function mkCpBtn(msg){var b=mk('button','cp',null,null);b.textContent='📋 Copiar';b.addEventListener('click',function(){doCopy(msg,b);});return b;}
 // ── WHATSAPP: punto ÚNICO para abrir WhatsApp con un texto (y teléfono opcional) ──
-// - iPhone/iPad/Android: location.href = 'whatsapp://send?…' (abre la app, sin ventanas nuevas —
-//   window.open/_blank deja una hoja de navegador en blanco en iPhone, sobre todo con la app
-//   abierta desde el ícono de inicio). Si a los ~1,5 s la página sigue visible (la app no se
-//   abrió), respaldo https://wa.me/ en la misma pestaña.
+// - iPhone/iPad (incluida la app abierta desde el ícono de inicio): SOLO
+//   location.href = 'whatsapp://send?…', sin respaldo temporizado — en iOS el timer a wa.me
+//   se disparaba al volver y dejaba una hoja de navegador en blanco. Nunca window.open/_blank.
+// - Android: location.href = 'whatsapp://send?…'; si a los ~1,5 s la página sigue visible
+//   (la app no se abrió), respaldo https://wa.me/ en la misma pestaña.
 // - Computador: https://web.whatsapp.com/send?… en una pestaña nueva.
 // El texto va con encodeURIComponent (conserva saltos de línea y emojis).
 var WA_FALLBACK_MS=1500;
-function esMovil(){
+function esIOS(){
   var ua=navigator.userAgent||'';
-  return /iPhone|iPad|iPod|Android/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); // iPadOS se presenta como Mac
+  return /iPhone|iPad|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1); // iPadOS se presenta como Mac
 }
+function esAndroid(){return /Android/i.test(navigator.userAgent||'');}
+function esMovil(){return esIOS()||esAndroid();}
 function waNavegar(url){location.href=url;} // separado para poder probarlo
 function openWhatsApp(texto,telefono){
   var t=encodeURIComponent(texto||'');
   var tel=String(telefono||'').replace(/\D/g,'');
-  if(!esMovil()){
+  var app='whatsapp://send?text='+t+(tel?'&phone='+tel:'');
+  if(esIOS()){waNavegar(app);return;}
+  if(!esAndroid()){
     window.open('https://web.whatsapp.com/send?text='+t+(tel?'&phone='+tel:''),'_blank');
     return;
   }
@@ -539,7 +544,7 @@ function openWhatsApp(texto,telefono){
     // Si se abrió WhatsApp la página quedó oculta (y este timer pudo correr al volver): no hacer nada.
     if(!salio&&!document.hidden)waNavegar('https://wa.me/'+tel+'?text='+t);
   },WA_FALLBACK_MS);
-  waNavegar('whatsapp://send?text='+t+(tel?'&phone='+tel:''));
+  waNavegar(app);
 }
 function mkWaBtn(msg,css){return BTN('bw','📲 WhatsApp',function(){openWhatsApp(msg);},css||null);}
 
