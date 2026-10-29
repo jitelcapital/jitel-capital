@@ -167,6 +167,11 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - Un préstamo nuevo puede marcarse como **continuación** de otro (`continuacion_de`) para traspasos de cartera entre socios.
 - En `buildClienteImage` una continuación se ve como fila normal, sin etiquetas. En `dayam.html` sí hereda el estado del original.
 - En Socios y en `socio.html` los finalizados muestran "✅ Finalizado" o "✅ Liquidado en su totalidad" (traspaso), sin nombrar al cliente ni al socio entrante.
+- `socio.html` → tarjeta **"Movimiento del mes"** (`movimientoMesCard`, debajo de "Tu cartera"), con selector "Este mes" / "Mes anterior":
+  - **Nuevos**: préstamos con `mes_comienzo` igual al mes, **sin** `continuacion_de` (un traspaso no es capital nuevo).
+  - **Cerrados**: `status === 'paid'` con `fecha_cierre` dentro del mes, **sin** `cierre_tipo === 'traspaso'` (liquidado por traspaso no cuenta como cerrado).
+  - **Capital neto** = capital de nuevos − capital de cerrados (COP): "entró" o "salió".
+  - Al tocar cada número se ve la lista (día, periodo o fecha de cierre y capital), sin nombres de clientes.
 
 ---
 

@@ -414,6 +414,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     c1.appendChild(g1);
     G.appendChild(c1);
 
+    // ── MOVIMIENTO DEL MES (nuevos, cerrados y capital neto; con mes anterior) ──
+    G.appendChild(movimientoMesCard(allLoans,CURR_MK));
+
     // ── ESTADO DEL MES ──
     var c2=el('div','card',null,null);
     c2.appendChild(el('div','sec-title',null,'📊 Estado del mes'));
@@ -696,6 +699,78 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     return mk<closeMk||(mk===closeMk&&tienePagoPeriodo(l,mk));
   }
   function mesLargo(mk){var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return (MESES[mo]||'')+' '+p[0];}
+  // ── Movimiento del mes ──
+  // Nuevos: mes_comienzo === mes, SIN continuacion_de (un traspaso no es capital nuevo).
+  // Cerrados: fecha_cierre dentro del mes, SIN cierre_tipo 'traspaso' (liquidado por traspaso no
+  // es capital que sale). Neto = capital de nuevos − capital de cerrados (COP). Sin nombres de
+  // clientes. Se puede ver el mes actual o el anterior; al tocar cada número se ve la lista.
+  function movimientoDelMes(allLoans,mk){
+    var nuevos=[],cerrados=[],i,capN=0,capC=0;
+    for(i=0;i<allLoans.length;i++){
+      var l=allLoans[i];
+      if(l.mes_comienzo===mk&&!l.continuacion_de){nuevos.push(l);capN+=montoCOP(l);}
+      if(l.status==='paid'&&mkFromFecha(l.fecha_cierre)===mk&&l.cierre_tipo!=='traspaso'){cerrados.push(l);capC+=montoCOP(l);}
+    }
+    var byDia=function(a,b){return (a.dia||0)-(b.dia||0);};
+    nuevos.sort(byDia);cerrados.sort(byDia);
+    return {nuevos:nuevos,cerrados:cerrados,capNuevos:capN,capCerrados:capC,neto:capN-capC};
+  }
+  function movimientoMesCard(allLoans,currMk){
+    var card=el('div','card',null,null);
+    var mk=currMk,abierta='';
+    function render(){
+      card.innerHTML='';
+      var hdr=el('div',null,{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',marginBottom:'12px'},null);
+      hdr.appendChild(el('div','sec-title',{marginBottom:'0'},'🔁 Movimiento del mes'));
+      var tabs=el('div',null,{display:'flex',gap:'6px',flexShrink:'0'},null);
+      [[currMk,'Este mes'],[prevMk(currMk),'Mes anterior']].forEach(function(t){
+        var on=mk===t[0];
+        var b=btnEl('bh',t[1],function(){mk=t[0];abierta='';render();});
+        b.style.cssText='font-size:11px;padding:4px 10px;min-height:30px;'+(on?'background:var(--acc);color:#07111e;border-color:var(--acc)':'');
+        tabs.appendChild(b);
+      });
+      hdr.appendChild(tabs);card.appendChild(hdr);
+      card.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px'},mesLargo(mk)));
+      var mv=movimientoDelMes(allLoans,mk);
+      var g=el('div','g3',null,null);
+      function caja(key,lbl,val,sub,color){
+        var k=el('div','kpi',{cursor:'pointer',border:abierta===key?'1px solid var(--acc)':''},null);
+        k.setAttribute('data-mov',key);
+        k.appendChild(el('div','kl',null,lbl));
+        // Una sola línea: montos largos con letra más pequeña (en iPhone la caja mide ~100 px).
+        k.appendChild(el('div','kv',{color:color,whiteSpace:'nowrap',fontSize:val.length>13?'11px':(val.length>9?'12px':'')},val));
+        k.appendChild(el('div',null,{fontSize:'10px',color:'var(--mut)',marginTop:'3px'},sub));
+        k.addEventListener('click',function(){abierta=(abierta===key)?'':key;render();});
+        return k;
+      }
+      g.appendChild(caja('nuevos','Nuevos',String(mv.nuevos.length),COP(mv.capNuevos),'var(--grn)'));
+      g.appendChild(caja('cerrados','Cerrados',String(mv.cerrados.length),COP(mv.capCerrados),'var(--red)'));
+      var netoTxt=(mv.neto>0?'+':mv.neto<0?'−':'')+COP(Math.abs(mv.neto));
+      g.appendChild(caja('neto','Capital neto',netoTxt,mv.neto>0?'entró':mv.neto<0?'salió':'sin cambio',mv.neto>0?'var(--grn)':mv.neto<0?'var(--red)':'var(--mut)'));
+      card.appendChild(g);
+      function lista(titulo,arr,cerr){
+        var w=el('div',null,{marginTop:'10px'},null);
+        w.appendChild(el('div',null,{fontSize:'11px',fontWeight:'700',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:'4px'},titulo));
+        if(arr.length===0){w.appendChild(el('div',null,{fontSize:'12px',color:'var(--mut)',padding:'6px 0'},'Ninguno.'));return w;}
+        for(var i=0;i<arr.length;i++){
+          var l=arr[i];
+          var r=el('div',null,{display:'flex',justifyContent:'space-between',gap:'8px',padding:'7px 0',borderTop:'1px solid var(--bor)',fontSize:'12px'},null);
+          var lf=el('div',null,{minWidth:'0'},null);
+          lf.appendChild(el('div',null,{fontWeight:'600'},'Día '+(l.dia||'?')));
+          lf.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)'},cerr?('Cerrado el '+(l.fecha_cierre||'').slice(0,10)):fmtPeriodo(l)));
+          r.appendChild(lf);
+          r.appendChild(el('div','mn',{fontWeight:'700',color:cerr?'var(--red)':'var(--grn)',flexShrink:'0'},(cerr?'−':'+')+COP(montoCOP(l))));
+          w.appendChild(r);
+        }
+        return w;
+      }
+      if(abierta==='nuevos'||abierta==='neto')card.appendChild(lista('Préstamos nuevos',mv.nuevos,false));
+      if(abierta==='cerrados'||abierta==='neto')card.appendChild(lista('Préstamos cerrados',mv.cerrados,true));
+      card.appendChild(el('div',null,{fontSize:'10px',color:'var(--mut)',marginTop:'10px',lineHeight:'1.5'},'No cuenta los traspasos: una continuación no es préstamo nuevo y un préstamo liquidado por traspaso no es cerrado. Toca un número para ver la lista.'));
+    }
+    render();
+    return card;
+  }
   function misGirosCard(allLoans,giros,currMk){
     var byId={},i,j;for(i=0;i<allLoans.length;i++)byId[allLoans[i].id]=allLoans[i];
     var anulados={};for(i=0;i<giros.length;i++){if(giros[i].anula_a)anulados[giros[i].anula_a]=true;}
