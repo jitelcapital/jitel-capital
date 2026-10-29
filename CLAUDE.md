@@ -68,6 +68,12 @@ function renderApp() // Re-renderiza la vista activa completa — COLAPSA acorde
                      // Preferir actualizaciones DOM in-place cuando sea posible
 ```
 
+### WhatsApp (`openWhatsApp(texto, telefono?)`)
+Punto ÚNICO para abrir WhatsApp; no usar `window.open`/`_blank` en móvil (ni en `socio.html`/`dayam.html`).
+- **iPhone/iPad** (`esIOS()`, incluye iPadOS por `MacIntel` + `maxTouchPoints>1` y la app abierta desde el ícono de inicio): solo `location.href='whatsapp://send?…'`, **sin** respaldo temporizado a wa.me (dejaba una hoja en blanco al volver).
+- **Android** (`esAndroid()`): `whatsapp://send?…` + respaldo a `https://wa.me/` en la misma pestaña si a los 1,5 s (`WA_FALLBACK_MS`) la página sigue visible.
+- **Computador**: `https://web.whatsapp.com/send?…` en pestaña nueva.
+
 ---
 
 ## Modelo de datos `ST`
