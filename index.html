@@ -30,7 +30,7 @@ select option{background:var(--card)}
 .btn{border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:9px 14px;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:6px;touch-action:manipulation;font-family:inherit;-webkit-appearance:none}
 .btn:active{opacity:.65}
 .ba{background:var(--acc);color:#000}
-.bh{background:var(--c2);color:var(--txt);border:1px solid var(--bor)}
+.bh{background:var(--c2);color:var(--txt);border:1px solid var(--bor);touch-action:manipulation}
 .bg{background:#0e4a2e;color:var(--grn);border:1px solid #1a6b42}
 .bb{background:#0e2a4a;color:var(--blu);border:1px solid #1a4a7a}
 .br{background:#7b1c2f;color:#fca5a5}
@@ -65,7 +65,7 @@ select option{background:var(--card)}
 .lrow{background:var(--card);border:1px solid var(--bor);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer}
 .fld{margin-bottom:12px}
 .fld label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px;font-weight:500}
-.mbg{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:flex-end;justify-content:center}
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:flex-end;justify-content:center;touch-action:manipulation}
 .modal{background:var(--card);border-radius:18px 18px 0 0;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;padding:18px;-webkit-overflow-scrolling:touch}
 .pbar{background:var(--c2);border-radius:20px;height:8px;overflow:hidden;margin-bottom:4px}
 .pf{background:var(--grn);height:100%;border-radius:20px}
@@ -480,7 +480,17 @@ function getSmartDefaults(){
     respMap[r]=(respMap[r]||0)+1;
     if(respMap[r]>bestRespN){bestRespN=respMap[r];bestResp=r;}
   }
-  return{int_socio:defIs,int_propio:defIp,responsable:bestResp};
+  // Plazo más frecuente en meses (mes_comienzo → mes_fin/año); sin datos, 12
+  var plazoMap={},bestPlazo=12,bestPlazoN=0;
+  for(i=0;i<active.length;i++){
+    var a=active[i],mi=MESES.indexOf(String(a.mes_fin||'').toUpperCase()),mc=/^(\d{4})-(\d{2})/.exec(a.mes_comienzo||'');
+    if(mi<0||!mc||!a.año)continue;
+    var pz=(a.año*12+mi)-(parseInt(mc[1])*12+parseInt(mc[2])-1);
+    if(pz<1||pz>60)continue;
+    plazoMap[pz]=(plazoMap[pz]||0)+1;
+    if(plazoMap[pz]>bestPlazoN){bestPlazoN=plazoMap[pz];bestPlazo=pz;}
+  }
+  return{int_socio:defIs,int_propio:defIp,responsable:bestResp,plazo:bestPlazo};
 }
 
 // ── DOM HELPERS ──
@@ -646,11 +656,20 @@ function sanitizeLoan(l){
 // ── MODAL ──
 var MC=document.getElementById('modals');
 var AM=null;
-function closeModal(){if(AM){AM.remove();AM=null;}}
+// Cierre anti "toque fantasma" en iOS: el overlay se oculta y deja de recibir toques al instante,
+// pero se elimina del DOM ~350 ms después, para que el click sintetizado no caiga en lo de abajo.
+var CIERRE_OVERLAY_MS=350;
+function cerrarOverlay(el,e){
+  if(e&&e.preventDefault){e.preventDefault();e.stopPropagation();}
+  if(!el)return;
+  el.style.pointerEvents='none';el.style.opacity='0';
+  setTimeout(function(){el.remove();},CIERRE_OVERLAY_MS);
+}
+function closeModal(e){var el=AM;AM=null;cerrarOverlay(el,e);}
 function showModal(inner){
   closeModal();
   var bg=D('mbg',null,null);
-  bg.addEventListener('click',function(e){if(e.target===bg)closeModal();});
+  bg.addEventListener('click',function(e){if(e.target===bg)closeModal(e);});
   bg.appendChild(inner);MC.appendChild(bg);AM=bg;
 }
 function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw,old);else if(AM){while(AM.firstChild)AM.removeChild(AM.firstChild);AM.appendChild(nw);}}
@@ -662,7 +681,7 @@ function showImageViewer(dataUrl){
   var topRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',width:'100%',maxWidth:'600px',marginBottom:'10px'},null);
   var instr=D(null,{fontSize:'13px',color:'#fff',flex:'1',lineHeight:'1.6'},null);
   instr.textContent='📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
-  topRow.appendChild(instr);topRow.appendChild(BTN('bh','✕',function(){bg.remove();AM=null;},{marginLeft:'10px',flexShrink:'0'}));
+  topRow.appendChild(instr);topRow.appendChild(BTN('bh','✕',closeModal,{marginLeft:'10px',flexShrink:'0'}));
   bg.appendChild(topRow);
   var img=document.createElement('img');img.src=dataUrl;img.style.cssText='width:100%;max-width:600px;border-radius:10px;display:block';
   bg.appendChild(img);
@@ -1194,7 +1213,10 @@ function showNewLoan(prefill){
   var defs=getSmartDefaults();
   // Allow calculator to pre-fill monto and tasas
   var pfill=(prefill&&typeof prefill==='object')?prefill:{};
-  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf='JUNIO',fay=new Date().getFullYear(),fmc=CURR_MK,fn='',fmon='COP',ftc=0,fmCOP=0;
+  var fr=defs.responsable,fs='',fm=pfill.monto||0,fis=pfill.int_socio!==undefined?pfill.int_socio:defs.int_socio,fip=pfill.int_propio!==undefined?pfill.int_propio:defs.int_propio,fd=1,fmf,fay,fmc=CURR_MK,fn='',fmon='COP',ftc=0,fmCOP=0;
+  // Vencimiento por defecto: mes siguiente al actual + plazo habitual (siempre futuro)
+  var vIdx=TODAY.getFullYear()*12+TODAY.getMonth()+1+defs.plazo;
+  fmf=MESES[vIdx%12];fay=Math.floor(vIdx/12);
   var m=D('modal',null,null);
   var hdr=D(null,{display:'flex',justifyContent:'space-between',marginBottom:'14px'},null);
   var h2=document.createElement('h2');h2.style.color='var(--acc)';h2.textContent='Nuevo Préstamo';
@@ -1268,11 +1290,19 @@ function showNewLoan(prefill){
   defHint.textContent='💡 Pre-cargado: tasa más usada (socio '+(defs.int_socio*100).toFixed(1)+'% / propio '+(defs.int_propio*100).toFixed(1)+'%)';
   m.appendChild(defHint);
   m.appendChild(prevDiv);
-  var dIn=INP({type:'number',value:'1',min:'1',max:'31'});dIn.addEventListener('input',function(e){fd=parseInt(e.target.value)||1;updPrimerCobro();});
+  var dIn=INP({type:'number',value:'1',min:'1',max:'31'});dIn.addEventListener('input',function(e){fd=parseInt(e.target.value)||1;updPrimerCobro();updVencePasado();});
   var mOpts=[];for(i=0;i<MESES.length;i++)mOpts.push([MESES[i],MESES[i].slice(0,3)]);
-  var mSel=MSEL(mOpts,'JUNIO');mSel.addEventListener('change',function(e){fmf=e.target.value;});
-  var yIn=INP({type:'number',value:String(fay)});yIn.addEventListener('input',function(e){fay=parseInt(e.target.value)||2026;});
+  var mSel=MSEL(mOpts,fmf);mSel.addEventListener('change',function(e){fmf=e.target.value;updVencePasado();});
+  var yIn=INP({type:'number',value:String(fay)});yIn.addEventListener('input',function(e){fay=parseInt(e.target.value)||TODAY.getFullYear();updVencePasado();});
   m.appendChild(R3(FLD('Día vence',dIn),FLD('Mes fin',mSel),FLD('Año',yIn)));
+  // Aviso (no bloquea el guardado) si el vencimiento elegido ya pasó
+  var vpDiv=D(null,{fontSize:'12px',color:'var(--red)',fontWeight:'600',marginTop:'-6px',marginBottom:'10px',display:'none'},null);
+  vpDiv.textContent='⚠️ El vencimiento elegido ya pasó. Puedes guardar igual.';
+  function updVencePasado(){
+    var hoy=new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());
+    vpDiv.style.display=new Date(fay,MESES.indexOf(fmf),fd)<hoy?'block':'none';
+  }
+  m.appendChild(vpDiv);
   var mcIn=INP({type:'month',value:CURR_MK});
   mcIn.addEventListener('change',function(e){fmc=e.target.value;updPrimerCobro();});
   mcIn.addEventListener('input',function(e){fmc=e.target.value;updPrimerCobro();});
