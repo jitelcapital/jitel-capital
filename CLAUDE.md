@@ -168,6 +168,7 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - En `buildClienteImage` una continuación se ve como fila normal, sin etiquetas. En `dayam.html` sí hereda el estado del original.
 - En la pestaña Socios (admin) los finalizados muestran "✅ Finalizado" o "✅ Liquidado en su totalidad" (traspaso), sin nombrar al cliente ni al socio entrante. El admin sigue viendo el traspaso con todo su detalle.
 - **`socio.html` nunca muestra traspasos**: ningún texto visible con "traspaso", "continuación", "renovación" ni "liquidado", y todos los cerrados se ven como "✅ Finalizado".
+- `socio.html` → lista "Tus préstamos": un préstamo que aún no se cobra (`!isCollectable`: empezó este mes) muestra "🆕 Nuevo" en azul (no "⏳ Pendiente") y debajo "Primer pago: Noviembre 2026" (mes siguiente a `mes_comienzo`). Igual para continuaciones, sin distinguirlas. No cuenta como pendiente en "Estado del mes", "Pendiente de girarte (meses anteriores)" ni "Mis giros".
 - `socio.html` → tarjeta **"Movimiento del mes"** (`movimientoMesCard`, debajo de "Tu cartera"), con selector "Este mes" / "Mes anterior":
   - **Nuevos**: todo préstamo con `mes_comienzo` igual al mes, incluidas las continuaciones (`continuacion_de`), sea el original de otro socio o del mismo.
   - **Cerrados**: todo préstamo `status === 'paid'` cuyo mes de cierre es el mes, sea cual sea `cierre_tipo`. Mes de cierre = mes de `fecha_cierre`, o su mes de fin (`loanEndMk`) si no la tiene, igual que "Préstamos finalizados".
