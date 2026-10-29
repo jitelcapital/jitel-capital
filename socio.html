@@ -638,7 +638,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           capWrap.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)'},'Capital'));
           capWrap.appendChild(dualMoneyEl(cl,cl.monto,{fontSize:'13px',fontWeight:'700'}));
           top.appendChild(capWrap);
-          var tag=el('div',null,{fontSize:'10px',fontWeight:'700',padding:'3px 9px',borderRadius:'20px',background:'var(--c-suc-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor)',whiteSpace:'nowrap',flexShrink:'0'},cl.cierre_tipo==='traspaso'?'✅ Liquidado en su totalidad':'✅ Finalizado');
+          var tag=el('div',null,{fontSize:'10px',fontWeight:'700',padding:'3px 9px',borderRadius:'20px',background:'var(--c-suc-bg)',color:'var(--grn)',border:'1px solid var(--c-suc-bor)',whiteSpace:'nowrap',flexShrink:'0'},'✅ Finalizado'); // el socio nunca ve cómo se cerró (finalizado o de otra forma)
           top.appendChild(tag);
           row.appendChild(top);
           var periodo=fmtPeriodo(cl);
@@ -700,16 +700,23 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
   function mesLargo(mk){var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return (MESES[mo]||'')+' '+p[0];}
   // ── Movimiento del mes ──
-  // Nuevos: mes_comienzo === mes, SIN continuacion_de (un traspaso no es capital nuevo).
-  // Cerrados: fecha_cierre dentro del mes, SIN cierre_tipo 'traspaso' (liquidado por traspaso no
-  // es capital que sale). Neto = capital de nuevos − capital de cerrados (COP). Sin nombres de
-  // clientes. Se puede ver el mes actual o el anterior; al tocar cada número se ve la lista.
+  // El socio NUNCA distingue traspasos (ni texto ni etiqueta):
+  // - Nuevos: mes_comienzo === mes. Una continuación cuenta como nuevo normal cuando el préstamo
+  //   original NO es de este socio (no está en allLoans, que solo trae los suyos). Si el original
+  //   SÍ es suyo (renovación propia), no cuenta.
+  // - Cerrados: fecha_cierre dentro del mes, cualquier cierre_tipo, salvo el original de una
+  //   renovación propia (su continuación también es de este socio): así la renovación no aparece
+  //   como capital que sale.
+  // Neto = capital de nuevos − capital de cerrados (COP). Sin nombres de clientes.
   function movimientoDelMes(allLoans,mk){
-    var nuevos=[],cerrados=[],i,capN=0,capC=0;
+    var nuevos=[],cerrados=[],i,capN=0,capC=0,mios={},renovados={};
+    for(i=0;i<allLoans.length;i++)mios[allLoans[i].id]=true;
+    for(i=0;i<allLoans.length;i++){var o=allLoans[i].continuacion_de;if(o&&mios[o])renovados[o]=true;}
     for(i=0;i<allLoans.length;i++){
       var l=allLoans[i];
-      if(l.mes_comienzo===mk&&!l.continuacion_de){nuevos.push(l);capN+=montoCOP(l);}
-      if(l.status==='paid'&&mkFromFecha(l.fecha_cierre)===mk&&l.cierre_tipo!=='traspaso'){cerrados.push(l);capC+=montoCOP(l);}
+      var renovacionPropia=!!(l.continuacion_de&&mios[l.continuacion_de]);
+      if(l.mes_comienzo===mk&&!renovacionPropia){nuevos.push(l);capN+=montoCOP(l);}
+      if(l.status==='paid'&&mkFromFecha(l.fecha_cierre)===mk&&!renovados[l.id]){cerrados.push(l);capC+=montoCOP(l);}
     }
     var byDia=function(a,b){return (a.dia||0)-(b.dia||0);};
     nuevos.sort(byDia);cerrados.sort(byDia);
@@ -766,7 +773,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       }
       if(abierta==='nuevos'||abierta==='neto')card.appendChild(lista('Préstamos nuevos',mv.nuevos,false));
       if(abierta==='cerrados'||abierta==='neto')card.appendChild(lista('Préstamos cerrados',mv.cerrados,true));
-      card.appendChild(el('div',null,{fontSize:'10px',color:'var(--mut)',marginTop:'10px',lineHeight:'1.5'},'No cuenta los traspasos: una continuación no es préstamo nuevo y un préstamo liquidado por traspaso no es cerrado. Toca un número para ver la lista.'));
+      card.appendChild(el('div',null,{fontSize:'10px',color:'var(--mut)',marginTop:'10px',lineHeight:'1.5'},'Toca un número para ver la lista.'));
     }
     render();
     return card;
