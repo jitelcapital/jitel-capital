@@ -122,11 +122,17 @@ var ST = {
 
 ## Cierre mensual ("Nuevo mes", `showReset`)
 
-- Se **elige el mes a cerrar** (sugerido: mes anterior si hoy es día 1–5; si no, el actual).
-- Antes de confirmar muestra las cuotas sin cobrar o sin girar del mes (`loansPendientesParaCierre`) y las **cobradas sin girar hace más de 3 días**, por socio.
+- Se **elige el mes a cerrar** (sugerido: el mes anterior al actual).
+- **Protecciones** (`bloqueoCierre(mk)`; si alguna aplica, el paso 2 muestra el motivo y **no** hay botón para confirmar; `doReset` vuelve a comprobarlo):
+  1. **Mes ya cerrado**: si `ST.archives[mk]` existe → "Octubre 2026 ya fue cerrado". No existe opción de sobrescribir: cerrarlo otra vez borraría los pagos archivados de los activos y volvería a marcar como "falta girar" cuotas ya giradas.
+  2. **Mes que no ha terminado**: `mk >= CURR_MK` → solo se puede cerrar desde el 1 del mes siguiente.
+  3. **Pagos de meses posteriores**: si algún préstamo activo tiene en `pagos` un pago con periodo > `mk` (`pagosPosterioresA`), se listan y se bloquea; el cierre los archivaría bajo `mk` y los quitaría del préstamo.
+- Antes de confirmar muestra las cuotas sin cobrar o sin girar del mes (`loansPendientesParaCierre`), las **cobradas sin girar hace más de 3 días** por socio, y un **recordatorio para exportar el backup** (botón "💾 Exportar backup ahora").
+- **No se puede deshacer** desde la app: la única vuelta atrás es restaurar el backup exportado justo antes.
+- Hacerlo desde **un solo dispositivo** y recargar la app en los demás: una sesión abierta con datos viejos reescribe `prestamos` y `config/global` completos en su siguiente `saveST()`.
 - Al confirmar (`doReset`), en este orden:
   1. `generarArrastrePendientes(mk)`: cada cuota sin resolver del mes pasa a `loan.cuotas_pendientes` con su `recibido`/`pagado_socio`.
-  2. `ST.snapshots[mk] = buildSociosSnapshot()` (pide confirmación si ya existía).
+  2. `ST.snapshots[mk] = buildSociosSnapshot()`.
   3. `ST.archives[mk]` = pagos de todos los préstamos.
   4. Préstamos activos: `pagos=[]`, `recibido=false`, `pagado_socio=false`. Los cerrados conservan sus pagos.
 - Una cuota arrastrada está resuelta cuando tiene pago para su periodo **y** (`pagado_socio` o `isJulianLoan`). Las sin resolver se ven en Cobros → "Pendientes del mes anterior".
@@ -150,6 +156,7 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - **Carga**: `loadGiros` al iniciar sesión de admin (Firestore + cache local `jitel_giros_v1`). En modo sin Firebase solo la cache local.
 - **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes).
 - **Backup CSV**: fila especial `__GIROS__` (JSON), como `__ARCHIVES__`. Al importar solo se agregan los que falten; no se suben a la nube.
+- El backup CSV (`exportBackupCSV` y `gdriveBuildCSV`) también incluye las fotos mensuales en la fila `__SNAPSHOTS__` (JSON de `ST.snapshots`). Al importar reemplaza `ST.snapshots`; un backup viejo sin esa fila conserva las fotos actuales.
 - Compatibilidad: cuotas marcadas antes de los giros siguen marcadas (se ven "✓ Girado" sin giro asociado).
 
 ---
