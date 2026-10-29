@@ -700,23 +700,21 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
   function mesLargo(mk){var p=(mk+'').split('-');var mo=parseInt(p[1],10)-1;return (MESES[mo]||'')+' '+p[0];}
   // ── Movimiento del mes ──
-  // El socio NUNCA distingue traspasos (ni texto ni etiqueta):
-  // - Nuevos: mes_comienzo === mes. Una continuación cuenta como nuevo normal cuando el préstamo
-  //   original NO es de este socio (no está en allLoans, que solo trae los suyos). Si el original
-  //   SÍ es suyo (renovación propia), no cuenta.
-  // - Cerrados: fecha_cierre dentro del mes, cualquier cierre_tipo, salvo el original de una
-  //   renovación propia (su continuación también es de este socio): así la renovación no aparece
-  //   como capital que sale.
-  // Neto = capital de nuevos − capital de cerrados (COP). Sin nombres de clientes.
+  // El socio NUNCA distingue cómo empezó o terminó un préstamo (ni texto ni etiqueta):
+  // - Nuevos: todo préstamo con mes_comienzo === mes, también las continuaciones (sean de un
+  //   original de otro socio o de uno suyo).
+  // - Cerrados: todo préstamo cerrado cuyo mes de cierre es el mes, sea cual sea cierre_tipo.
+  //   Mes de cierre = mes de fecha_cierre, o su mes de fin (loanEndMk) si no la tiene — igual
+  //   que la lista de "Préstamos finalizados".
+  // Neto = capital de nuevos − capital de cerrados (COP): cuando el préstamo sigue con el mismo
+  // socio, la continuación y el original se compensan solos. Sin nombres de clientes.
+  function mesCierre(l){return mkFromFecha(l.fecha_cierre)||loanEndMk(l);}
   function movimientoDelMes(allLoans,mk){
-    var nuevos=[],cerrados=[],i,capN=0,capC=0,mios={},renovados={};
-    for(i=0;i<allLoans.length;i++)mios[allLoans[i].id]=true;
-    for(i=0;i<allLoans.length;i++){var o=allLoans[i].continuacion_de;if(o&&mios[o])renovados[o]=true;}
+    var nuevos=[],cerrados=[],i,capN=0,capC=0;
     for(i=0;i<allLoans.length;i++){
       var l=allLoans[i];
-      var renovacionPropia=!!(l.continuacion_de&&mios[l.continuacion_de]);
-      if(l.mes_comienzo===mk&&!renovacionPropia){nuevos.push(l);capN+=montoCOP(l);}
-      if(l.status==='paid'&&mkFromFecha(l.fecha_cierre)===mk&&!renovados[l.id]){cerrados.push(l);capC+=montoCOP(l);}
+      if(l.mes_comienzo===mk){nuevos.push(l);capN+=montoCOP(l);}
+      if(l.status==='paid'&&mesCierre(l)===mk){cerrados.push(l);capC+=montoCOP(l);}
     }
     var byDia=function(a,b){return (a.dia||0)-(b.dia||0);};
     nuevos.sort(byDia);cerrados.sort(byDia);
@@ -764,7 +762,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           var r=el('div',null,{display:'flex',justifyContent:'space-between',gap:'8px',padding:'7px 0',borderTop:'1px solid var(--bor)',fontSize:'12px'},null);
           var lf=el('div',null,{minWidth:'0'},null);
           lf.appendChild(el('div',null,{fontWeight:'600'},'Día '+(l.dia||'?')));
-          lf.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)'},cerr?('Cerrado el '+(l.fecha_cierre||'').slice(0,10)):fmtPeriodo(l)));
+          lf.appendChild(el('div',null,{fontSize:'11px',color:'var(--mut)'},cerr?(l.fecha_cierre?('Cerrado el '+(l.fecha_cierre+'').slice(0,10)):('Cerrado en '+mesLargo(mesCierre(l)))):fmtPeriodo(l)));
           r.appendChild(lf);
           r.appendChild(el('div','mn',{fontWeight:'700',color:cerr?'var(--red)':'var(--grn)',flexShrink:'0'},(cerr?'−':'+')+COP(montoCOP(l))));
           w.appendChild(r);
