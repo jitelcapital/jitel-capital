@@ -681,7 +681,9 @@ function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw
 // ── IMAGE VIEWER (iOS-safe share) ──
 function showImageViewer(dataUrl){
   closeModal();
-  var bg=D(null,{position:'fixed',inset:'0',background:'#000',zIndex:'200',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',overflowY:'auto',padding:'12px'},null);
+  // pointerEvents:'auto': #modals tiene pointer-events:none y este fondo no usa la clase mbg
+  // (para no heredar su fondo ni su alineación); sin esto los toques lo atraviesan.
+  var bg=D(null,{position:'fixed',inset:'0',background:'#000',zIndex:'200',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',overflowY:'auto',padding:'12px',pointerEvents:'auto'},null);
   var topRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',width:'100%',maxWidth:'600px',marginBottom:'10px'},null);
   var instr=D(null,{fontSize:'13px',color:'#fff',flex:'1',lineHeight:'1.6'},null);
   instr.textContent='📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
