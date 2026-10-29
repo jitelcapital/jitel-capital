@@ -661,9 +661,19 @@ var AM=null;
 // caiga en el overlay y no en lo que hay debajo.
 var CIERRE_OVERLAY_MS=350;
 function bloquearToque(ev){ev.preventDefault();ev.stopPropagation();}
+// Guardia global: durante CIERRE_GUARDIA_MS tras cerrar un overlay se descarta cualquier click
+// que no caiga dentro del modal abierto (AM). Así un click tardío de iOS nunca llega a lo que
+// queda debajo (p. ej. "+ Nuevo", que está justo bajo la ✕ del visor de imagen).
+var CIERRE_GUARDIA_MS=500,_cierreGuardiaHasta=0;
+document.addEventListener('click',function(ev){
+  if(Date.now()>=_cierreGuardiaHasta)return;
+  if(AM&&AM.contains(ev.target))return;
+  ev.preventDefault();ev.stopImmediatePropagation();
+},true);
 function cerrarOverlay(el,e){
   if(e&&e.preventDefault){e.preventDefault();e.stopPropagation();}
   if(!el||el.dataset.cerrando==='1')return;
+  _cierreGuardiaHasta=Date.now()+CIERRE_GUARDIA_MS;
   el.dataset.cerrando='1';el.style.opacity='0';
   el.addEventListener('click',bloquearToque,true);
   el.addEventListener('touchend',bloquearToque,true);
@@ -687,7 +697,10 @@ function showImageViewer(dataUrl){
   var topRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',width:'100%',maxWidth:'600px',marginBottom:'10px'},null);
   var instr=D(null,{fontSize:'13px',color:'#fff',flex:'1',lineHeight:'1.6'},null);
   instr.textContent='📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
-  topRow.appendChild(instr);topRow.appendChild(BTN('bh','✕',closeModal,{marginLeft:'10px',flexShrink:'0'}));
+  var xBtn=BTN('bh','✕',closeModal,{marginLeft:'10px',flexShrink:'0',minWidth:'44px',minHeight:'44px'});
+  // iOS: cerrar en touchend con preventDefault cancela el click sintetizado de ese toque.
+  xBtn.addEventListener('touchend',function(e){e.preventDefault();closeModal(e);});
+  topRow.appendChild(instr);topRow.appendChild(xBtn);
   bg.appendChild(topRow);
   var img=document.createElement('img');img.src=dataUrl;img.style.cssText='width:100%;max-width:600px;border-radius:10px;display:block';
   bg.appendChild(img);
