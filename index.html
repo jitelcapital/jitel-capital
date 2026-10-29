@@ -1519,11 +1519,33 @@ function generarArrastrePendientes(mk){
 }
 
 // ── RESET ──
+// 'YYYY-MM' → "Octubre 2026" (para mensajes).
+function mesTitulo(mk){var n=mesNombreLargo(mk);return n?(n.charAt(0).toUpperCase()+n.slice(1)+' '+(mk+'').split('-')[0]):(mk||'');}
+// Pagos de préstamos ACTIVOS con periodo posterior al mes que se cierra: el cierre los archivaría
+// bajo ese mes y los quitaría del préstamo, así que dejarían de verse en su propio mes.
+function pagosPosterioresA(mk){
+  var out=[],i,j;
+  for(i=0;i<ST.loans.length;i++){
+    var l=ST.loans[i];if(l.status!=='active')continue;
+    var pg=l.pagos||[];
+    for(j=0;j<pg.length;j++){var per=pagoPeriodo(pg[j]);if(per&&per>mk)out.push({loan:l,pago:pg[j],periodo:per});}
+  }
+  return out;
+}
+// Motivo por el que NO se puede cerrar el mes 'mk' (o null si se puede). Protecciones:
+// mes ya cerrado (ST.archives[mk] existe), mes que no ha terminado, pagos de meses posteriores.
+function bloqueoCierre(mk){
+  if(!mk||!/^\d{4}-\d{2}$/.test(mk))return {titulo:'Elige un mes válido',msg:'Selecciona el mes que quieres cerrar.'};
+  if(ST.archives&&ST.archives[mk])return {titulo:mesTitulo(mk)+' ya fue cerrado',msg:'Este mes ya se archivó. Cerrarlo otra vez borraría sus pagos archivados y volvería a marcar como "falta girar" cuotas ya giradas, así que no está permitido.'};
+  if(mk>=CURR_MK)return {titulo:mesTitulo(mk)+' aún no ha terminado',msg:'Solo se puede cerrar un mes que ya terminó. Podrás cerrar '+mesTitulo(mk)+' desde el 1 de '+mesTitulo(nextMk(mk))+'.'};
+  var post=pagosPosterioresA(mk);
+  if(post.length>0)return {titulo:'Hay pagos de meses posteriores',msg:'Estos pagos son de un mes posterior a '+mesTitulo(mk)+'. Al cerrar se archivarían bajo '+mesTitulo(mk)+' y dejarían de verse en su mes. Revísalos antes de cerrar.',pagos:post};
+  return null;
+}
 function showReset(){
   var step=1;var cur=null;
-  // Sugerido: el mes anterior si hoy es del día 1 al 5 (pagos tardíos de fin de mes aún sin
-  // registrar); si no, el mes actual.
-  var mesElegido=(TODAY_DIA<=5)?prevMk(CURR_MK):CURR_MK;
+  // Sugerido: el mes anterior (solo se puede cerrar un mes que ya terminó).
+  var mesElegido=prevMk(CURR_MK);
   function render(){
     var m=D('modal',null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);margin-bottom:14px';h2.textContent='🔄 Reinicio Mensual';m.appendChild(h2);
     if(step===1){
@@ -1533,8 +1555,34 @@ function showReset(){
       m.appendChild(info);
       var mkIn=INP({type:'month',value:mesElegido});mkIn.addEventListener('change',function(e){mesElegido=e.target.value;});
       m.appendChild(FLD('Mes a cerrar',mkIn));
-      var brow=D(null,{display:'flex',gap:'8px'},null);brow.appendChild(BTN('ba','Continuar →',function(){step=2;refresh();},null));brow.appendChild(BTN('bh','Cancelar',closeModal,null));m.appendChild(brow);
+      var brow=D(null,{display:'flex',gap:'8px'},null);brow.appendChild(BTN('ba','Continuar →',function(){step=2;refresh();},null));brow.appendChild(BTN('bh','Cancelar',closeModal,null));m.appendChild(brow); // el paso 2 muestra el bloqueo si lo hay
     } else {
+      var bloq=bloqueoCierre(mesElegido);
+      if(bloq){
+        // Cierre BLOQUEADO: solo se explica el motivo, sin botón para confirmar.
+        var bx=D(null,{background:'var(--c-danger-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'14px',marginBottom:'14px'},null);
+        bx.setAttribute('data-cierre-bloqueado','1');
+        bx.appendChild(D(null,{color:'var(--c-danger-txt)',fontWeight:'700',fontSize:'15px',marginBottom:'6px'},'🔒 '+bloq.titulo));
+        bx.appendChild(D(null,{color:'var(--c-danger-txt)',fontSize:'13px',lineHeight:'1.5'},bloq.msg));
+        m.appendChild(bx);
+        if(bloq.pagos){
+          var pl=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px',maxHeight:'200px',overflowY:'auto'},null);
+          for(var bp=0;bp<bloq.pagos.length;bp++){
+            var it=bloq.pagos[bp];
+            var br=D(null,{display:'flex',justifyContent:'space-between',gap:'8px',padding:'5px 0',borderBottom:bp<bloq.pagos.length-1?'1px solid var(--bor)':'none',fontSize:'12px',cursor:'pointer'},null);
+            (function(lid){br.addEventListener('click',function(){showLoanDetail(lid);});})(it.loan.id);
+            var brl=D(null,{color:'var(--mut)'},null);brl.textContent=(it.loan.socio||'—')+' · '+it.loan.responsable+' · día '+it.loan.dia+' · pagó '+(it.pago.fecha||'—');
+            var brr=D(null,{textAlign:'right',color:'var(--red)',fontWeight:'700',whiteSpace:'nowrap'},null);brr.textContent='cuota '+mesTitulo(it.periodo);
+            br.appendChild(brl);br.appendChild(brr);pl.appendChild(br);
+          }
+          m.appendChild(pl);
+        }
+        var bb=D(null,{display:'flex',gap:'8px'},null);
+        bb.appendChild(BTN('bh','← Elegir otro mes',function(){step=1;refresh();},{flex:'1'}));
+        bb.appendChild(BTN('bh','Cerrar',closeModal,{flex:'1'}));
+        m.appendChild(bb);
+        return m;
+      }
       var warn=D(null,{background:'var(--c-warn-bg)',border:'1px solid var(--red)',borderRadius:'10px',padding:'14px',marginBottom:'14px'},null);
       warn.appendChild(D(null,{color:'var(--red)',fontWeight:'700',marginBottom:'8px'},'⚠️ Confirma el reinicio'));
       warn.appendChild(D(null,null,'Se archivará el mes '+mesElegido+'. No se puede deshacer.'));
@@ -1580,10 +1628,18 @@ function showReset(){
         }
         m.appendChild(sgList);
       }
+      // Recordatorio: exportar el backup justo antes (el cierre no se puede deshacer).
+      var bkr=D(null,{background:'var(--c-info-bg)',border:'1px solid var(--blu)',borderRadius:'10px',padding:'12px',marginBottom:'14px'},null);
+      bkr.setAttribute('data-recordatorio-backup','1');
+      bkr.appendChild(D(null,{fontSize:'13px',fontWeight:'700',color:'var(--blu)',marginBottom:'4px'},'💾 Exporta un backup antes de cerrar'));
+      bkr.appendChild(D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'8px',lineHeight:'1.5'},'El cierre no se puede deshacer. El backup es la única forma de volver atrás.'));
+      bkr.appendChild(BTN('bb','💾 Exportar backup ahora',function(){exportBackupCSV();},{width:'100%',fontSize:'12px'}));
+      m.appendChild(bkr);
       var brow2=D(null,{display:'flex',gap:'8px'},null);
       brow2.appendChild(BTN('br','Sí, reiniciar mes',function(){
         function doReset(){
           var mk=mesElegido;
+          if(bloqueoCierre(mk)){closeModal();showToast('🔒 No se puede cerrar '+mesTitulo(mk));return;} // defensa final
           // Arrastre de cuotas sin resolver del mes que se cierra — ANTES de tocar nada más.
           generarArrastrePendientes(mk);
           // Foto mensual por socio del mes que se cierra.
@@ -1603,16 +1659,7 @@ function showReset(){
           ST.loans=nl;saveST();closeModal();renderApp();
           showToast('✅ Mes '+mk+' archivado');
         }
-        // Si ya existe una foto mensual para este mes, no sobrescribirla sin confirmar aparte.
-        if(ST.snapshots&&ST.snapshots[mesElegido]){
-          showConfirm({
-            title:'¿Sobrescribir foto del mes?',
-            msg:'Ya existe una foto mensual por socio para '+mesElegido+'. Reiniciar el mes la reemplazará.',
-            confirmLbl:'Sí, sobrescribir',
-            danger:true,
-            onConfirm:doReset
-          });
-        }else doReset();
+        doReset(); // un mes ya cerrado está bloqueado (bloqueoCierre): no hay opción de sobrescribir
       },{flex:'1'}));
       brow2.appendChild(BTN('bh','← Atrás',function(){step=1;refresh();},null));m.appendChild(brow2);
     }
@@ -2553,6 +2600,8 @@ function loadGiros(cb){
   });
 }
 function girosCsvRow(){return '"__GIROS__","'+JSON.stringify(GIROS).replace(/"/g,'""')+'",,,,,,,,,,,,,,,,,,';}
+// Fotos mensuales por socio (ST.snapshots) en el backup, fila especial igual que __ARCHIVES__.
+function snapshotsCsvRow(){return '"__SNAPSHOTS__","'+JSON.stringify(ST.snapshots||{}).replace(/"/g,'""')+'",,,,,,,,,,,,,,,,,,';}
 
 // Creates a checkbox button wired to sumToggle. Initial state read from current scope.
 function sumCheckbox(loanId){
@@ -3876,6 +3925,7 @@ function exportBackupCSV(){
   var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
   lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
   lines.push(girosCsvRow()); // giros a socios (JSON), fila especial igual que __ARCHIVES__
+  lines.push(snapshotsCsvRow()); // fotos mensuales por socio (ST.snapshots)
   var csv=lines.join('\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
@@ -3926,12 +3976,16 @@ function importBackupCSV(file,onDone){
       function gInt(row,name){return parseInt(g(row,name))||0;}
       function gBool(row,name){var v=g(row,name);return v==='1'||v==='true';}
 
-      var loansMap={},archives={},skipped=0,girosCsv=[];
+      var loansMap={},archives={},skipped=0,girosCsv=[],snapshotsCsv=null;
       for(var ri=1;ri<rows.length;ri++){
         var row=rows[ri];
         if(!row||!row[0]||row[0]==='')continue;
         if(row[0]==='__ARCHIVES__'){
           try{archives=JSON.parse(row[1]||'{}');}catch(er){archives={};}
+          continue;
+        }
+        if(row[0]==='__SNAPSHOTS__'){
+          try{snapshotsCsv=JSON.parse(row[1]||'{}');}catch(er){snapshotsCsv=null;}
           continue;
         }
         if(row[0]==='__GIROS__'){
@@ -3989,7 +4043,10 @@ function importBackupCSV(file,onDone){
       if(skipped>0)msg+='\n⚠️ '+skipped+' filas omitidas (formato inválido).';
       msg+='\n\nEsto reemplazará todos los datos actuales.';
       if(!confirm(msg))return;
-      ST.loans=loans;ST.archives=archives||{};saveST();
+      ST.loans=loans;ST.archives=archives||{};
+      // Backups viejos no traen fotos mensuales: en ese caso se conservan las actuales.
+      if(snapshotsCsv&&typeof snapshotsCsv==='object')ST.snapshots=snapshotsCsv;
+      saveST();
       // Giros: solo se agregan los que falten (nunca se reemplazan ni se borran) y no se suben a la nube.
       if(mergeGiros(girosCsv)>0)saveGirosLocal();
       renderApp();
@@ -5008,6 +5065,7 @@ function gdriveBuildCSV(){
   var archJson=JSON.stringify(ST.archives||{}).replace(/"/g,'""');
   lines.push('"__ARCHIVES__","'+archJson+'",,,,,,,,,,,,,,,,,,');
   lines.push(girosCsvRow()); // giros a socios (JSON), fila especial igual que __ARCHIVES__
+  lines.push(snapshotsCsvRow()); // fotos mensuales por socio (ST.snapshots)
   return lines.join('\n');
 }
 
