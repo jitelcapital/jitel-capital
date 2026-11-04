@@ -3,3 +3,6 @@ credenciales.md
 
 # macOS
 .DS_Store
+
+# Backups y exportes con datos reales — nunca subir al repo
+*.csv
