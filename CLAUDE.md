@@ -126,15 +126,21 @@ var ST = {
 - **Protecciones** (`bloqueoCierre(mk)`; si alguna aplica, el paso 2 muestra el motivo y **no** hay botón para confirmar; `doReset` vuelve a comprobarlo):
   1. **Mes ya cerrado**: si `ST.archives[mk]` existe → "Octubre 2026 ya fue cerrado". No existe opción de sobrescribir: cerrarlo otra vez borraría los pagos archivados de los activos y volvería a marcar como "falta girar" cuotas ya giradas.
   2. **Mes que no ha terminado**: `mk >= CURR_MK` → solo se puede cerrar desde el 1 del mes siguiente.
-  3. **Pagos de meses posteriores**: si algún préstamo activo tiene en `pagos` un pago con periodo > `mk` (`pagosPosterioresA`), se listan y se bloquea; el cierre los archivaría bajo `mk` y los quitaría del préstamo.
+- **Pagos de meses posteriores** (`pagosPosterioresA`): préstamos activos con pagos de periodo > `mk`. **No bloquean**: el paso 2 los muestra como aviso ("📌 N pagos de meses posteriores…"), porque el cierre los deja en el préstamo. Si alguno en realidad era de `mk`, se corrige su periodo antes de cerrar (ver "Corregir el periodo de un pago").
 - Antes de confirmar muestra las cuotas sin cobrar o sin girar del mes (`loansPendientesParaCierre`), las **cobradas sin girar hace más de 3 días** por socio, y un **recordatorio para exportar el backup** (botón "💾 Exportar backup ahora").
 - **No se puede deshacer** desde la app: la única vuelta atrás es restaurar el backup exportado justo antes.
 - Hacerlo desde **un solo dispositivo** y recargar la app en los demás: una sesión abierta con datos viejos reescribe `prestamos` y `config/global` completos en su siguiente `saveST()`.
 - Al confirmar (`doReset`), en este orden:
-  1. `generarArrastrePendientes(mk)`: cada cuota sin resolver del mes pasa a `loan.cuotas_pendientes` con su `recibido`/`pagado_socio`.
+  1. `generarArrastrePendientes(mk)`: cada cuota sin resolver del mes pasa a `loan.cuotas_pendientes` con su `recibido`/`pagado_socio` (`estadoCuotaCierre`: los flags del préstamo; si el préstamo ya tiene pagos de meses posteriores, `recibido = hasPagoForPeriodo(l, mk)` y `pagado_socio = !!giroDeCuota(l.id, mk)`, porque los flags pueden ser de esos meses). `loansPendientesParaCierre` usa el mismo criterio.
   2. `ST.snapshots[mk] = buildSociosSnapshot()`.
-  3. `ST.archives[mk]` = pagos de todos los préstamos.
-  4. Préstamos activos: `pagos=[]`, `recibido=false`, `pagado_socio=false`. Los cerrados conservan sus pagos.
+  3. `ST.archives[mk]` = pagos de todos los préstamos con periodo **<= `mk`**.
+  4. Préstamos activos: se quitan de `pagos` los archivados y **se quedan los de periodo > `mk`**. `recibido` y `pagado_socio` pasan a ser los del ciclo que sigue abierto (`nextMk(mk)`): `recibido` = queda un pago de ese periodo; `pagado_socio` = un giro vigente cubre esa cuota (`giroDeCuota`), así que lo sigue poniendo solo un giro. Los cerrados conservan todos sus pagos.
+- Un pago tardío (periodo < `mk` ya archivado) que sigue en `pagos` se archiva también bajo `mk` al cerrarlo, como antes. Las comprobaciones por periodo (`hasPagoForPeriodo`) no se confunden, porque miran `pagoPeriodo`.
+
+### Corregir el periodo de un pago
+- En `showLoanDetail` → "Historial de pagos", cada pago muestra "Cuota de MES AÑO" y, **solo para admin** (`isAdmin()`), el botón "✏️ Periodo": mes nuevo + "Guardar periodo" + confirmación (`showConfirm`).
+- `corregirPeriodoPago(lid, pagoId, nuevo)` cambia `pago.periodo`, lo saca de `ST.archives[viejo][lid]`, lo agrega a `ST.archives[nuevo][lid]` si ese mes está cerrado (igual que `aplicarPagoALoan`), recalcula `recibido` de las cuotas arrastradas de ambos periodos con `hasPagoForPeriodo`, y el `recibido` del préstamo si alguno es `CURR_MK`.
+- **No toca `pagado_socio`**. Si la cuota del periodo viejo ya tiene un giro vigente, se rechaza: primero hay que anular el giro.
 - Una cuota arrastrada está resuelta cuando tiene pago para su periodo **y** (`pagado_socio` o `isJulianLoan`). Las sin resolver se ven en Cobros → "Pendientes del mes anterior".
 
 ---
