@@ -335,8 +335,11 @@ function loanEndMk(l){
   var mo=idx+1;
   return l.año+'-'+(mo<10?'0'+mo:String(mo));
 }
-// Meses que el préstamo estuvo activo: desde mes_comienzo hasta el mes de mes_fin/año, inclusive.
-function loanMesesActivo(l){var endMk=loanEndMk(l);if(!l.mes_comienzo||!endMk)return 0;return monthsElapsed(l.mes_comienzo,endMk);}
+// Meses COBRADOS hasta uptoMk — igual que mesesCobrados de socio.html: el mes de mes_comienzo
+// no se cobra, se cobra desde el mes siguiente (un préstamo que empezó este mes suma 0).
+function mesesCobrados(mesComienzo,uptoMk){var n=monthsElapsed(mesComienzo,uptoMk)-1;return n>0?n:0;}
+// Meses activos (cobrados) de un préstamo: desde el mes siguiente a mes_comienzo hasta el mes de mes_fin/año.
+function loanMesesActivo(l){var endMk=loanEndMk(l);if(!l.mes_comienzo||!endMk)return 0;return mesesCobrados(l.mes_comienzo,endMk);}
 // Total de intereses de socio en la vida del préstamo, en COP. Se CALCULA (no se suma pagos[]),
 // porque el reinicio mensual archiva/borra los pagos de meses pasados de préstamos activos.
 function loanTotalInteresSocio(l){return loanMesesActivo(l)*ISc(l);}
@@ -3267,12 +3270,14 @@ function vEvolucion(){
   for(var mi=0;mi<months.length;mi++){
     var mk=months[mi];var totalIP=0,totalCap=0,cnt=0;
     if(mk===CURR_MK){
-      for(j=0;j<ST.loans.length;j++){var l=ST.loans[j];if(l.status==='active'){totalIP+=IPc(l);totalCap+=montoCOP(l);cnt++;}}
+      // Mes actual: solo los activos que ya se cobran (los que empezaron este mes no generan aún)
+      for(j=0;j<ST.loans.length;j++){var l=ST.loans[j];if(l.status==='active'&&isCollectable(l)){totalIP+=IPc(l);totalCap+=montoCOP(l);cnt++;}}
     }else{
+      // Mes cerrado: préstamos con un interés archivado real (el pago simbólico "Mes de apertura" no cuenta)
       var arc=ST.archives[mk]||{};var lids=Object.keys(arc);
       for(k=0;k<lids.length;k++){
         var lid=lids[k];var pagos=arc[lid]||[];var hasInt=false;
-        for(var p=0;p<pagos.length;p++){if(pagos[p].tipo==='interes'){hasInt=true;break;}}
+        for(var p=0;p<pagos.length;p++){if(pagos[p].tipo==='interes'&&!esPagoApertura(pagos[p])){hasInt=true;break;}}
         if(!hasInt)continue;
         var loan=loanById[lid];if(!loan)continue;
         totalIP+=IPc(loan);totalCap+=montoCOP(loan);cnt++;
@@ -3399,8 +3404,10 @@ function vDashboard(){
   var totCap=0,totP=0,totSoc=0,mora=0,myPaidR=0,myPendingR=0;
   for(i=0;i<active.length;i++){
     totCap+=montoCOP(active[i]);
-    totP+=IPc(active[i]);
     totSoc+=ISc(active[i]);
+    // Ganancia mes, Mi cobrado/Mi pendiente y mora: solo préstamos que ya se cobran este mes
+    if(!isCollectable(active[i]))continue;
+    totP+=IPc(active[i]);
     if(!paidMth(active[i])&&active[i].dia<TODAY_DIA)mora++;
     if(paidMth(active[i]))myPaidR+=IPc(active[i]);else myPendingR+=IPc(active[i]);
   }
