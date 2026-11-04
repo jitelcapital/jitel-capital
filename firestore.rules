@@ -20,8 +20,17 @@ service cloud.firestore {
     match /pagos/{loanId}/pagos/{pagoId} {
       allow read, write: if isAdmin();
     }
+    // Versión actual de config/global (0 si el documento no existe o aún no tiene version).
+    function versionActual() {
+      return (resource == null || !('version' in resource.data)) ? 0 : resource.data.version;
+    }
     match /config/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      // config/global solo se escribe subiendo la versión en exactamente 1: así una app con
+      // datos viejos (o con código viejo, sin version) no puede reescribir lo que guardó otro.
+      allow create, update: if isAdmin()
+        && (docId != 'global' || request.resource.data.version == versionActual() + 1);
+      allow delete: if isAdmin();
     }
     match /socios/{code} {
       allow read, write: if isAdmin();

@@ -5350,6 +5350,8 @@ function loadFromFirestore(cb){
       if(c.archives&&typeof c.archives==='object')result.archives=c.archives;
       if(c.snapshots&&typeof c.snapshots==='object')result.snapshots=c.snapshots;
     }
+    // Versión de config/global que se cargó (0 si aún no tiene) — no es parte de ST.
+    result._version=(cfg&&cfg.exists&&typeof (cfg.data()||{}).version==='number')?cfg.data().version:0;
     cb(result);
   }).catch(function(e){
     console.warn('[Firebase] Error leyendo Firestore — usando localStorage:',e&&e.message);
@@ -5387,7 +5389,7 @@ function loadSTAsync(cb){
       loadFromFirestore(function(data){
         if(settled)return;settled=true;
         clearTimeout(timer);
-        if(data&&data.loans&&data.loans.length>0){ST=data;syncInd('cloud');finish();}
+        if(data&&data.loans&&data.loans.length>0){fbAdoptarNube(data);syncInd('cloud');finish();}
         else if(data===null&&attempt<MAX){tryLoad();}
         else{useLocal();}
       });
@@ -5486,26 +5488,101 @@ function flushPendingDeletes(){
   var ids=_pendingDeletes.slice();_pendingDeletes=[];
   for(var i=0;i<ids.length;i++)fbDeleteDoc(ids[i]);
 }
+// ── Control de versión de la nube: evita que un dispositivo con datos viejos en memoria
+// reescriba lo que guardó otro. config/global.version sube en 1 en cada guardado.
+// FB_VERSION: la versión que este dispositivo cargó (o escribió por última vez); null si sus
+// datos no vienen de la nube (localStorage). _fbBase: id → huella del préstamo tal como está
+// en la nube según este dispositivo, para escribir solo los préstamos que cambiaron.
+var FB_VERSION=null,_fbBase={},_fbBaseCfg=null;
+function cfgHuella(){return jsonEstable({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{}});}
+// JSON con las claves ordenadas, para comparar préstamos sin importar el orden de los campos.
+function jsonEstable(v){
+  if(v===null||typeof v!=='object')return JSON.stringify(v);
+  if(Array.isArray(v))return '['+v.map(function(x){return x===undefined?'null':jsonEstable(x);}).join(',')+']';
+  var ks=Object.keys(v).sort(),out=[],i;
+  for(i=0;i<ks.length;i++){if(v[ks[i]]!==undefined)out.push(JSON.stringify(ks[i])+':'+jsonEstable(v[ks[i]]));}
+  return '{'+out.join(',')+'}';
+}
+// Huella de un préstamo para el diff: todos sus campos salvo socio_email, más el email que
+// tendría en la nube (el de SOCIOS_MAP si ya se cargó; si no, el que trae el préstamo).
+function loanHuella(l){
+  var c={},k;for(k in l){if(l.hasOwnProperty(k)&&k!=='socio_email')c[k]=l[k];}
+  var n=(l.socio||'').toUpperCase();
+  return jsonEstable(c)+'|'+(SOCIOS_MAP.hasOwnProperty(n)?SOCIOS_MAP[n]:(l.socio_email||null));
+}
+// Adopta datos recién leídos de Firestore (loadFromFirestore) como ST, su versión y su base.
+function fbAdoptarNube(data){
+  FB_VERSION=data._version||0;delete data._version;
+  ST=data;_fbBase={};
+  for(var i=0;i<ST.loans.length;i++)_fbBase[ST.loans[i].id]=loanHuella(ST.loans[i]);
+  _fbBaseCfg=cfgHuella();
+}
+// Otro dispositivo guardó después de que este cargó: no se escribe nada, se avisa y se recargan
+// los datos de la nube (los cambios locales sin guardar se pierden; localStorage queda con la nube).
+function fbConflictoVersion(){
+  syncInd('local');
+  showSyncError('⚠️ Hay cambios desde otro dispositivo, recarga. Se cargaron los datos más recientes; tu último cambio no se guardó.');
+  loadFromFirestore(function(data){
+    if(!data||!data.loans||data.loans.length===0)return;
+    fbAdoptarNube(data);saveLocalOnly();syncInd('cloud');renderApp();
+  });
+}
+var _fbPushing=false,_fbPushAgain=false; // un guardado a la vez por dispositivo
 function fbPushAll(){
   if(!FB.ready||!FB.db||!isAdmin())return;
+  if(_fbPushing){_fbPushAgain=true;return;} // el siguiente sale cuando termine el que está en curso
   flushPendingDeletes(); // arrastra cualquier borrado pendiente que hubiera fallado antes
   flushPendingGiros();   // y cualquier giro que no se pudo escribir
   try{
-    var loans=ST.loans||[],i,chunk=400;
-    // Escribe en lotes (límite Firestore 500 ops/batch).
-    function pushChunk(start){
-      var batch=FB.db.batch();
-      var end=Math.min(start+chunk,loans.length),n;
-      for(n=start;n<end;n++){var l=loans[n];if(!l.id)l.id=GID();batch.set(FB.db.collection('prestamos').doc(l.id),loanToDoc(l));}
-      if(end>=loans.length)batch.set(FB.db.collection('config').doc('global'),{currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()});
-      batch.commit().then(function(){
-        if(end<loans.length){pushChunk(end);}
-        else{pushPortalClientes();syncInd('cloud');}
-      }).catch(function(e){console.warn('[Firebase] Error de sincronización:',e&&e.message);syncInd('local');notifySyncFailed();});
+    // Solo los préstamos nuevos o que cambiaron respecto a la base. Una transacción admite
+    // 500 escrituras: config/global + hasta 450 préstamos van juntos; si hay más (p.ej. al
+    // importar un backup), el resto se escribe en lotes después de confirmar la versión.
+    var cambios=[],vivos={},quitados=[],i;
+    for(i=0;i<(ST.loans||[]).length;i++){
+      var l=ST.loans[i];if(!l.id)l.id=GID();vivos[l.id]=true;
+      var h=loanHuella(l);if(_fbBase[l.id]!==h)cambios.push({l:l,h:h});
     }
-    if(loans.length===0){FB.db.collection('config').doc('global').set({currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()}).then(function(){pushPortalClientes();syncInd('cloud');}).catch(function(){syncInd('local');notifySyncFailed();});}
-    else pushChunk(0);
-  }catch(e){console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');notifySyncFailed();}
+    // Préstamos borrados en este dispositivo: el doc lo borra fbDeleteDoc, pero cuentan como
+    // cambio para que la versión suba y los demás dispositivos recarguen.
+    for(var bid in _fbBase){if(_fbBase.hasOwnProperty(bid)&&!vivos[bid])quitados.push(bid);}
+    var ch=cfgHuella();
+    // Nada que guardar: no se escribe ni sube la versión (no provoca avisos en otros dispositivos).
+    if(cambios.length===0&&quitados.length===0&&ch===_fbBaseCfg&&FB_VERSION!==null){syncInd('cloud');return;}
+    var enTx=cambios.slice(0,450),resto=cambios.slice(450);
+    var cfgRef=FB.db.collection('config').doc('global');
+    var cfg={currMk:CURR_MK,archives:ST.archives||{},snapshots:ST.snapshots||{},updatedAt:Date.now()};
+    var esperada=FB_VERSION;
+    _fbPushing=true;
+    FB.db.runTransaction(function(tx){
+      return tx.get(cfgRef).then(function(doc){
+        var remota=(doc.exists&&typeof (doc.data()||{}).version==='number')?doc.data().version:0;
+        // Datos que no vienen de la nube (esperada null): solo se escriben si la nube está vacía.
+        if(doc.exists&&(esperada===null||remota>esperada))return {conflicto:true};
+        for(var j=0;j<enTx.length;j++)tx.set(FB.db.collection('prestamos').doc(enTx[j].l.id),loanToDoc(enTx[j].l));
+        cfg.version=remota+1;
+        tx.set(cfgRef,cfg);
+        return {conflicto:false,version:remota+1};
+      });
+    }).then(function(r){
+      if(r.conflicto){_fbPushing=false;_fbPushAgain=false;fbConflictoVersion();return;}
+      FB_VERSION=r.version;_fbBaseCfg=ch;
+      for(var j=0;j<enTx.length;j++)_fbBase[enTx[j].l.id]=enTx[j].h;
+      for(j=0;j<quitados.length;j++)delete _fbBase[quitados[j]];
+      function pushResto(start){
+        if(start>=resto.length)return Promise.resolve();
+        var batch=FB.db.batch(),end=Math.min(start+400,resto.length),n;
+        for(n=start;n<end;n++)batch.set(FB.db.collection('prestamos').doc(resto[n].l.id),loanToDoc(resto[n].l));
+        return batch.commit().then(function(){for(n=start;n<end;n++)_fbBase[resto[n].l.id]=resto[n].h;return pushResto(end);});
+      }
+      return pushResto(0).then(function(){
+        pushPortalClientes();syncInd('cloud');
+        _fbPushing=false;if(_fbPushAgain){_fbPushAgain=false;fbPushAll();}
+      });
+    }).catch(function(e){
+      console.warn('[Firebase] Error de sincronización:',e&&e.message);
+      _fbPushing=false;_fbPushAgain=false;syncInd('local');notifySyncFailed();
+    });
+  }catch(e){_fbPushing=false;console.warn('[Firebase] Excepción en sincronización:',e&&e.message);syncInd('local');notifySyncFailed();}
 }
 
 // ── Helper de arranque: crea el perfil admin para el usuario actual (uso único) ──

@@ -129,7 +129,7 @@ var ST = {
 - **Pagos de meses posteriores** (`pagosPosterioresA`): préstamos activos con pagos de periodo > `mk`. **No bloquean**: el paso 2 los muestra como aviso ("📌 N pagos de meses posteriores…"), porque el cierre los deja en el préstamo. Si alguno en realidad era de `mk`, se corrige su periodo antes de cerrar (ver "Corregir el periodo de un pago").
 - Antes de confirmar muestra las cuotas sin cobrar o sin girar del mes (`loansPendientesParaCierre`), las **cobradas sin girar hace más de 3 días** por socio, y un **recordatorio para exportar el backup** (botón "💾 Exportar backup ahora").
 - **No se puede deshacer** desde la app: la única vuelta atrás es restaurar el backup exportado justo antes.
-- Hacerlo desde **un solo dispositivo** y recargar la app en los demás: una sesión abierta con datos viejos reescribe `prestamos` y `config/global` completos en su siguiente `saveST()`.
+- Conviene hacerlo desde **un solo dispositivo**. Una sesión abierta con datos viejos ya no reescribe la nube (ver "Control de versión"): su siguiente guardado se rechaza, avisa y recarga.
 - Al confirmar (`doReset`), en este orden:
   1. `generarArrastrePendientes(mk)`: cada cuota sin resolver del mes pasa a `loan.cuotas_pendientes` con su `recibido`/`pagado_socio` (`estadoCuotaCierre`: los flags del préstamo; si el préstamo ya tiene pagos de meses posteriores, `recibido = hasPagoForPeriodo(l, mk)` y `pagado_socio = !!giroDeCuota(l.id, mk)`, porque los flags pueden ser de esos meses). `loansPendientesParaCierre` usa el mismo criterio.
   2. `ST.snapshots[mk] = buildSociosSnapshot()`.
@@ -229,14 +229,23 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 
 **Lectura**: `loadSTAsync(cb)` → Firestore primero (`loadFromFirestore`), si vacío/falla usa `loadST()` (localStorage), si nada usa `mkInit()`.
 
-**Escritura**: `saveST()` = `saveLocalOnly()` (siempre) + `fbSyncDebounced()` (solo admin, 1.5s → `fbPushAll()`: docs `prestamos/{id}` + `config/global` en lotes, luego `pushPortalClientes()`). Nunca bloquea ni lanza. Los borrados de préstamos van aparte con `fbDeleteDoc` (reintento + cola `_pendingDeletes`); los giros con `fbCreateGiro` (ver "Giros").
+**Escritura**: `saveST()` = `saveLocalOnly()` (siempre) + `fbSyncDebounced()` (solo admin, 1.5s → `fbPushAll()`: **solo los `prestamos/{id}` que cambiaron** + `config/global`, en una transacción con control de versión; luego `pushPortalClientes()`). Nunca bloquea ni lanza.
+
+**Control de versión** (`config/global.version`):
+- Al cargar desde la nube, `fbAdoptarNube(data)` guarda la versión leída en `FB_VERSION` (0 si el doc aún no tiene `version`). También guarda en `_fbBase` la huella de cada préstamo (`loanHuella`: JSON con claves ordenadas, sin `socio_email`, más el email que le toca), y en `_fbBaseCfg` la de `currMk/archives/snapshots`.
+- `fbPushAll` arma los cambios: préstamos nuevos o con huella distinta, préstamos borrados en este dispositivo, o config distinta. Si no hay ninguno, **no escribe ni sube la versión**. Si hay, hace `runTransaction`: lee `config/global` y:
+  - si la versión remota es **mayor** que `FB_VERSION`, o este dispositivo no cargó de la nube (`FB_VERSION === null`) y el doc existe → **no escribe nada**. `fbConflictoVersion()` muestra "⚠️ Hay cambios desde otro dispositivo, recarga…" y recarga los datos de la nube; el cambio local que no se guardó se pierde;
+  - si coincide → escribe los préstamos cambiados (hasta 450 en la transacción) y `config/global` con `version + 1`. Actualiza `FB_VERSION` y la base. Si hay más de 450 cambios (p.ej. al importar un backup), el resto va en lotes después de la transacción.
+- Un guardado a la vez por dispositivo (`_fbPushing` / `_fbPushAgain`), para que dos guardados seguidos del mismo dispositivo no choquen entre sí.
+- Los borrados siguen yendo aparte por `fbDeleteDoc`, pero cuentan como cambio, así que suben la versión.
+- La regla de `config/{docId}` exige que cada escritura de `config/global` suba `version` en exactamente 1. Así una pestaña con el código viejo, que escribe sin `version`, queda rechazada. Los borrados de préstamos van aparte con `fbDeleteDoc` (reintento + cola `_pendingDeletes`); los giros con `fbCreateGiro` (ver "Giros").
 
 **Estructura Firestore**:
 - `usuarios/{uid}` → `{ perfil: { nombre, rol:'admin'|'socio'|'cliente', socioNombre } }`
 - `socios/{code}` → `{ email, nombre, createdAt }` — se crea con `jitelSocioAdd(code, email, NOMBRE)`; alimenta `SOCIOS_MAP` (nombre → email)
 - `prestamos/{loanId}` → todos los campos de un loan + `socio_email`
 - `giros/{giroId}` → giros a socios (solo creación)
-- `config/global` → `{ currMk, archives, snapshots, updatedAt }`
+- `config/global` → `{ currMk, archives, snapshots, updatedAt, version }`. `version` sube en 1 en cada guardado (ver "Control de versión")
 - `portal_clientes/dayam` → **copia pública** para `dayam.html`, construida por `buildPortalClienteDoc('DAYAM')` en cada sync. Solo campos no sensibles: `id, dia, capital (COP), pago_mensual (COP), mes_fin, año, mes_comienzo, status, continuacion_de, recibido, pagos:[{periodo, fecha}], cuotas_pendientes:[{periodo, recibido}]`. **Nunca** incluir socio, socio_email, tasas, moneda, tasa_cambio, nota ni cierre_tipo.
 - `pagos/{loanId}/pagos/{pagoId}` → copia normalizada creada solo por la migración inicial (no se sincroniza en vivo)
 
@@ -251,7 +260,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 |------|---------|-----------|
 | `usuarios/{uid}` | el propio usuario (`auth.uid == uid`) o admin | solo admin (nadie puede escribir su propio perfil, para que no pueda darse `rol: 'admin'`) |
 | `pagos/{loanId}/pagos/{pagoId}` | admin | admin |
-| `config/{docId}` | admin | admin |
+| `config/{docId}` | admin | admin; en `config/global`, crear o actualizar solo con `version` = versión actual + 1 (0 si no tiene) |
 | `socios/{code}` | admin, o el socio cuyo `email` es su correo | admin |
 | `prestamos/{loanId}` | admin, o el socio cuyo `socio_email` es su correo | admin (crear, editar y borrar) |
 | `giros/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | **solo crear**, admin; `update` y `delete` prohibidos para todos |
@@ -261,6 +270,7 @@ Cualquier cambio de código que lea o escriba Firestore debe respetar estas regl
 
 **Funciones de consola** (expuestas en `window`): `migrarAFirebase()`, `jitelBootstrapAdmin('Julián')`, `jitelSocioAdd(code, email, NOMBRE)`, `jitelLogout()`.
 - `jitelBootstrapAdmin` **ya no funciona con las reglas vigentes**: escribía el propio `usuarios/{uid}` desde un usuario que aún no era admin, y eso ya no está permitido. El admin ya existe; un perfil nuevo se crea desde Firebase Console o con una sesión admin.
+- `migrarAFirebase` escribe `config/global` sin `version`, así que la regla vigente la rechaza. Es una herramienta de la migración inicial, que ya se hizo.
 - `jitelSocioAdd` guarda el email con `trim()` y `toLowerCase()`, porque las reglas comparan contra el correo de la sesión en minúsculas.
 
 **App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol (`firestore.rules`).
