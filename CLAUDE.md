@@ -84,6 +84,12 @@ Todo mensaje al socio que hable de un pago o cuota identifica **cada préstamo**
 - Lo usan `waGiroMsg` (vía `giroLineas`, que ahora devuelve también `loan` y `periodo`), `waSocioMsg(name, dia, amt, fecha, periodo, loans)` (modal "Notificar a socios" y copia rápida de un préstamo) y el mensaje multi-día (`showMensajeMultidia`, debajo de cada "Día X").
 - **Nunca** incluir el nombre del cliente, la tasa del cliente (`int_socio + int_propio`) ni `int_propio`. El resto del mensaje (monto, fecha, modalidad, referencia) no cambia.
 
+### Mensajes de préstamo nuevo
+Al guardar en +Nuevo (`showNewLoan`) se abre `showNewLoanMessagesModal(loan)`, con el mismo patrón que `showCloseMessagesModal` (WhatsApp / Copiar / Ver mensaje):
+- **Al socio** (`waNuevoSocioMsg`): "Hola X 👋, tienes un préstamo nuevo", el bloque de `socioLoanLines` sin la línea de cuota (capital, día, plazo, interés/mes y tasa del socio) y "Primer pago: Mes AAAA" (`primerPagoMk`: mes siguiente a `mes_comienzo`). Sin nombre del cliente ni `int_propio`. Una continuación se anuncia igual, **sin** mencionar traspaso ni continuación. No se ofrece si `isJulianLoan`.
+- **Al cliente** (`waNuevoClienteMsg`): capital y cuota mensual (`cobrarCliente`, con `fmtDual` si es USD), día de pago, primer pago y vencimiento (`mes_fin` + `año`). Sin socios ni tasas. **No se ofrece si es continuación** (`continuacion_de`): para el cliente nada cambia.
+- Préstamo de JULIAN que además es continuación: no se muestra el modal.
+
 ---
 
 ## Modelo de datos `ST`

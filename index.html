@@ -634,6 +634,27 @@ function waFinalizadoSocioMsg(loan,fechaCierre){
   var meses=loanMesesActivo(loan),tot=loanTotalInteresSocio(loan);
   return '✅ CAPITAL FINALIZADO\nHola '+loan.socio+' 👋\n\nTu capital de '+COP(montoCOP(loan))+' ya no está activo — el crédito finalizó el '+fmtFechaLargaISO(fechaCierre)+'.\n📈 Total de intereses recibidos: '+COP(tot)+' ('+meses+' mes'+(meses!==1?'es':'')+')\n\n¡Gracias por tu confianza! 🙏';
 }
+// ── MENSAJES DE PRÉSTAMO NUEVO ──
+// "Mes AAAA" con mayúscula inicial a partir de 'YYYY-MM' (ej. 'Diciembre 2026').
+function mesAñoCap(mk){var t=periodoLargo(mk);return t?t.charAt(0).toUpperCase()+t.slice(1):'';}
+// Primer pago = mes siguiente a mes_comienzo (sin mes de inicio: el mes actual).
+function primerPagoMk(l){return l.mes_comienzo?nextMk(l.mes_comienzo):CURR_MK;}
+function vencimientoTxt(l){var idx=MESES.indexOf((l.mes_fin||'').toUpperCase());return idx>=0&&l.año?mesAñoCap(l.año+'-'+(idx<9?'0':'')+(idx+1)):'—';}
+// Al socio: sin nombre del cliente ni int_propio; una continuación se anuncia igual, sin mencionarlo.
+function waNuevoSocioMsg(loan){
+  var b=socioLoanLines(loan,null,0);b.pop(); // sin la línea de cuota
+  return ['Hola '+loan.socio+' 👋, tienes un préstamo nuevo','',b.join('\n'),'','🗓 Primer pago: '+mesAñoCap(primerPagoMk(loan)),'','¡Gracias por tu confianza! 🙏'].join('\n');
+}
+// Al cliente: sin socios ni tasas.
+function waNuevoClienteMsg(loan){
+  return ['💼 NUEVO PRÉSTAMO','Hola '+loan.responsable+' 👋','',
+    '💰 Capital: '+fmtDual(loan,loan.monto),
+    '💵 Cuota mensual: '+fmtDual(loan,cobrarCliente(loan)),
+    '📅 Día de pago: '+loan.dia+' de cada mes',
+    '🗓 Primer pago: '+mesAñoCap(primerPagoMk(loan)),
+    '⏳ Vencimiento: '+vencimientoTxt(loan),
+    '','¡Gracias por tu confianza! 🙏'].join('\n');
+}
 function waTraspasoSocioMsg(loan,fechaCierre){
   var meses=loanMesesActivo(loan),tot=loanTotalInteresSocio(loan);
   return '✅ LIQUIDADO EN SU TOTALIDAD\nHola '+loan.socio+' 👋\n\nTu capital de '+COP(montoCOP(loan))+' fue liquidado en su totalidad el '+fmtFechaLargaISO(fechaCierre)+'.\n📈 Total de intereses recibidos: '+COP(tot)+' ('+meses+' mes'+(meses!==1?'es':'')+')\n\n¡Gracias por tu confianza! 🙏';
@@ -1033,6 +1054,36 @@ function showCloseMessagesModal(loan){
       m.appendChild(msgBox('Mensaje al cliente',waFinalizadoClienteMsg(loan,fechaCierre),'cliente'));
       if(!isJulianLoan(loan))m.appendChild(msgBox('Mensaje al socio',waFinalizadoSocioMsg(loan,fechaCierre),'socio'));
     }
+    m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  refresh();
+}
+// Modal tras guardar un préstamo nuevo (mismo patrón que showCloseMessagesModal).
+// Socio: siempre que no sea de JULIAN, también si es continuación (sin mencionarlo).
+// Cliente: no si es continuación (para él nada cambia).
+function showNewLoanMessagesModal(loan){
+  var conSocio=!isJulianLoan(loan),conCliente=!loan.continuacion_de;
+  if(!conSocio&&!conCliente)return;
+  var pv={};var cur=null;
+  function render(){
+    var m=D('modal',null,null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:#2dd87a;font-size:17px';h2.textContent='✅ Préstamo guardado';
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    function msgBox(title,msg,key){
+      var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'12px'},null);
+      var t=D(null,{fontWeight:'700',fontSize:'13px',marginBottom:'8px'},null);t.textContent=title;box.appendChild(t);
+      var row=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
+      row.appendChild(mkWaBtn(msg));row.appendChild(mkCpBtn(msg));
+      row.appendChild(BTN('bh',pv[key]?'Ocultar':'👁 Ver mensaje',function(){pv[key]=!pv[key];refresh();},{flex:'1'}));
+      box.appendChild(row);
+      if(pv[key]){var pvb=D('pvb',null,null);pvb.textContent=msg;box.appendChild(pvb);}
+      return box;
+    }
+    if(conCliente)m.appendChild(msgBox('Mensaje al cliente',waNuevoClienteMsg(loan),'cliente'));
+    if(conSocio)m.appendChild(msgBox('Mensaje al socio',waNuevoSocioMsg(loan),'socio'));
     m.appendChild(BTN('ba','Listo ✓',closeModal,{width:'100%'}));
     return m;
   }
@@ -1575,6 +1626,7 @@ function showNewLoan(prefill){
       l.recibido=true;
     }
     ST.loans.unshift(l);saveST();closeModal();renderApp();
+    showNewLoanMessagesModal(l);
   },{width:'100%'}));
   showModal(m);
   if(fm>0)updPrev(); // show preview immediately when coming from calculator
