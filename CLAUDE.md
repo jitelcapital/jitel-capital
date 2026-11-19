@@ -190,6 +190,7 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - Escritura (`guardarComprobante`): solo admin con Firebase; 2 reintentos y aviso rojo si falla (no hay cola: se vuelve a adjuntar desde el historial).
 - **Historial (Socios → Giros)**: 📎 en las filas con comprobante (abre el visor) y botón "Sin comprobante" que filtra (`GIROS_SOLO_SIN_COMP`, todas las secciones).
 - **`socio.html` → "Mis giros"**: "📎 Ver comprobante" solo en sus giros con comprobante (`COMP_IDX_S`), descargado al tocarlo (`verComprobanteSocio`, visor propio).
+- **Carga de `socio.html` (`loadLoans`)**: `prestamos`, `giros` y `comprobantes_idx` se piden **en paralelo**. El portal se pinta en cuanto llegan préstamos y giros; el índice **no lo bloquea**: si llega después, `refrescarMisGiros` redibuja solo la tarjeta "Mis giros" (`MIS_GIROS`). Si falla, el portal queda sin 📎. A los 8 s sin respuesta el texto de carga avisa que la conexión está lenta. No volver a encadenar consultas en serie aquí.
 - Métricas: `comprobante_adjuntar`, `comprobante_reemplazar`, `comprobante_ver`.
 
 ---

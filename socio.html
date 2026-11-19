@@ -283,6 +283,20 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     // Por socio_email (no por nombre): así la regla de Firestore solo tiene que comprobar que
     // el campo del documento coincide con el correo de la sesión, sin exponer los préstamos de
     // otros socios a quien tenga sesión iniciada.
+    // Las tres consultas salen EN PARALELO. El portal se muestra en cuanto llegan préstamos y
+    // giros; el índice de comprobantes no lo bloquea: si llega después, solo se redibuja "Mis giros".
+    var renderedOnce=false;
+    var lento=setTimeout(function(){
+      var b=G.firstChild;if(b&&!renderedOnce)b.textContent='Cargando tus préstamos… la conexión está tardando más de lo normal.';
+    },8000);
+    var pGiros=db.collection('giros').where('socio_email','==',email).get()
+      .then(function(gs){var giros=[];gs.forEach(function(d){var g=d.data()||{};if(!g.id)g.id=d.id;giros.push(g);});return giros;})
+      .catch(function(){return null;}); // sin giros legibles: el portal se muestra sin esa sección
+    // Qué giros tienen comprobante (índice sin imagen, solo los suyos). Las imágenes se descargan
+    // solo al tocar "📎 Ver comprobante". Si falla, se muestra sin comprobantes.
+    db.collection('comprobantes_idx').where('socio_email','==',email).get()
+      .then(function(cs){var idx={};cs.forEach(function(d){idx[d.id]=true;});COMP_IDX_S=idx;refrescarMisGiros();})
+      .catch(function(){});
     db.collection('prestamos').where('socio_email','==',email).get()
       .then(function(snap){
         var loans=[],allLoans=[];
@@ -292,20 +306,10 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           if(l.status==='active')loans.push(l);
         });
         loans.sort(function(a,b){return (a.dia||0)-(b.dia||0);});
-        // Giros de este socio (misma regla: solo los suyos, por socio_email). Si no se pueden
-        // leer, el portal se muestra igual, sin la sección de giros.
-        db.collection('giros').where('socio_email','==',email).get()
-          .then(function(gs){
-            var giros=[];gs.forEach(function(d){var g=d.data()||{};if(!g.id)g.id=d.id;giros.push(g);});
-            // Qué giros tienen comprobante (índice sin imagen, solo los suyos). Las imágenes se
-            // descargan solo al tocar "📎 Ver comprobante". Si falla, se muestra sin comprobantes.
-            db.collection('comprobantes_idx').where('socio_email','==',email).get()
-              .then(function(cs){COMP_IDX_S={};cs.forEach(function(d){COMP_IDX_S[d.id]=true;});renderPortal(info,loans,allLoans,giros);})
-              .catch(function(){COMP_IDX_S={};renderPortal(info,loans,allLoans,giros);});
-          })
-          .catch(function(){renderPortal(info,loans,allLoans,null);});
+        return pGiros.then(function(giros){clearTimeout(lento);renderedOnce=true;renderPortal(info,loans,allLoans,giros);});
       })
       .catch(function(e){
+        clearTimeout(lento);
         showError('No se pudieron cargar los préstamos: '+(e&&e.message||''));
       });
   }
@@ -650,7 +654,8 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     G.appendChild(c4);
 
     // ── MIS GIROS — mes a mes: generado, girado y pendiente, y la lista de giros. ──
-    if(giros)G.appendChild(misGirosCard(allLoans,giros,CURR_MK));
+    if(giros){MIS_GIROS={el:misGirosCard(allLoans,giros,CURR_MK),allLoans:allLoans,giros:giros};G.appendChild(MIS_GIROS.el);}
+    else MIS_GIROS=null;
 
     // ── PRÉSTAMOS FINALIZADOS (historial) — nunca nombra al cliente ni al socio entrante ──
     var closedLoans=[],ci2;
@@ -809,6 +814,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   }
   // ── Comprobantes de giros (bajo demanda) ──
   var COMP_IDX_S={},COMP_CACHE_S={};
+  var MIS_GIROS=null; // {el, allLoans, giros} de la tarjeta "Mis giros" en pantalla
+  // Si el índice de comprobantes llega después de pintar el portal, redibuja solo "Mis giros".
+  function refrescarMisGiros(){
+    if(!MIS_GIROS||!MIS_GIROS.el.parentNode)return;
+    var nw=misGirosCard(MIS_GIROS.allLoans,MIS_GIROS.giros,CURR_MK);
+    MIS_GIROS.el.parentNode.replaceChild(nw,MIS_GIROS.el);MIS_GIROS.el=nw;
+  }
   function verComprobanteSocio(id){
     function mostrar(u){
       var bg=el('div',null,{position:'fixed',inset:'0',background:'#000',zIndex:'300',display:'flex',flexDirection:'column',alignItems:'center',overflowY:'auto',padding:'12px'},null);
