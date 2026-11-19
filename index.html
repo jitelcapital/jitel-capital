@@ -756,15 +756,17 @@ function showModal(inner){
 function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw,old);else if(AM){while(AM.firstChild)AM.removeChild(AM.firstChild);AM.appendChild(nw);}}
 
 // ── IMAGE VIEWER (iOS-safe share) ──
-function showImageViewer(dataUrl){
+// opts (opcional): {instr: texto de arriba, uso: clave de registrarUso} — p. ej. comprobantes de giros.
+function showImageViewer(dataUrl,opts){
+  opts=opts||{};
   closeModal();
-  registrarUso('imagen');
+  registrarUso(opts.uso||'imagen');
   // pointerEvents:'auto': #modals tiene pointer-events:none y este fondo no usa la clase mbg
   // (para no heredar su fondo ni su alineación); sin esto los toques lo atraviesan.
   var bg=D(null,{position:'fixed',inset:'0',background:'#000',zIndex:'200',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',overflowY:'auto',padding:'12px',pointerEvents:'auto'},null);
   var topRow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'flex-start',width:'100%',maxWidth:'600px',marginBottom:'10px'},null);
   var instr=D(null,{fontSize:'13px',color:'#fff',flex:'1',lineHeight:'1.6'},null);
-  instr.textContent='📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
+  instr.textContent=opts.instr||'📲 Mantén presionada la imagen → "Guardar en Fotos" → luego compártela por WhatsApp';
   var xBtn=BTN('bh','✕',closeModal,{marginLeft:'10px',flexShrink:'0',minWidth:'44px',minHeight:'44px'});
   // iOS: cerrar en touchend con preventDefault cancela el click sintetizado de ese toque.
   xBtn.addEventListener('touchend',function(e){e.preventDefault();closeModal(e);});
@@ -2528,6 +2530,15 @@ function showGiroModal(socio,pre){
     if(st.modalidad!=='efectivo'){var rIn=INP({type:'text',value:st.referencia,placeholder:refPh});rIn.addEventListener('input',function(e){st.referencia=e.target.value;});m.appendChild(FLD(refLbl,rIn));}
     var nIn=INP({type:'text',value:st.nota,placeholder:'Opcional'});nIn.addEventListener('input',function(e){st.nota=e.target.value;});
     m.appendChild(FLD('Nota',nIn));
+    // Comprobante opcional: se guarda aparte (comprobantes/{giroId}) después de registrar el giro.
+    m.appendChild(comprobantePicker(st.comp?'🖼 Cambiar comprobante':'📎 Adjuntar comprobante (opcional)',function(err,res){if(err){st.err=err;}else{st.comp=res;st.err='';}refresh();}));
+    if(st.comp){
+      var cr=D(null,{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'},null);
+      var th=document.createElement('img');th.src=st.comp.dataUrl;th.style.cssText='width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0';
+      var ci=D(null,{flex:'1',fontSize:'11px',color:'var(--mut)'},null);ci.textContent='📎 Comprobante listo · '+kbTxt(st.comp.antes)+' → '+kbTxt(st.comp.despues);
+      cr.appendChild(th);cr.appendChild(ci);cr.appendChild(BTN('bh','Quitar',function(){st.comp=null;refresh();},{fontSize:'11px',padding:'4px 10px'}));
+      m.appendChild(cr);
+    }
     var errEl=D(null,{fontSize:'12px',color:'var(--red)',fontWeight:'600',minHeight:'16px',marginBottom:'8px'},null);errEl.textContent=st.err;errEl.setAttribute('data-giro-err','1');
     m.appendChild(errEl);
     var brow=D(null,{display:'flex',gap:'8px'},null);
@@ -2539,6 +2550,7 @@ function showGiroModal(socio,pre){
       var g=guardarGiro();
       closeModal();renderApp();
       showToast('✅ Giro registrado — '+socio);
+      if(st.comp)guardarComprobante(g,st.comp.dataUrl,function(err){if(err)showToast('⚠️ '+err);else{showToast('📎 Comprobante guardado');if(curTab==='socios')renderApp();}});
       showGiroMsgModal(g,chainNext,chainLbl);
     },{flex:'2'}));
     m.appendChild(brow);
@@ -2684,6 +2696,15 @@ function showGiroDetail(g){
   for(i=0;i<ls.length;i++)ln('• '+ls[i].txt,COP(ls[i].monto));
   m.appendChild(box);
   if(anul){var an=D(null,{fontSize:'12px',color:'var(--red)',marginBottom:'12px'},null);an.textContent='Anulado el '+anul.fecha+' — '+(anul.nota||'sin motivo');m.appendChild(an);}
+  // Comprobante: se conserva aunque el giro se anule. Las anulaciones no llevan comprobante.
+  if(!g.anula_a){
+    var crow=D(null,{display:'flex',gap:'8px',marginBottom:'8px'},null);
+    if(tieneComprobante(g.id)){
+      crow.appendChild(BTN('bb','📎 Ver comprobante',function(){verComprobante(g.id);},{flex:'1'}));
+      crow.appendChild(BTN('bh','🔁 Reemplazar',function(){showAdjuntarComprobante(g,function(){if(curTab==='socios')renderApp();});},{flex:'1'}));
+    }else crow.appendChild(BTN('bh','📎 Adjuntar comprobante',function(){showAdjuntarComprobante(g,function(){if(curTab==='socios')renderApp();});},{flex:'1'}));
+    m.appendChild(crow);
+  }
   var brow=D(null,{display:'flex',gap:'8px'},null);
   brow.appendChild(BTN('bb','📲 Mensaje',function(){showGiroMsgModal(g);},{flex:'1'}));
   if(!anul&&!g.anula_a)brow.appendChild(BTN('br','Anular giro',function(){showAnularGiro(g);},{flex:'1'}));
@@ -2725,11 +2746,21 @@ function girosResumenMensual(socio){
   }
   return out;
 }
+var GIROS_SOLO_SIN_COMP=false; // filtro "sin comprobante" del historial de giros (todas las secciones)
 function girosSeccionSocio(socio){
   var wrap=D(null,null,null);
-  var ttl=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px'},null);ttl.textContent='Giros';wrap.appendChild(ttl);
+  var th=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
+  var ttl=D(null,{fontSize:'11px',color:'var(--mut)',textTransform:'uppercase',letterSpacing:'1px'},null);ttl.textContent='Giros';th.appendChild(ttl);
+  var fb=BTN('bh',(GIROS_SOLO_SIN_COMP?'✓ ':'')+'Sin comprobante',function(){
+    GIROS_SOLO_SIN_COMP=!GIROS_SOLO_SIN_COMP;var nw=girosSeccionSocio(socio);if(wrap.parentNode)wrap.parentNode.replaceChild(nw,wrap);
+  },{fontSize:'10px',padding:'3px 8px',color:GIROS_SOLO_SIN_COMP?'var(--acc)':'var(--mut)'});
+  th.appendChild(fb);wrap.appendChild(th);
   var rows=girosResumenMensual(socio);
   if(rows.length===0){var none=D(null,{fontSize:'12px',color:'var(--mut)',fontStyle:'italic',padding:'2px 0 10px'},null);none.textContent='Aún no hay giros registrados.';wrap.appendChild(none);return wrap;}
+  if(GIROS_SOLO_SIN_COMP){
+    rows=rows.map(function(r){var c={};for(var k in r)c[k]=r[k];c.giros=r.giros.filter(function(it){return !tieneComprobante(it.giro.id);});return c;}).filter(function(r){return r.giros.length>0;});
+    if(rows.length===0){var ok=D(null,{fontSize:'12px',color:'var(--grn)',padding:'2px 0 10px'},null);ok.textContent='✓ Todos los giros tienen comprobante.';wrap.appendChild(ok);return wrap;}
+  }
   for(var i=0;i<rows.length;i++){
     var r=rows[i];
     var mb=D(null,{background:'var(--c2)',borderRadius:'8px',padding:'8px 10px',marginBottom:'8px'},null);
@@ -2749,7 +2780,13 @@ function girosSeccionSocio(socio){
         if(it.anulado&&it.anulacion){var gl2=D(null,{color:'var(--red)'},null);gl2.textContent='Anulado: '+(it.anulacion.nota||'sin motivo');gl.appendChild(gl2);}
         var gv=S('mn',{fontWeight:'700',color:it.anulado?'var(--mut)':'var(--grn)',textDecoration:it.anulado?'line-through':'none',flexShrink:'0'},null);
         gv.textContent=COP(it.parte)+(it.parte!==g.monto?' de '+COP(g.monto):'');
-        gr.appendChild(gl);gr.appendChild(gv);mb.appendChild(gr);
+        gr.appendChild(gl);
+        if(tieneComprobante(g.id)){
+          var clip=S(null,{flexShrink:'0',cursor:'pointer',fontSize:'14px',padding:'0 2px'},null);clip.textContent='📎';clip.title='Ver comprobante';
+          clip.addEventListener('click',function(e){e.stopPropagation();verComprobante(g.id);});
+          gr.appendChild(clip);
+        }
+        gr.appendChild(gv);mb.appendChild(gr);
       })(r.giros[j]);
     }
     wrap.appendChild(mb);
@@ -2801,6 +2838,146 @@ function loadGiros(cb){
     showSyncError('⚠️ No se pudieron cargar los giros desde la nube. Se muestran los guardados en este dispositivo.');
     if(cb)cb();
   });
+}
+// ── COMPROBANTES DE GIROS ──
+// comprobantes/{giroId}: {imagen (dataURL JPEG), socio_email, creado_en, reemplazado_en}. Fuera del giro
+// (los giros son inmutables) y nunca se cargan al abrir la app: solo al tocar 📎 (verComprobante).
+// comprobantes_idx/{giroId}: lo mismo SIN la imagen; se carga con los giros para saber qué giros
+// tienen comprobante (📎 y filtro) sin descargar ninguna imagen. Se escriben juntos (batch).
+// Nada de esto va al backup CSV ni a localStorage. Nunca se borran (anular el giro los conserva).
+var COMP_MAX_LADO=1600,COMP_MAX_CHARS=300*1024; // ≤300 KB medidos sobre el dataURL que se guarda
+var COMP_IDX={};   // giroId → {creado_en, reemplazado_en}
+var COMP_CACHE={}; // giroId → dataURL ya descargado en esta sesión
+function tieneComprobante(id){return COMP_IDX.hasOwnProperty(id);}
+// Comprime una imagen (File/Blob) a JPEG: lado mayor ≤ COMP_MAX_LADO y dataURL ≤ COMP_MAX_CHARS.
+// Baja la calidad de 0.85 a 0.45 y, si no alcanza, reduce el tamaño un 15% y vuelve a intentar.
+function comprimirImagen(file,cb){
+  try{
+    var url=URL.createObjectURL(file),img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth,h=img.naturalHeight,esc=Math.min(1,COMP_MAX_LADO/Math.max(w,h));
+        var cvs=document.createElement('canvas'),ctx=cvs.getContext('2d'),out='',q,ronda;
+        for(ronda=0;ronda<8;ronda++){
+          cvs.width=Math.max(1,Math.round(w*esc));cvs.height=Math.max(1,Math.round(h*esc));
+          ctx.fillStyle='#fff';ctx.fillRect(0,0,cvs.width,cvs.height); // PNG con transparencia → fondo blanco
+          ctx.drawImage(img,0,0,cvs.width,cvs.height);
+          for(q=0.85;q>=0.45;q-=0.1){out=cvs.toDataURL('image/jpeg',q);if(out.length<=COMP_MAX_CHARS)break;}
+          if(out.length<=COMP_MAX_CHARS)break;
+          esc*=0.85;
+        }
+        URL.revokeObjectURL(url);
+        if(out.length>COMP_MAX_CHARS)return cb('No se pudo comprimir la imagen por debajo de 300 KB.');
+        cb(null,{dataUrl:out,w:cvs.width,h:cvs.height,antes:file.size||0,despues:out.length});
+      }catch(e){cb('No se pudo procesar la imagen.');}
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);cb('El archivo no es una imagen válida.');};
+    img.src=url;
+  }catch(e){cb('No se pudo leer la imagen.');}
+}
+function kbTxt(n){return Math.round((n||0)/1024)+' KB';}
+// Selector de comprobante: botón de fotos/archivo (en iPhone abre Fotos) + pegar con Cmd/Ctrl+V
+// mientras el elemento esté en pantalla. onImg(err, res) con el resultado de comprimirImagen.
+function comprobantePicker(lbl,onImg){
+  var wrap=D(null,{marginBottom:'10px'},null);
+  var inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.style.display='none';
+  function procesar(f){if(!f)return;comprimirImagen(f,onImg);}
+  inp.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];inp.value='';procesar(f);});
+  wrap.appendChild(inp);
+  wrap.appendChild(BTN('bh',lbl,function(){inp.click();},{width:'100%',fontSize:'12px'}));
+  var hint=D(null,{fontSize:'10px',color:'var(--mut)',marginTop:'4px',textAlign:'center'},null);
+  hint.textContent='En computador también puedes pegar una captura con Cmd+V / Ctrl+V';wrap.appendChild(hint);
+  var onPaste=function(e){
+    if(!document.body.contains(wrap)){document.removeEventListener('paste',onPaste);return;}
+    var its=(e.clipboardData&&e.clipboardData.items)||[],i;
+    for(i=0;i<its.length;i++){if(its[i].kind==='file'&&/^image\//.test(its[i].type)){e.preventDefault();procesar(its[i].getAsFile());return;}}
+  };
+  document.addEventListener('paste',onPaste);
+  return wrap;
+}
+// Guarda (crear o reemplazar) el comprobante de un giro. cb(err) opcional.
+function guardarComprobante(g,dataUrl,cb){
+  cb=cb||function(){};
+  if(!FB.ready||!FB.db||!isAdmin()){cb('Los comprobantes solo se guardan con conexión a la nube.');return;}
+  var reemplazo=tieneComprobante(g.id),ahora=new Date().toISOString();
+  var meta={socio_email:g.socio_email||socioEmail(g.socio)||null,
+    creado_en:reemplazo?(COMP_IDX[g.id].creado_en||ahora):ahora,reemplazado_en:reemplazo?ahora:null};
+  var doc={imagen:dataUrl,socio_email:meta.socio_email,creado_en:meta.creado_en,reemplazado_en:meta.reemplazado_en};
+  function intento(n){
+    try{
+      var b=FB.db.batch();
+      b.set(FB.db.collection('comprobantes').doc(g.id),doc);
+      b.set(FB.db.collection('comprobantes_idx').doc(g.id),meta);
+      b.commit().then(function(){
+        COMP_IDX[g.id]={creado_en:meta.creado_en,reemplazado_en:meta.reemplazado_en};COMP_CACHE[g.id]=dataUrl;
+        registrarUso(reemplazo?'comprobante_reemplazar':'comprobante_adjuntar');
+        cb(null);
+      }).catch(function(e){
+        console.warn('[Firebase] Error guardando comprobante '+g.id+':',e&&e.message);
+        if(n<2)setTimeout(function(){intento(n+1);},1500*(n+1));
+        else{showSyncError('⚠️ No se pudo guardar el comprobante del giro. Vuelve a adjuntarlo desde el historial.');cb('No se pudo guardar el comprobante.');}
+      });
+    }catch(e){cb('No se pudo guardar el comprobante.');}
+  }
+  intento(0);
+}
+function verComprobante(id){
+  function mostrar(u){showImageViewer(u,{instr:'📎 Comprobante del giro',uso:'comprobante_ver'});}
+  if(COMP_CACHE[id]){mostrar(COMP_CACHE[id]);return;}
+  if(!FB.ready||!FB.db){showToast('⚠️ Sin conexión a la nube');return;}
+  showToast('📎 Cargando comprobante…');
+  FB.db.collection('comprobantes').doc(id).get().then(function(d){
+    var x=d.exists?d.data():null;
+    if(!x||!x.imagen){showToast('⚠️ Este giro no tiene comprobante');return;}
+    COMP_CACHE[id]=x.imagen;mostrar(x.imagen);
+  }).catch(function(e){showToast('⚠️ No se pudo cargar el comprobante');console.warn('[comprobante]',e&&e.message);});
+}
+// Modal para adjuntar (o reemplazar, con confirmación) el comprobante de un giro ya registrado.
+function showAdjuntarComprobante(g,onDone){
+  var st={res:null,err:'',guardando:false},cur=null;
+  function render(){
+    var m=D('modal',{maxWidth:'460px'},null);
+    var hdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'},null);
+    var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:17px';
+    h2.textContent=(tieneComprobante(g.id)?'🔁 Reemplazar':'📎 Adjuntar')+' comprobante';
+    hdr.appendChild(h2);hdr.appendChild(BTN('bh','✕',closeModal,null));m.appendChild(hdr);
+    var sub=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px'},null);sub.textContent='Giro a '+g.socio+' · '+COP(g.monto)+' · '+g.fecha;m.appendChild(sub);
+    m.appendChild(comprobantePicker(st.res?'🖼 Cambiar imagen':'📎 Elegir imagen',function(err,res){st.err=err||'';if(res)st.res=res;refresh();}));
+    if(st.res){
+      var pv=document.createElement('img');pv.src=st.res.dataUrl;pv.style.cssText='width:100%;max-height:40vh;object-fit:contain;border-radius:8px;margin-bottom:6px;background:#000';m.appendChild(pv);
+      var inf=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'10px',textAlign:'center'},null);inf.textContent=st.res.w+'×'+st.res.h+' px · '+kbTxt(st.res.antes)+' → '+kbTxt(st.res.despues);m.appendChild(inf);
+    }
+    var errEl=D(null,{fontSize:'12px',color:'var(--red)',minHeight:'16px',marginBottom:'8px'},null);errEl.textContent=st.err;m.appendChild(errEl);
+    m.appendChild(BTN('bg',st.guardando?'Guardando…':'💾 Guardar comprobante',function(){
+      if(!st.res||st.guardando){if(!st.res){st.err='Elige o pega una imagen.';refresh();}return;}
+      if(tieneComprobante(g.id)){
+        // showConfirm reemplaza este modal: al responder se reabre con la imagen ya elegida.
+        showConfirm({title:'¿Reemplazar el comprobante?',msg:'El comprobante actual de este giro se sustituye por la nueva imagen.',confirmLbl:'Sí, reemplazar',
+          onConfirm:function(){reabrir(true);},onCancel:function(){reabrir(false);}});
+        return;
+      }
+      guardar();
+    },{width:'100%'}));
+    return m;
+  }
+  function refresh(){var nw=render();if(cur&&AM)replModal(cur,nw);else showModal(nw);cur=nw;}
+  function guardar(){
+    st.guardando=true;st.err='';refresh();
+    var era=tieneComprobante(g.id);
+    guardarComprobante(g,st.res.dataUrl,function(err){
+      if(err){st.guardando=false;st.err=err;if(AM)refresh();return;}
+      closeModal();showToast(era?'📎 Comprobante reemplazado':'📎 Comprobante guardado');if(onDone)onDone();
+    });
+  }
+  function reabrir(ok){cur=null;refresh();if(ok)guardar();}
+  refresh();
+}
+function loadComprobantesIdx(cb){
+  if(!FB.ready||!FB.db||!isAdmin()){if(cb)cb();return;}
+  FB.db.collection('comprobantes_idx').get().then(function(snap){
+    var idx={};snap.forEach(function(d){var x=d.data()||{};idx[d.id]={creado_en:x.creado_en||null,reemplazado_en:x.reemplazado_en||null};});
+    COMP_IDX=idx;if(cb)cb();
+  }).catch(function(e){console.warn('[Firebase] No se pudo cargar el índice de comprobantes:',e&&e.message);if(cb)cb();});
 }
 function girosCsvRow(){return '"__GIROS__","'+JSON.stringify(GIROS).replace(/"/g,'""')+'",,,,,,,,,,,,,,,,,,';}
 // Fotos mensuales por socio (ST.snapshots) en el backup, fila especial igual que __ARCHIVES__.
@@ -4296,7 +4473,8 @@ var USO_LBL={tab_cobros:'Pestaña Cobros',tab_dashboard:'Pestaña Resumen',tab_l
   simulador:'🧮 Simulador',nuevo_mes:'Nuevo mes (abrir)',nuevo_mes_confirmado:'Nuevo mes confirmado',
   backup_csv:'Backup CSV exportado',backup_drive:'Backup a Drive (manual)',backup_importar:'Backup importado',
   whatsapp:'WhatsApp',imagen:'Imagen para compartir',giro:'Giro registrado',giro_anulado:'Giro anulado',
-  traspaso:'Traspaso (cierre)',extender:'Extender / actualizar',cerrar_prestamo:'Cerrar préstamo',corregir_periodo:'Corregir periodo'};
+  traspaso:'Traspaso (cierre)',extender:'Extender / actualizar',cerrar_prestamo:'Cerrar préstamo',corregir_periodo:'Corregir periodo',
+  comprobante_adjuntar:'📎 Comprobante adjuntado',comprobante_reemplazar:'📎 Comprobante reemplazado',comprobante_ver:'📎 Comprobante visto'};
 function usoTablaEl(){
   var wrap=D(null,{marginTop:'16px',borderTop:'1px solid var(--bor)',paddingTop:'12px'},null);
   var t=D(null,{fontWeight:'700',fontSize:'13px',marginBottom:'8px'},null);t.textContent='📈 Uso de la app';wrap.appendChild(t);
@@ -5906,7 +6084,7 @@ function startApp(){
   }
   renderApp();
 }
-function bootData(){loadSociosMap();loadGiros(function(){if(APP_STARTED)renderApp();});loadSTAsync(function(){startApp();});}
+function bootData(){loadSociosMap();loadGiros(function(){if(APP_STARTED)renderApp();});loadComprobantesIdx(function(){if(APP_STARTED&&curTab==='socios')renderApp();});loadSTAsync(function(){startApp();});}
 
 // ── BOOT ──
 document.getElementById('btn-new').addEventListener('click',showNewLoan);

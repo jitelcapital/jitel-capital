@@ -45,6 +45,20 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update, delete: if false;
     }
+    // Comprobantes de giros (imagen JPEG en base64, ≤300 KB). Nunca se borran.
+    match /comprobantes/{giroId} {
+      allow read: if isAdmin() || esMiEmail(resource.data.socio_email);
+      allow create, update: if isAdmin()
+        && request.resource.data.imagen is string
+        && request.resource.data.imagen.size() <= 307200;
+      allow delete: if false;
+    }
+    // Índice de comprobantes (mismos datos, sin la imagen): qué giros tienen comprobante.
+    match /comprobantes_idx/{giroId} {
+      allow read: if isAdmin() || esMiEmail(resource.data.socio_email);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
     // Métricas de uso de la app (contadores por mes, uso/{YYYY-MM}). Solo admin.
     match /uso/{mes} {
       allow read, write: if isAdmin();

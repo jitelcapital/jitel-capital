@@ -177,9 +177,20 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - **Escritura**: fuera de `fbPushAll`. `fbCreateGiro` hace `set` con 2 reintentos (antes de reintentar comprueba si el doc ya existe, porque un segundo `set` sería un update y las reglas lo rechazan). Si falla, aviso rojo visible y cola `_pendingGiros`, que `flushPendingGiros` reintenta en cada `fbPushAll`.
 - **Carga**: `loadGiros` al iniciar sesión de admin (Firestore + cache local `jitel_giros_v1`). En modo sin Firebase solo la cache local.
 - **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes; cada cuota identifica su préstamo, ver "Mensajes al socio sobre pagos/cuotas").
+- **Comprobantes** (ver "Comprobantes de giros"): opcionales, aparte del giro; se conservan si el giro se anula.
 - **Backup CSV**: fila especial `__GIROS__` (JSON), como `__ARCHIVES__`. Al importar solo se agregan los que falten; no se suben a la nube.
 - El backup CSV (`exportBackupCSV` y `gdriveBuildCSV`) también incluye las fotos mensuales en la fila `__SNAPSHOTS__` (JSON de `ST.snapshots`). Al importar reemplaza `ST.snapshots`; un backup viejo sin esa fila conserva las fotos actuales.
 - Compatibilidad: cuotas marcadas antes de los giros siguen marcadas (se ven "✓ Girado" sin giro asociado).
+
+### Comprobantes de giros
+- **`comprobantes/{giroId}`** → `{imagen, socio_email, creado_en, reemplazado_en}`. `imagen` es un dataURL JPEG comprimido en el navegador (`comprimirImagen`): lado mayor ≤ 1600 px (`COMP_MAX_LADO`) y dataURL ≤ 300 KB (`COMP_MAX_CHARS`); baja la calidad de 0.85 a 0.45 y, si no alcanza, reduce el tamaño un 15% por ronda. PNG con transparencia → fondo blanco.
+- **`comprobantes_idx/{giroId}`** → los mismos campos **sin** `imagen`. Se escribe en el mismo `batch` que el comprobante. Sirve para saber qué giros tienen 📎 sin descargar imágenes: el admin lo carga en `bootData` (`loadComprobantesIdx` → `COMP_IDX`), y `socio.html` con `where socio_email == …`.
+- **No van dentro del giro** (los giros son inmutables), **no se cargan al abrir la app** (solo el índice), no van a `localStorage` ni al backup CSV. La imagen se descarga solo al tocar 📎 (`verComprobante` → `showImageViewer(url, {instr, uso})`; cache en memoria `COMP_CACHE`).
+- **Adjuntar**: en "Registrar giro" (`comprobantePicker`: botón que en iPhone abre Fotos, o pegar con Cmd/Ctrl+V mientras el modal está abierto); se guarda después de `registrarGiro`. O después desde el detalle del giro (`showGiroDetail` → `showAdjuntarComprobante`). **Reemplazar** pide confirmación (`showConfirm`) y pone `reemplazado_en` (conserva `creado_en`). Nunca se borran; las anulaciones (`anula_a`) no llevan comprobante; anular un giro conserva el suyo.
+- Escritura (`guardarComprobante`): solo admin con Firebase; 2 reintentos y aviso rojo si falla (no hay cola: se vuelve a adjuntar desde el historial).
+- **Historial (Socios → Giros)**: 📎 en las filas con comprobante (abre el visor) y botón "Sin comprobante" que filtra (`GIROS_SOLO_SIN_COMP`, todas las secciones).
+- **`socio.html` → "Mis giros"**: "📎 Ver comprobante" solo en sus giros con comprobante (`COMP_IDX_S`), descargado al tocarlo (`verComprobanteSocio`, visor propio).
+- Métricas: `comprobante_adjuntar`, `comprobante_reemplazar`, `comprobante_ver`.
 
 ---
 
@@ -262,6 +273,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 - `prestamos/{loanId}` → todos los campos de un loan + `socio_email`
 - `giros/{giroId}` → giros a socios (solo creación)
 - `config/global` → `{ currMk, archives, snapshots, updatedAt, version }`. `version` sube en 1 en cada guardado (ver "Control de versión")
+- `comprobantes/{giroId}` / `comprobantes_idx/{giroId}` → comprobantes de giros (ver "Comprobantes de giros")
 - `uso/{YYYY-MM}` → métricas de uso del admin: un campo numérico por acción (ver "Métricas de uso")
 - `portal_clientes/dayam` → **copia pública** para `dayam.html`, construida por `buildPortalClienteDoc('DAYAM')` en cada sync. Solo campos no sensibles: `id, dia, capital (COP), pago_mensual (COP), mes_fin, año, mes_comienzo, status, continuacion_de, recibido, pagos:[{periodo, fecha}], cuotas_pendientes:[{periodo, recibido}]`. **Nunca** incluir socio, socio_email, tasas, moneda, tasa_cambio, nota ni cierre_tipo.
 - `pagos/{loanId}/pagos/{pagoId}` → copia normalizada creada solo por la migración inicial (no se sincroniza en vivo)
@@ -281,10 +293,12 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 | `socios/{code}` | admin, o el socio cuyo `email` es su correo | admin |
 | `prestamos/{loanId}` | admin, o el socio cuyo `socio_email` es su correo | admin (crear, editar y borrar) |
 | `giros/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | **solo crear**, admin; `update` y `delete` prohibidos para todos |
+| `comprobantes/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | crear y actualizar, admin (`imagen` string ≤ 307200 caracteres); `delete` prohibido |
+| `comprobantes_idx/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | crear y actualizar, admin; `delete` prohibido |
 | `uso/{mes}` | admin | admin |
 | `portal_clientes/{clienteId}` | **cualquiera, sin sesión** | admin |
 
-Cualquier cambio de código que lea o escriba Firestore debe respetar estas reglas. En particular: desde `socio.html` las consultas a `prestamos`, `giros` y `socios` deben filtrar por el correo del socio (`where socio_email == …` / `where email == …`), porque una consulta que pueda devolver documentos ajenos se rechaza completa; nunca hacer `update`/`delete` en `giros`; y todo lo que se escriba en `portal_clientes` es público.
+Cualquier cambio de código que lea o escriba Firestore debe respetar estas reglas. En particular: desde `socio.html` las consultas a `prestamos`, `giros`, `comprobantes_idx` y `socios` deben filtrar por el correo del socio (`where socio_email == …` / `where email == …`), porque una consulta que pueda devolver documentos ajenos se rechaza completa; nunca hacer `update`/`delete` en `giros`; y todo lo que se escriba en `portal_clientes` es público.
 
 **Funciones de consola** (expuestas en `window`): `migrarAFirebase()`, `jitelBootstrapAdmin('Julián')`, `jitelSocioAdd(code, email, NOMBRE)`, `jitelLogout()`.
 - `jitelBootstrapAdmin` **ya no funciona con las reglas vigentes**: escribía el propio `usuarios/{uid}` desde un usuario que aún no era admin, y eso ya no está permitido. El admin ya existe; un perfil nuevo se crea desde Firebase Console o con una sesión admin.

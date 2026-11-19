@@ -295,7 +295,14 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
         // Giros de este socio (misma regla: solo los suyos, por socio_email). Si no se pueden
         // leer, el portal se muestra igual, sin la sección de giros.
         db.collection('giros').where('socio_email','==',email).get()
-          .then(function(gs){var giros=[];gs.forEach(function(d){var g=d.data()||{};if(!g.id)g.id=d.id;giros.push(g);});renderPortal(info,loans,allLoans,giros);})
+          .then(function(gs){
+            var giros=[];gs.forEach(function(d){var g=d.data()||{};if(!g.id)g.id=d.id;giros.push(g);});
+            // Qué giros tienen comprobante (índice sin imagen, solo los suyos). Las imágenes se
+            // descargan solo al tocar "📎 Ver comprobante". Si falla, se muestra sin comprobantes.
+            db.collection('comprobantes_idx').where('socio_email','==',email).get()
+              .then(function(cs){COMP_IDX_S={};cs.forEach(function(d){COMP_IDX_S[d.id]=true;});renderPortal(info,loans,allLoans,giros);})
+              .catch(function(){COMP_IDX_S={};renderPortal(info,loans,allLoans,giros);});
+          })
           .catch(function(){renderPortal(info,loans,allLoans,null);});
       })
       .catch(function(e){
@@ -800,6 +807,25 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     render();
     return card;
   }
+  // ── Comprobantes de giros (bajo demanda) ──
+  var COMP_IDX_S={},COMP_CACHE_S={};
+  function verComprobanteSocio(id){
+    function mostrar(u){
+      var bg=el('div',null,{position:'fixed',inset:'0',background:'#000',zIndex:'300',display:'flex',flexDirection:'column',alignItems:'center',overflowY:'auto',padding:'12px'},null);
+      var top=el('div',null,{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',maxWidth:'600px',marginBottom:'10px',color:'#fff',fontSize:'13px'},'📎 Comprobante del giro');
+      var x=el('button',null,{minWidth:'44px',minHeight:'44px',borderRadius:'10px',border:'1px solid #444',background:'#222',color:'#fff',fontSize:'16px',cursor:'pointer'},'✕');
+      x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();bg.remove();});
+      top.appendChild(x);bg.appendChild(top);
+      var img=document.createElement('img');img.src=u;img.style.cssText='width:100%;max-width:600px;border-radius:10px;display:block';bg.appendChild(img);
+      document.body.appendChild(bg);
+    }
+    if(COMP_CACHE_S[id]){mostrar(COMP_CACHE_S[id]);return;}
+    db.collection('comprobantes').doc(id).get().then(function(d){
+      var x=d.exists?d.data():null;
+      if(!x||!x.imagen){alert('Este giro no tiene comprobante.');return;}
+      COMP_CACHE_S[id]=x.imagen;mostrar(x.imagen);
+    }).catch(function(){alert('No se pudo cargar el comprobante. Intenta de nuevo.');});
+  }
   function misGirosCard(allLoans,giros,currMk){
     var byId={},i,j;for(i=0;i<allLoans.length;i++)byId[allLoans[i].id]=allLoans[i];
     var anulados={};for(i=0;i<giros.length;i++){if(giros[i].anula_a)anulados[giros[i].anula_a]=true;}
@@ -839,6 +865,11 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
           lft.appendChild(el('div',null,it.anulado?{textDecoration:'line-through'}:null,(gg.fecha||'')+' · '+tipoTxt+(MODALIDAD_LBL[gg.modalidad]||gg.modalidad||'')));
           if(it.dias.length)lft.appendChild(el('div',null,it.anulado?{textDecoration:'line-through'}:null,it.dias.join(', ')));
           if(it.anulado)lft.appendChild(el('div',null,{color:'var(--red)'},'Anulado'));
+          if(COMP_IDX_S[gg.id]){
+            var vc=el('div',null,{color:'var(--acc)',fontWeight:'600',marginTop:'3px',cursor:'pointer'},'📎 Ver comprobante');
+            (function(gid){vc.addEventListener('click',function(){verComprobanteSocio(gid);});})(gg.id);
+            lft.appendChild(vc);
+          }
           r.appendChild(lft);
           r.appendChild(el('div','mn',{fontWeight:'700',color:it.anulado?'var(--mut)':'var(--grn)',textDecoration:it.anulado?'line-through':'none',flexShrink:'0'},COP(it.parte)+(it.parte!==(+gg.monto||0)?' de '+COP(gg.monto):'')));
           mb.appendChild(r);
