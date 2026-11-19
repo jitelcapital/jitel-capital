@@ -562,9 +562,48 @@ function openWhatsApp(texto,telefono){
 function mkWaBtn(msg,css){return BTN('bw','📲 WhatsApp',function(){openWhatsApp(msg);},css||null);}
 
 // ── MESSAGES ──
-function waSocioMsg(name,dia,amt,fecha,periodo){
+// ── Identificación de un préstamo en mensajes al socio (igual que socio.html) ──
+// Capital (COP) · Día de cobro · plazo "Mmm AAAA → Mmm AAAA", luego interés y tasa DEL SOCIO
+// (int_socio) y la cuota. Nunca el nombre del cliente, la tasa del cliente ni int_propio.
+var MESES_CORTO=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function fmtPlazoSocio(l){ // misma salida que fmtPeriodo de socio.html
+  var inicio='',fin='';
+  if(l.mes_comienzo){
+    var p=(l.mes_comienzo+'').split('-');
+    var mo=parseInt(p[1]||'0',10)-1;
+    if(mo>=0&&mo<12&&p[0])inicio=MESES_CORTO[mo]+' '+p[0];
+  }
+  if(l.mes_fin&&l.año){
+    var idx=MESES.indexOf((l.mes_fin+'').toUpperCase());
+    if(idx>=0)fin=MESES_CORTO[idx]+' '+l.año;
+  }
+  if(inicio&&fin)return inicio+' → '+fin;
+  if(fin)return 'Hasta '+fin;
+  if(inicio)return 'Desde '+inicio;
+  return '';
+}
+function tasaSocioPct(l){return parseFloat((Math.round((l.int_socio||0)*10000)/100).toFixed(2));}
+function periodoLargo(mk){return mk?mesNombreLargo(mk)+' '+(mk+'').split('-')[0]:'';}
+// Líneas de detalle de una cuota/pago de un préstamo para el socio.
+function socioLoanLines(l,periodo,monto){
+  var out=[];
+  if(l){
+    var plazo=fmtPlazoSocio(l);
+    out.push('• '+COP(montoCOP(l))+' · Día '+l.dia+(plazo?' · '+plazo:''));
+    out.push('   Interés/mes: '+COP(ISc(l))+' ('+tasaSocioPct(l)+'%)');
+  }else out.push('• Préstamo');
+  out.push('   '+(periodo?'Cuota de '+periodoLargo(periodo):'Monto')+': '+COP(monto));
+  return out;
+}
+function waSocioMsg(name,dia,amt,fecha,periodo,loans){
   var cuotaTxt=(periodo&&periodo!==CURR_MK)?(' (cuota de '+mesNombreLargo(periodo)+')'):'';
-  return 'Hola '+name+' 👋\n\nSe realizó el pago de intereses del día '+dia+cuotaTxt+':\n💰 Monto girado: '+COP(amt)+'\n📅 Fecha: '+fecha+'\n\n✅ Todo en orden. Confirma recibo 🙏';
+  var msg='Hola '+name+' 👋\n\nSe realizó el pago de intereses del día '+dia+cuotaTxt+':\n💰 Monto girado: '+COP(amt)+'\n📅 Fecha: '+fecha;
+  if(loans&&loans.length>0){
+    var det=['','Detalle:'],i;
+    for(i=0;i<loans.length;i++)det=det.concat(socioLoanLines(loans[i],periodo||CURR_MK,ISc(loans[i])));
+    msg+='\n'+det.join('\n');
+  }
+  return msg+'\n\n✅ Todo en orden. Confirma recibo 🙏';
 }
 function waRegMsg(dia,loans,fecha){
   var tc=0,ts=0,gn=0,i;
@@ -888,7 +927,7 @@ function showWaModal(paidLoans,dia,periodo){
       var socLbl=D(null,{fontSize:'12px',color:'var(--mut)',marginBottom:'10px',textTransform:'uppercase',letterSpacing:'1px'},null);socLbl.textContent='Notificar a socios';m.appendChild(socLbl);
       for(var si=0;si<sns.length;si++){
         (function(sn,sv){
-          var msg=waSocioMsg(sn,dia,sv.total,fecha,periodo);
+          var msg=waSocioMsg(sn,dia,sv.total,fecha,periodo,sv.loans);
           var box=D(null,{background:'var(--c2)',borderRadius:'10px',padding:'12px',marginBottom:'10px'},null);
           var srow=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},null);
           var stxt=D(null,null,null);
@@ -2520,8 +2559,8 @@ function giroLineas(g){
   for(i=0;i<g.cuotas.length;i++){
     var c=g.cuotas[i],l=findLoanById(c.loanId);
     var dia=l?'Día '+l.dia:'Préstamo';
-    if(c.periodo)out.push({txt:dia+' — '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0],monto:c.monto});
-    else out.push({txt:(l?'Préstamo día '+l.dia:'Préstamo'),monto:c.monto});
+    if(c.periodo)out.push({txt:dia+' — '+mesNombreLargo(c.periodo)+' '+c.periodo.split('-')[0],monto:c.monto,loan:l,periodo:c.periodo});
+    else out.push({txt:(l?'Préstamo día '+l.dia:'Préstamo'),monto:c.monto,loan:l,periodo:null});
   }
   return out;
 }
@@ -2536,7 +2575,7 @@ function waGiroMsg(g){
   var titulo=g.tipo==='intereses'?'Giro de intereses':g.tipo==='devolucion_capital'?'Devolución de capital':'Aporte de capital';
   var lines=['Hola '+g.socio+' 👋','','🏦 '+titulo,'💰 Monto: '+COP(g.monto),'📅 Fecha: '+fmtFechaLargaISO(g.fecha),'💳 Modalidad: '+giroModalidadTxt(g)];
   var ls=giroLineas(g),i;
-  if(ls.length>0){lines.push('','Detalle:');for(i=0;i<ls.length;i++)lines.push('• '+ls[i].txt+': '+COP(ls[i].monto));}
+  if(ls.length>0){lines.push('','Detalle:');for(i=0;i<ls.length;i++)lines=lines.concat(socioLoanLines(ls[i].loan,ls[i].periodo,ls[i].monto));}
   lines.push('','✅ Confirma recibo 🙏');
   return lines.join('\n');
 }
@@ -2820,7 +2859,7 @@ function copyAndOpenWhatsApp(loans,dia){
   if(loans.length===1){
     var l=loans[0];
     // Use socio message if has external partner, else a simple receipt
-    if(IS(l)>0){text=waSocioMsg(l.socio,dia,ISc(l),fecha);}
+    if(IS(l)>0){text=waSocioMsg(l.socio,dia,ISc(l),fecha,CURR_MK,[l]);}
     else{text='✅ PAGO REGISTRADO\nDía '+dia+' · '+fecha+'\n\nCliente: '+l.responsable+'\nCapital: '+fmtDual(l,l.monto)+'\nInterés: '+fmtDual(l,IM(l))+'\n\n¡Gracias por tu pago! 😊';}
   }else{
     // Multiple — group per socio
@@ -2869,13 +2908,16 @@ function showMensajeMultidia(groups){
     for(gi=0;gi<groups.length;gi++){
       var g=groups[gi];
       if(g.dia<desde||g.dia>hasta)continue;
-      var dayAmt=0;
-      for(li2=0;li2<g.loans.length;li2++){var ln=g.loans[li2];if(ln.socio===selSocio)dayAmt+=ISc(ln);}
-      if(dayAmt>0)daysFound.push({dia:g.dia,amt:dayAmt});
+      var dayAmt=0,dayLoans=[];
+      for(li2=0;li2<g.loans.length;li2++){var ln=g.loans[li2];if(ln.socio===selSocio&&ISc(ln)>0){dayAmt+=ISc(ln);dayLoans.push(ln);}}
+      if(dayAmt>0)daysFound.push({dia:g.dia,amt:dayAmt,loans:dayLoans});
     }
     if(daysFound.length===0)return'Sin pagos de '+selSocio+' entre días '+desde+' y '+hasta+'.';
     var lines=['Hola '+selSocio+', el resumen de pagos días '+desde+' al '+hasta+':'];
-    for(var di=0;di<daysFound.length;di++){total+=daysFound[di].amt;lines.push('Día '+daysFound[di].dia+': '+COP(daysFound[di].amt));}
+    for(var di=0;di<daysFound.length;di++){
+      total+=daysFound[di].amt;lines.push('Día '+daysFound[di].dia+': '+COP(daysFound[di].amt));
+      for(var dj=0;dj<daysFound[di].loans.length;dj++)lines=lines.concat(socioLoanLines(daysFound[di].loans[dj],CURR_MK,ISc(daysFound[di].loans[dj])));
+    }
     lines.push('Total: '+COP(total));
     lines.push('Gracias 🤝');
     return lines.join('\n');

@@ -74,6 +74,16 @@ Punto ÚNICO para abrir WhatsApp; no usar `window.open`/`_blank` en móvil (ni e
 - **Android** (`esAndroid()`): `whatsapp://send?…` + respaldo a `https://wa.me/` en la misma pestaña si a los 1,5 s (`WA_FALLBACK_MS`) la página sigue visible.
 - **Computador**: `https://web.whatsapp.com/send?…` en pestaña nueva.
 
+### Mensajes al socio sobre pagos/cuotas
+Todo mensaje al socio que hable de un pago o cuota identifica **cada préstamo** con `socioLoanLines(loan, periodo, monto)`, igual que lo ve en `socio.html`:
+```
+• $ 20.000.000 · Día 5 · Mar 2026 → Mar 2027     ← capital COP (montoCOP) · día · fmtPlazoSocio (= fmtPeriodo de socio.html)
+   Interés/mes: $ 600.000 (3%)                   ← ISc y tasaSocioPct (solo int_socio)
+   Cuota de noviembre 2026: $ 600.000            ← "Monto: $X" si no hay periodo (giros de capital)
+```
+- Lo usan `waGiroMsg` (vía `giroLineas`, que ahora devuelve también `loan` y `periodo`), `waSocioMsg(name, dia, amt, fecha, periodo, loans)` (modal "Notificar a socios" y copia rápida de un préstamo) y el mensaje multi-día (`showMensajeMultidia`, debajo de cada "Día X").
+- **Nunca** incluir el nombre del cliente, la tasa del cliente (`int_socio + int_propio`) ni `int_propio`. El resto del mensaje (monto, fecha, modalidad, referencia) no cambia.
+
 ---
 
 ## Modelo de datos `ST`
@@ -160,7 +170,7 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - **Cuotas por girar** (`cuotasPorGirar(socio)`): con pago del cliente registrado y sin girar (mes en curso + arrastradas). El aviso (`alertasSinGirar`) muestra las de más de 3 días.
 - **Escritura**: fuera de `fbPushAll`. `fbCreateGiro` hace `set` con 2 reintentos (antes de reintentar comprueba si el doc ya existe, porque un segundo `set` sería un update y las reglas lo rechazan). Si falla, aviso rojo visible y cola `_pendingGiros`, que `flushPendingGiros` reintenta en cada `fbPushAll`.
 - **Carga**: `loadGiros` al iniciar sesión de admin (Firestore + cache local `jitel_giros_v1`). En modo sin Firebase solo la cache local.
-- **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes).
+- **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes; cada cuota identifica su préstamo, ver "Mensajes al socio sobre pagos/cuotas").
 - **Backup CSV**: fila especial `__GIROS__` (JSON), como `__ARCHIVES__`. Al importar solo se agregan los que falten; no se suben a la nube.
 - El backup CSV (`exportBackupCSV` y `gdriveBuildCSV`) también incluye las fotos mensuales en la fila `__SNAPSHOTS__` (JSON de `ST.snapshots`). Al importar reemplaza `ST.snapshots`; un backup viejo sin esa fila conserva las fotos actuales.
 - Compatibilidad: cuotas marcadas antes de los giros siguen marcadas (se ven "✓ Girado" sin giro asociado).
