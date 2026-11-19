@@ -538,6 +538,7 @@ function esAndroid(){return /Android/i.test(navigator.userAgent||'');}
 function esMovil(){return esIOS()||esAndroid();}
 function waNavegar(url){location.href=url;} // separado para poder probarlo
 function openWhatsApp(texto,telefono){
+  registrarUso('whatsapp');
   var t=encodeURIComponent(texto||'');
   var tel=String(telefono||'').replace(/\D/g,'');
   var app='whatsapp://send?text='+t+(tel?'&phone='+tel:'');
@@ -742,7 +743,10 @@ function cerrarOverlay(el,e){
   el.addEventListener('touchend',bloquearToque,true);
   setTimeout(function(){el.remove();},CIERRE_OVERLAY_MS);
 }
-function closeModal(e){var el=AM;AM=null;cerrarOverlay(el,e);}
+// _alCerrarModal: callback de un solo uso que corre cuando se cierra (o se reemplaza con showModal)
+// el modal abierto. Lo usa +Nuevo para contar "cancelado sin guardar".
+var _alCerrarModal=null;
+function closeModal(e){var el=AM;AM=null;var cb=_alCerrarModal;_alCerrarModal=null;if(cb){try{cb();}catch(x){}}cerrarOverlay(el,e);}
 function showModal(inner){
   closeModal();
   var bg=D('mbg',null,null);
@@ -754,6 +758,7 @@ function replModal(old,nw){if(old&&old.parentNode)old.parentNode.replaceChild(nw
 // ── IMAGE VIEWER (iOS-safe share) ──
 function showImageViewer(dataUrl){
   closeModal();
+  registrarUso('imagen');
   // pointerEvents:'auto': #modals tiene pointer-events:none y este fondo no usa la clase mbg
   // (para no heredar su fondo ni su alineación); sin esto los toques lo atraviesan.
   var bg=D(null,{position:'fixed',inset:'0',background:'#000',zIndex:'200',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',overflowY:'auto',padding:'12px',pointerEvents:'auto'},null);
@@ -1017,6 +1022,7 @@ function showCloseLoanModal(lid){
       var fechaCierre=isoToday();
       var nl=[],j;for(j=0;j<ST.loans.length;j++){var x=ST.loans[j];if(x.id===lid){var c={};for(var k in x)c[k]=x[k];c.status='paid';c.cierre_tipo=tipo;c.fecha_cierre=fechaCierre;nl.push(c);}else nl.push(x);}
       ST.loans=nl;saveST();closeModal();renderApp();
+      registrarUso('cerrar_prestamo');if(tipo==='traspaso')registrarUso('traspaso');
       showToast('✅ Préstamo cerrado');
       var closedLoan=findLoanById(lid);
       if(closedLoan)showCloseMessagesModal(closedLoan);
@@ -1254,6 +1260,7 @@ function showLoanDetail(lid){
             c.nota=x.nota?x.nota+' | '+note:note;nl.push(c);
           }else nl.push(x);}
           ST.loans=nl;saveST();sext=false;refresh();renderApp();
+          registrarUso('extender');
         }
         var newSocio=(ed.socio||'').trim();
         var socioChanged=(newSocio&&newSocio!==loan.socio);
@@ -1311,6 +1318,7 @@ function showLoanDetail(lid){
                 danger:false,confirmLbl:'Sí, corregir',
                 onConfirm:function(){
                   var err=corregirPeriodoPago(lid,pago.id,nuevo);
+                  if(!err)registrarUso('corregir_periodo');
                   if(err){showToast('⚠️ '+err);return;}
                   cperId=null;refresh();renderApp();showToast('✅ Pago movido a la cuota de '+mesTitulo(nuevo));
                 }});
@@ -1625,10 +1633,15 @@ function showNewLoan(prefill){
       l.pagos=[_apM];
       l.recibido=true;
     }
+    guardadoNuevo=true;
     ST.loans.unshift(l);saveST();closeModal();renderApp();
+    registrarUso(l.continuacion_de?'nuevo_guardado_continuacion':'nuevo_guardado');
     showNewLoanMessagesModal(l);
   },{width:'100%'}));
   showModal(m);
+  registrarUso('nuevo');
+  var guardadoNuevo=false;
+  _alCerrarModal=function(){if(!guardadoNuevo)registrarUso('nuevo_cancelado');};
   if(fm>0)updPrev(); // show preview immediately when coming from calculator
 }
 
@@ -1724,6 +1737,7 @@ function listaPagosCierre(items,color){
   return pl;
 }
 function showReset(){
+  registrarUso('nuevo_mes');
   var step=1;var cur=null;
   // Sugerido: el mes anterior (solo se puede cerrar un mes que ya terminó).
   var mesElegido=prevMk(CURR_MK);
@@ -1819,6 +1833,7 @@ function showReset(){
         function doReset(){
           var mk=mesElegido;
           if(bloqueoCierre(mk)){closeModal();showToast('🔒 No se puede cerrar '+mesTitulo(mk));return;} // defensa final
+          registrarUso('nuevo_mes_confirmado');
           // Arrastre de cuotas sin resolver del mes que se cierra — ANTES de tocar nada más.
           generarArrastrePendientes(mk);
           // Foto mensual por socio del mes que se cierra.
@@ -2560,6 +2575,7 @@ function socioEmail(socio){var k=(socio||'').toUpperCase();return (typeof SOCIOS
 // marcar=true (giro de intereses) pone pagado_socio; marcar=false (anulación) lo quita de las
 // cuotas que ya no queden cubiertas por otro giro vigente.
 function registrarGiro(g,marcar){
+  registrarUso(g.anula_a?'giro_anulado':'giro');
   GIROS.push(g);
   if(g.tipo==='intereses'&&g.cuotas.length>0){
     var porLoan={},i;
@@ -4103,6 +4119,7 @@ function showSocioExport(name,st2){
 // ── VIEW: MI CUENTA (owner panel) ──
 // ── BACKUP: Export CSV / Import CSV ──
 function exportBackupCSV(){
+  registrarUso('backup_csv');
   // Flatten all loans + their payments into rows
   // Columns: 13 loan + 2 concil + 5 pago = 20 total
   var lines=['id,año,dia,mes_fin,monto,socio,int_socio,int_propio,responsable,mes_comienzo,status,nota,created_at,recibido,pagado_socio,moneda,tasa_cambio,pago_id,pago_tipo,pago_monto,pago_fecha,pago_nota'];
@@ -4263,14 +4280,47 @@ function showBackupModal(){
   var bkBtns=D(null,{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'10px'},null);
   bkBtns.appendChild(BTN('bg','💾 Exportar backup',function(){exportBackupCSV();},{flex:'1'}));
   var bkInput=document.createElement('input');bkInput.type='file';bkInput.accept='.csv';bkInput.style.display='none';
-  bkInput.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)importBackupCSV(f,function(){bkInput.value='';closeModal();});});
+  bkInput.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f){registrarUso('backup_importar');importBackupCSV(f,function(){bkInput.value='';closeModal();});}});
   m.appendChild(bkInput);
   bkBtns.appendChild(BTN('bb','📂 Importar backup',function(){bkInput.click();},{flex:'1'}));
   m.appendChild(bkBtns);
   var note=D(null,{fontSize:'10px',color:'var(--mut)',lineHeight:'1.5'},null);
   note.textContent='⚠️ El CSV incluye todos los préstamos (activos, pagados y archivados). La importación reemplaza todos los datos actuales.';
   m.appendChild(note);
+  if(isAdmin()&&FB.ready&&FB.db)m.appendChild(usoTablaEl());
   showModal(m);
+}
+// ── Tabla de métricas de uso (uso/{YYYY-MM}) del mes actual y el anterior ──
+var USO_LBL={tab_cobros:'Pestaña Cobros',tab_dashboard:'Pestaña Resumen',tab_loans:'Pestaña Préstamos',tab_socios:'Pestaña Socios',tab_clientes:'Pestaña Clientes',
+  nuevo:'+ Nuevo (abrir)',nuevo_guardado:'+ Nuevo guardado',nuevo_guardado_continuacion:'+ Nuevo guardado (continuación)',nuevo_cancelado:'+ Nuevo cancelado sin guardar',
+  simulador:'🧮 Simulador',nuevo_mes:'Nuevo mes (abrir)',nuevo_mes_confirmado:'Nuevo mes confirmado',
+  backup_csv:'Backup CSV exportado',backup_drive:'Backup a Drive (manual)',backup_importar:'Backup importado',
+  whatsapp:'WhatsApp',imagen:'Imagen para compartir',giro:'Giro registrado',giro_anulado:'Giro anulado',
+  traspaso:'Traspaso (cierre)',extender:'Extender / actualizar',cerrar_prestamo:'Cerrar préstamo',corregir_periodo:'Corregir periodo'};
+function usoTablaEl(){
+  var wrap=D(null,{marginTop:'16px',borderTop:'1px solid var(--bor)',paddingTop:'12px'},null);
+  var t=D(null,{fontWeight:'700',fontSize:'13px',marginBottom:'8px'},null);t.textContent='📈 Uso de la app';wrap.appendChild(t);
+  var body=D(null,{fontSize:'12px',color:'var(--mut)'},null);body.textContent='Cargando…';wrap.appendChild(body);
+  var mkA=usoMkHoy(),mkB=prevMk(mkA);
+  try{
+    Promise.all([FB.db.collection('uso').doc(mkA).get(),FB.db.collection('uso').doc(mkB).get()]).then(function(r){
+      var a=r[0].exists?r[0].data():{},b=r[1].exists?r[1].data():{},keys=[],k,i;
+      for(k in USO_LBL)keys.push(k);
+      for(k in a)if(!USO_LBL[k]&&keys.indexOf(k)<0)keys.push(k);
+      for(k in b)if(!USO_LBL[k]&&keys.indexOf(k)<0)keys.push(k);
+      var tb=document.createElement('table');tb.style.cssText='width:100%;border-collapse:collapse;font-size:12px';
+      function fila(c1,c2,c3,hd){
+        var tr=document.createElement('tr'),cs=[c1,c2,c3],j;
+        for(j=0;j<3;j++){var td=document.createElement(hd?'th':'td');td.textContent=cs[j];
+          td.style.cssText='padding:4px 6px;border-bottom:1px solid var(--bor);text-align:'+(j?'right':'left')+(hd?';color:var(--mut);font-weight:600':'');tr.appendChild(td);}
+        tb.appendChild(tr);
+      }
+      fila('Acción',mesTitulo(mkA),mesTitulo(mkB),true);
+      for(i=0;i<keys.length;i++)fila(USO_LBL[keys[i]]||keys[i],String(a[keys[i]]||0),String(b[keys[i]]||0),false);
+      body.textContent='';body.style.color='';body.appendChild(tb);
+    }).catch(function(e){body.textContent='No se pudo cargar el uso ('+((e&&e.message)||'error')+').';});
+  }catch(e){body.textContent='No se pudo cargar el uso.';}
+  return wrap;
 }
 
 // vMiCuenta kept as no-op redirect — tab removed from navbar, ⭐ now opens backup modal directly
@@ -4852,6 +4902,7 @@ function vClientes(){
 
 // ── CALCULADORA DE SIMULACIÓN ──
 function showCalculadora(){
+  registrarUso('simulador');
   var defs=getSmartDefaults();
   // State: work in % for UX, convert to decimals for math
   var cMonto=0;
@@ -4993,7 +5044,7 @@ function renderNavbar(){
       var b=document.createElement('button');b.className='nbtn'+(t.id===curTab?' on':'');
       var ico=document.createElement('span');ico.className='ico';ico.textContent=t.ico;
       b.appendChild(ico);b.appendChild(document.createTextNode(t.lbl));
-      b.addEventListener('click',function(){curTab=t.id;renderNavbar();renderContent();});
+      b.addEventListener('click',function(){registrarUso('tab_'+t.id);curTab=t.id;renderNavbar();renderContent();});
       nb.appendChild(b);
     })(TABS[i]);
   }
@@ -5333,6 +5384,7 @@ function gdriveManualBackup(){
   if(!gdriveIsConnected()){
     return alert('Primero conecta Google Drive desde Resumen.');
   }
+  registrarUso('backup_drive');
   showToast('☁️ Subiendo a Drive...');
   gdriveUploadBackup().then(function(){
     showToast('✅ Backup subido a Google Drive');
@@ -5397,6 +5449,18 @@ function fbInit(){
   }catch(e){console.error('[Firebase] Error de inicialización:',e&&e.message);return false;}
 }
 function isAdmin(){return !!(FB.perfil&&FB.perfil.rol==='admin');}
+// ── MÉTRICAS DE USO (solo admin) ──
+// Suma 1 al campo `clave` de uso/{YYYY-MM} con FieldValue.increment. Escritura directa,
+// sin esperar respuesta: no pasa por saveST, no toca config/global ni su versión, y
+// cualquier error se traga (nunca rompe ni bloquea la UI). Sin Firebase o sin admin: no hace nada.
+function usoMkHoy(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function registrarUso(clave){
+  try{
+    if(!FB.ready||!FB.db||!isAdmin()||!/^[a-z0-9_]+$/.test(clave||''))return;
+    var upd={};upd[clave]=firebase.firestore.FieldValue.increment(1);
+    FB.db.collection('uso').doc(usoMkHoy()).set(upd,{merge:true}).catch(function(e){console.warn('[uso]',e&&e.message);});
+  }catch(e){}
+}
 
 // Traduce errores de Firebase Auth a mensajes claros en español.
 function fbErrMsg(e){

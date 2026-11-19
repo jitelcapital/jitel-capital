@@ -45,6 +45,10 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update, delete: if false;
     }
+    // Métricas de uso de la app (contadores por mes, uso/{YYYY-MM}). Solo admin.
+    match /uso/{mes} {
+      allow read, write: if isAdmin();
+    }
     match /portal_clientes/{clienteId} {
       allow read: if true;
       allow write: if isAdmin();

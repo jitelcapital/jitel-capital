@@ -262,6 +262,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 - `prestamos/{loanId}` → todos los campos de un loan + `socio_email`
 - `giros/{giroId}` → giros a socios (solo creación)
 - `config/global` → `{ currMk, archives, snapshots, updatedAt, version }`. `version` sube en 1 en cada guardado (ver "Control de versión")
+- `uso/{YYYY-MM}` → métricas de uso del admin: un campo numérico por acción (ver "Métricas de uso")
 - `portal_clientes/dayam` → **copia pública** para `dayam.html`, construida por `buildPortalClienteDoc('DAYAM')` en cada sync. Solo campos no sensibles: `id, dia, capital (COP), pago_mensual (COP), mes_fin, año, mes_comienzo, status, continuacion_de, recibido, pagos:[{periodo, fecha}], cuotas_pendientes:[{periodo, recibido}]`. **Nunca** incluir socio, socio_email, tasas, moneda, tasa_cambio, nota ni cierre_tipo.
 - `pagos/{loanId}/pagos/{pagoId}` → copia normalizada creada solo por la migración inicial (no se sincroniza en vivo)
 
@@ -280,6 +281,7 @@ Cuando `socio === 'JULIAN'` e `int_socio === 0`, el préstamo es **directo del p
 | `socios/{code}` | admin, o el socio cuyo `email` es su correo | admin |
 | `prestamos/{loanId}` | admin, o el socio cuyo `socio_email` es su correo | admin (crear, editar y borrar) |
 | `giros/{giroId}` | admin, o el socio cuyo `socio_email` es su correo | **solo crear**, admin; `update` y `delete` prohibidos para todos |
+| `uso/{mes}` | admin | admin |
 | `portal_clientes/{clienteId}` | **cualquiera, sin sesión** | admin |
 
 Cualquier cambio de código que lea o escriba Firestore debe respetar estas reglas. En particular: desde `socio.html` las consultas a `prestamos`, `giros` y `socios` deben filtrar por el correo del socio (`where socio_email == …` / `where email == …`), porque una consulta que pueda devolver documentos ajenos se rechaza completa; nunca hacer `update`/`delete` en `giros`; y todo lo que se escriba en `portal_clientes` es público.
@@ -288,6 +290,14 @@ Cualquier cambio de código que lea o escriba Firestore debe respetar estas regl
 - `jitelBootstrapAdmin` **ya no funciona con las reglas vigentes**: escribía el propio `usuarios/{uid}` desde un usuario que aún no era admin, y eso ya no está permitido. El admin ya existe; un perfil nuevo se crea desde Firebase Console o con una sesión admin.
 - `migrarAFirebase` escribe `config/global` sin `version`, así que la regla vigente la rechaza. Es una herramienta de la migración inicial, que ya se hizo.
 - `jitelSocioAdd` guarda el email con `trim()` y `toLowerCase()`, porque las reglas comparan contra el correo de la sesión en minúsculas.
+
+### Métricas de uso (`registrarUso(clave)`)
+- Suma 1 al campo `clave` de `uso/{YYYY-MM}` (mes de la fecha del dispositivo, `usoMkHoy`) con `set({clave: FieldValue.increment(1)}, {merge:true})`. Solo si `FB.ready` e `isAdmin()`; claves `[a-z0-9_]`.
+- Va **directo a Firestore, sin esperar**: no pasa por `saveST`, no toca `config/global` ni su `version`, y todo va en `try/catch` + `.catch` → nunca rompe ni bloquea la UI. Sin Firebase (`bootLegacyLocal`) no hace nada.
+- Claves y dónde se registran: `tab_<id>` (navbar), `nuevo` (abrir +Nuevo), `nuevo_guardado` / `nuevo_guardado_continuacion`, `nuevo_cancelado` (el modal de +Nuevo se cerró o reemplazó sin guardar, vía `_alCerrarModal`), `simulador` (`showCalculadora`), `nuevo_mes` (abrir `showReset`) y `nuevo_mes_confirmado` (`doReset`), `backup_csv` (`exportBackupCSV`), `backup_drive` (`gdriveManualBackup`; el automático no cuenta), `backup_importar`, `whatsapp` (`openWhatsApp`), `imagen` (`showImageViewer`), `giro` / `giro_anulado` (`registrarGiro`), `cerrar_prestamo` y `traspaso` (cierre con `cierre_tipo='traspaso'`), `extender` (guardar Actualizar/Extender), `corregir_periodo` (`corregirPeriodoPago` exitoso).
+- `_alCerrarModal`: callback de un solo uso que `closeModal` ejecuta (también cuando `showModal` reemplaza el modal abierto).
+- Vista: 🗄️ Backup (`showBackupModal`) → tabla "📈 Uso de la app" (`usoTablaEl`) con los conteos del mes actual y del anterior; etiquetas en `USO_LBL` (las claves sin etiqueta se muestran tal cual).
+- Para agregar una métrica nueva: llamar `registrarUso('clave')` y agregar su etiqueta en `USO_LBL`.
 
 **App Check**: desactivado intencionalmente. La seguridad se gestiona con las reglas de Firestore por rol (`firestore.rules`).
 
