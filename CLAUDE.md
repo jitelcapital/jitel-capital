@@ -25,7 +25,7 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 
 | Pestaña | Función |
 |---------|---------|
-| **Cobros** | Vista del mes agrupada por día de cobro (acordeones). Pago rápido/por grupo, toggle "Cobré", botón "🏦 Pagué socio" (abre el modal de giro), sumador temporal, mensaje multi-día. Sección "📦 Pendientes del mes anterior" (cuotas arrastradas) y aviso "Cobrado sin girar hace más de 3 días". Los préstamos que aún no se cobran (`!isCollectable`) se ven en su día como tarjeta atenuada "🆕 Nuevo" (ver "Préstamos nuevos en Cobros"). |
+| **Cobros** | Vista del mes agrupada por día de cobro (acordeones). Pago rápido/por grupo, toggle "Cobré", botón "🏦 Pagué socio" (abre el modal de giro), sumador temporal, mensaje multi-día. Sección "📦 Pendientes del mes anterior" (cuotas arrastradas) y aviso "Cobrado sin girar hace más de 3 días". Los préstamos que aún no se cobran (`!isCollectable`) se ven en su día como tarjeta atenuada "🆕 Nuevo" (ver `vCobros` en "Traspasos y cierre de préstamos"). |
 | **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs, "💸 Adelantos por recuperar", gráfico histórico SVG (últimos 6 meses), preferencias, backup Google Drive, "Nuevo mes" (cierre mensual). |
 | **Préstamos** | Lista completa (activos + cerrados) con búsqueda y filtros. Cada fila abre `showLoanDetail`: historial de pagos, registrar pago (con periodo), Actualizar/Extender (plazo, mes de inicio, socio, tasas) y cerrar préstamo. |
 | **Socios** | Por socio: capital, interés mensual, préstamos, finalizados, sección **Giros** por mes, historial mensual (`ST.snapshots`), botón "🏦 Registrar giro", imagen paginada para WhatsApp. Aviso "Cobrado sin girar" arriba. |
