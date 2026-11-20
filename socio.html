@@ -425,7 +425,18 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
     // (con comprobantes) y Préstamos finalizados.
     var soloHistorial=loans.length===0;
     if(soloHistorial){
-      G.appendChild(el('div','card',{fontSize:'13px',color:'var(--mut)',textAlign:'center',lineHeight:'1.5'},'No tienes préstamos activos actualmente. Aquí está tu historial.'));
+      var hCard=el('div','card',{fontSize:'13px',color:'var(--mut)',textAlign:'center',lineHeight:'1.5'},null);
+      hCard.appendChild(el('div',null,null,'No tienes préstamos activos actualmente. Aquí está tu historial.'));
+      // Resumen de una línea: capital invertido y número de los finalizados, e intereses recibidos
+      // con la misma fórmula que "Rendimiento acumulado" (mesesCobrados hasta su mes de fin).
+      var hCap=0,hN=0,hInt=0,hi;
+      for(hi=0;hi<allLoans.length;hi++){
+        var hl=allLoans[hi];if(hl.status!=='paid')continue;
+        hN++;hCap+=montoCOP(hl);
+        hInt+=mesesCobrados(hl.mes_comienzo,loanEndMk(hl)||CURR_MK)*(hl.int_socio||0)*montoCOP(hl);
+      }
+      if(hN>0)hCard.appendChild(el('div',null,{marginTop:'6px',fontSize:'12px',color:'var(--txt)',fontWeight:'600'},'Invertiste '+COP(hCap)+' en '+hN+' préstamo'+(hN!==1?'s':'')+' · Intereses recibidos: '+COP(hInt)));
+      G.appendChild(hCard);
     }else{
     // ── KPIs ──
     var c1=el('div','card',null,null);
