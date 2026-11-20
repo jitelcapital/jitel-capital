@@ -28,7 +28,7 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 | **Cobros** | Vista del mes agrupada por día de cobro (acordeones). Pago rápido/por grupo, toggle "Cobré", botón "🏦 Pagué socio" (abre el modal de giro), sumador temporal, mensaje multi-día. Sección "📦 Pendientes del mes anterior" (cuotas arrastradas) y aviso "Cobrado sin girar hace más de 3 días". Los préstamos que aún no se cobran (`!isCollectable`) se ven en su día como tarjeta atenuada "🆕 Nuevo" (ver `vCobros` en "Traspasos y cierre de préstamos"). |
 | **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs, "💸 Adelantos por recuperar", gráfico histórico SVG (últimos 6 meses), preferencias, backup Google Drive, "Nuevo mes" (cierre mensual). |
 | **Préstamos** | Lista completa (activos + cerrados) con búsqueda y filtros. Cada fila abre `showLoanDetail`: historial de pagos, registrar pago (con periodo), Actualizar/Extender (plazo, mes de inicio, socio, tasas) y cerrar préstamo. |
-| **Socios** | Por socio: capital, interés mensual, préstamos, finalizados, sección **Giros** por mes, historial mensual (`ST.snapshots`), botón "🏦 Registrar giro", imagen paginada para WhatsApp. Aviso "Cobrado sin girar" arriba. |
+| **Socios** | Por socio: capital, interés mensual, préstamos, finalizados, sección **Giros** por mes, historial mensual (`ST.snapshots`), botón "🏦 Registrar giro", imagen paginada para WhatsApp. Aviso "Cobrado sin girar" arriba. Los socios inactivos van al final en una sección plegada (ver "Socios inactivos"). |
 | **Clientes** | Por cliente/responsable: préstamos activos, cuota total mensual. Imagen paginada (10 filas/página) con estado de cuenta. |
 
 ---
@@ -221,6 +221,14 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
   - **Cerrados**: todo préstamo `status === 'paid'` cuyo mes de cierre es el mes, sea cual sea `cierre_tipo`. Mes de cierre = mes de `fecha_cierre`, o su mes de fin (`loanEndMk`) si no la tiene, igual que "Préstamos finalizados".
   - **Capital neto** = capital de nuevos − capital de cerrados (COP): "entró" o "salió". Si el préstamo sigue con el mismo socio, la continuación (nueva) y el original (cerrado) se compensan solos.
   - Al tocar cada número se ve la lista (día, periodo o fecha de cierre y capital), sin nombres de clientes.
+
+---
+
+## Socios inactivos
+
+- **Definición** (`socioInactivo(name, st2, conAdelanto)` en `index.html`): sin préstamos activos (`st2.count === 0`), sin cuotas por girar (`cuotasPorGirar(name)` vacío, incluye las de préstamos ya cerrados) y sin adelantos por recuperar (`conAdelanto`, armado con `adelantosPorRecuperar()`). Si queda algo por girar o un adelanto pendiente, el socio sigue en la lista de activos.
+- **`index.html` → Socios (`vSocios`)**: primero los activos (por capital); los inactivos van al final, ordenados por nombre, en la sección plegada "Socios inactivos (N)" (cerrada por defecto; `SOCIOS_INACTIVOS_OPEN` recuerda si se abrió entre `renderApp()`). Su tarjeta (`renderSocioCard(..., inactivo=true)`) dice "Sin préstamos activos · N finalizados" y "historial"; al abrirla muestra solo Préstamos finalizados, Giros (con comprobantes), Historial mensual y "Copiar link portal". Sin "Registrar giro", lista de activos, "Total a pagarte", imagen resumen ni botones de WhatsApp. No cuentan en totales ni alertas.
+- **`socio.html` (`renderPortal`)**: si el socio no tiene préstamos activos (`soloHistorial`), arriba sale "No tienes préstamos activos actualmente. Aquí está tu historial." y se ocultan Tu cartera, Movimiento del mes, Estado del mes, Tu cartera con JiTel, el banner de vencimientos y Tus préstamos. Quedan Mis giros (con 📎 comprobantes) y Préstamos finalizados. El acceso no se restringe: el socio sigue entrando con su cuenta.
 
 ---
 

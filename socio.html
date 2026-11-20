@@ -420,6 +420,13 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       for(ci=0;ci<cps.length;ci++){if(!cuotaResuelta(lp,cps[ci])&&cuotaGirable(lp,cps[ci].periodo))pendienteAnterior+=montoCOP(lp)*(lp.int_socio||0);}
     }
 
+    // ── SOLO HISTORIAL: sin préstamos activos → aviso arriba; se ocultan Tu cartera, Movimiento
+    // del mes, Estado del mes, Tu cartera con JiTel y Tus préstamos. Quedan Mis giros
+    // (con comprobantes) y Préstamos finalizados.
+    var soloHistorial=loans.length===0;
+    if(soloHistorial){
+      G.appendChild(el('div','card',{fontSize:'13px',color:'var(--mut)',textAlign:'center',lineHeight:'1.5'},'No tienes préstamos activos actualmente. Aquí está tu historial.'));
+    }else{
     // ── KPIs ──
     var c1=el('div','card',null,null);
     c1.appendChild(el('div','sec-title',null,'💼 Tu cartera'));
@@ -653,6 +660,7 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
       }
     }
     G.appendChild(c4);
+    } // fin vista con préstamos activos (soloHistorial)
 
     // ── MIS GIROS — mes a mes: generado, girado y pendiente, y la lista de giros. ──
     if(giros){MIS_GIROS={el:misGirosCard(allLoans,giros,CURR_MK),allLoans:allLoans,giros:giros};G.appendChild(MIS_GIROS.el);}

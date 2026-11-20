@@ -4238,10 +4238,18 @@ function vSocios(){
   var closedKeys=Object.keys(closedBySocio);
   for(i=0;i<closedKeys.length;i++){if(!sm[closedKeys[i]])list.push([closedKeys[i],{capital:0,intS:0,count:0,loans:[]}]);}
   list.sort(function(a,b){return b[1].capital-a[1].capital;});
+  // Socio inactivo = sin préstamos activos, sin cuotas por girar y sin adelantos por recuperar.
+  // Va al final, en la sección plegada "Socios inactivos (N)", con su tarjeta de historial.
+  var conAdelanto={},adl=adelantosPorRecuperar();
+  for(i=0;i<adl.length;i++){if(adl[i].loan.socio)conAdelanto[adl[i].loan.socio]=true;}
+  var activos=[],inactivos=[];
+  for(i=0;i<list.length;i++){
+    if(socioInactivo(list[i][0],list[i][1],conAdelanto))inactivos.push(list[i]);else activos.push(list[i]);
+  }
+  inactivos.sort(function(a,b){return a[0].localeCompare(b[0]);});
   var w=D(null,null,null);var h2=document.createElement('h2');h2.style.cssText='color:var(--acc);font-size:20px;margin-bottom:8px';h2.textContent='Socios Inversores';w.appendChild(h2);
   var sgBanner=alertaSinGirarBanner();if(sgBanner)w.appendChild(sgBanner); // cobrado sin girar > 3 días
-  for(var li=0;li<list.length;li++){
-    (function(name,st2){
+  var renderSocioCard=function(name,st2,dest,inactivo){
       var exp=false,pv=false;
       var pagosOpen={}; // por id de préstamo finalizado — sobrevive a rebuild() (fuera de su alcance)
       var card=D('card',{marginBottom:'10px'},null);
@@ -4252,9 +4260,12 @@ function vSocios(){
         var hdr2=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'},null);hdr2.addEventListener('click',function(){exp=!exp;rebuild();});
         var ht=D(null,null,null);var hn=D(null,{fontWeight:'700',fontSize:'16px'},null);hn.textContent=name;
         if(isJulian){var jt=S(null,{fontSize:'11px',background:'var(--c-jul-bg)',color:'var(--c-jul-txt)',padding:'2px 6px',borderRadius:'20px',marginLeft:'8px'},null);jt.textContent='directo';hn.appendChild(jt);}
-        var hs=D(null,{fontSize:'12px',color:'var(--mut)'},null);hs.textContent=st2.count+' préstamos · '+COP(st2.capital);ht.appendChild(hn);ht.appendChild(hs);
+        var hs=D(null,{fontSize:'12px',color:'var(--mut)'},null);
+        if(inactivo){var nFin=(closedBySocio[name]||[]).length;hs.textContent='Sin préstamos activos · '+nFin+' finalizado'+(nFin!==1?'s':'');}
+        else hs.textContent=st2.count+' préstamos · '+COP(st2.capital);
+        ht.appendChild(hn);ht.appendChild(hs);
         // ── Conciliation pendings — skip Julian (no external partner) ──
-        if(!isJulian){
+        if(!isJulian&&!inactivo){
           var pendPagar=0,pendCobrar=0,lpi;
           // Cliente pagó y aún no hay giro al socio (mes actual + arrastradas), en COP.
           var porGirar=cuotasPorGirar(name);
@@ -4274,12 +4285,14 @@ function vSocios(){
             ht.appendChild(pc);
           }
         }
-        var hv=D('mn',{fontWeight:'700',color:isJulian?'var(--grn)':'var(--red)'},null);
-        hv.textContent=isJulian?'→ dueño directo':('−'+COP(st2.intS)+'/mes');
+        var hv=D('mn',{fontWeight:'700',color:inactivo?'var(--mut)':(isJulian?'var(--grn)':'var(--red)')},null);
+        hv.textContent=inactivo?'historial':(isJulian?'→ dueño directo':('−'+COP(st2.intS)+'/mes'));
+        if(inactivo)hv.style.fontSize='11px';
         hdr2.appendChild(ht);hdr2.appendChild(hv);card.appendChild(hdr2);
         if(exp){
           card.appendChild(D('sep',null,null));
-          if(!isJulian)card.appendChild(BTN('bg','🏦 Registrar giro',function(){showGiroModal(name,null);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
+          if(!isJulian&&!inactivo)card.appendChild(BTN('bg','🏦 Registrar giro',function(){showGiroModal(name,null);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
+          if(!inactivo){
           for(var pi3=0;pi3<st2.loans.length;pi3++){
             (function(ln,idx){
               var lr=D(null,{display:'flex',alignItems:'center',padding:'7px 0',borderBottom:'1px solid var(--bor)',gap:'8px'},null);
@@ -4303,6 +4316,7 @@ function vSocios(){
           var julianTotal=0;if(isJulian){for(var ji=0;ji<st2.loans.length;ji++)julianTotal+=IPc(st2.loans[ji]);}
           tv2.textContent=isJulian?COP(julianTotal):COP(st2.intS);tr2.appendChild(tl2);tr2.appendChild(tv2);card.appendChild(tr2);
           card.appendChild(D('sep',null,null));
+          } // fin préstamos activos (no aplica a socios inactivos)
           // ── Préstamos finalizados (historial) — nunca nombra al cliente ni al socio entrante ──
           var closedList=closedBySocio[name]||[];
           if(closedList.length>0){
@@ -4382,7 +4396,7 @@ function vSocios(){
           }
           card.appendChild(D('sep',null,null));
           // Image export button
-          card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
+          if(!inactivo)card.appendChild(BTN('bb','🖼️ Generar imagen resumen',function(){showSocioExport(name,st2);},{width:'100%',marginBottom:'8px',fontSize:'12px'}));
           // Portal link button — genera URL de solo lectura para el socio
           card.appendChild(BTN('bp','📋 Copiar link portal',function(){
             var url='https://jitelcapital.github.io/jitel-capital/socio.html';
@@ -4390,7 +4404,7 @@ function vSocios(){
               navigator.clipboard.writeText(url).then(function(){showToast('Link copiado');}).catch(function(){showToast('No se pudo copiar');});
             }else{var ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');showToast('Link copiado');}catch(ex){showToast('No se pudo copiar');}document.body.removeChild(ta);}
           },{width:'100%',marginBottom:'8px',fontSize:'12px'}));
-          if(!isJulian){
+          if(!isJulian&&!inactivo){
             var brow=D(null,{display:'flex',gap:'6px',flexWrap:'wrap'},null);
             brow.appendChild(mkWaBtn(msg));
             brow.appendChild(mkCpBtn(msg));
@@ -4400,10 +4414,29 @@ function vSocios(){
           }
         }
       }
-      rebuild();w.appendChild(card);
-    })(list[li][0],list[li][1]);
+      rebuild();dest.appendChild(card);
+  };
+  for(var li=0;li<activos.length;li++)renderSocioCard(activos[li][0],activos[li][1],w,false);
+  if(inactivos.length>0){
+    var inSec=D(null,{marginTop:'18px'},null);
+    var inHdr=D(null,{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',padding:'8px 2px',color:'var(--mut)',fontSize:'12px',textTransform:'uppercase',letterSpacing:'1px',borderTop:'1px solid var(--bor)'},null);
+    var inTtl=S(null,null,null);inTtl.textContent='Socios inactivos ('+inactivos.length+')';
+    var inChev=S(null,null,null);
+    var inBody=D(null,{marginTop:'6px'},null);
+    for(var ii=0;ii<inactivos.length;ii++)renderSocioCard(inactivos[ii][0],inactivos[ii][1],inBody,true);
+    var setInOpen=function(o){SOCIOS_INACTIVOS_OPEN=o;inBody.style.display=o?'':'none';inChev.textContent=o?'▾':'▸';};
+    inHdr.addEventListener('click',function(){setInOpen(!SOCIOS_INACTIVOS_OPEN);});
+    setInOpen(SOCIOS_INACTIVOS_OPEN);
+    inHdr.appendChild(inTtl);inHdr.appendChild(inChev);
+    inSec.appendChild(inHdr);inSec.appendChild(inBody);w.appendChild(inSec);
   }
   return w;
+}
+var SOCIOS_INACTIVOS_OPEN=false; // sección plegada por defecto; sobrevive a renderApp()
+// Socio inactivo: sin préstamos activos, sin cuotas por girar (cobradas sin giro, mes en curso o
+// arrastradas) y sin adelantos por recuperar. conAdelanto: {socio:true} de adelantosPorRecuperar().
+function socioInactivo(name,st2,conAdelanto){
+  return st2.count===0&&cuotasPorGirar(name).length===0&&!(conAdelanto&&conAdelanto[name]);
 }
 
 
