@@ -93,8 +93,9 @@ input[type=email]:focus,input[type=password]:focus{border-color:var(--acc)}
   // Este portal no tiene acceso a ST.archives (solo lee `prestamos` de Firestore), así que a
   // diferencia de index.html no puede verificar un pago ya archivado — usa el flag `recibido`
   // de la propia cuota, que la app mantiene al día (foto al cerrar el mes, o al registrar el
-  // pago tardío desde "Pendientes del mes anterior"). Resuelta = cobrada Y ya girada al socio.
-  function cuotaResuelta(l,cuota){return !!cuota.recibido&&!!cuota.pagado_socio;}
+  // pago tardío desde "Pendientes del mes anterior"). Para el socio, resuelta = ya girada: una
+  // cuota adelantada (girada antes de que el cliente pague) se ve como pagada, sin mencionarlo.
+  function cuotaResuelta(l,cuota){return !!cuota.pagado_socio;}
   // Meses transcurridos entre 'YYYY-MM' y 'YYYY-MM', inclusive
   function monthsElapsed(mesComienzo,uptoMk){
     if(!mesComienzo||!uptoMk)return 0;

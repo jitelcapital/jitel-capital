@@ -26,7 +26,7 @@ Los préstamos generan interés mensual cobrado al cliente (`int_socio + int_pro
 | Pestaña | Función |
 |---------|---------|
 | **Cobros** | Vista del mes agrupada por día de cobro (acordeones). Pago rápido/por grupo, toggle "Cobré", botón "🏦 Pagué socio" (abre el modal de giro), sumador temporal, mensaje multi-día. Sección "📦 Pendientes del mes anterior" (cuotas arrastradas) y aviso "Cobrado sin girar hace más de 3 días". |
-| **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs, gráfico histórico SVG (últimos 6 meses), preferencias, backup Google Drive, "Nuevo mes" (cierre mensual). |
+| **Resumen** | Dashboard ejecutivo: capital activo, ganancia mensual, mora, KPIs, "💸 Adelantos por recuperar", gráfico histórico SVG (últimos 6 meses), preferencias, backup Google Drive, "Nuevo mes" (cierre mensual). |
 | **Préstamos** | Lista completa (activos + cerrados) con búsqueda y filtros. Cada fila abre `showLoanDetail`: historial de pagos, registrar pago (con periodo), Actualizar/Extender (plazo, mes de inicio, socio, tasas) y cerrar préstamo. |
 | **Socios** | Por socio: capital, interés mensual, préstamos, finalizados, sección **Giros** por mes, historial mensual (`ST.snapshots`), botón "🏦 Registrar giro", imagen paginada para WhatsApp. Aviso "Cobrado sin girar" arriba. |
 | **Clientes** | Por cliente/responsable: préstamos activos, cuota total mensual. Imagen paginada (10 filas/página) con estado de cuenta. |
@@ -166,7 +166,7 @@ var ST = {
 Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026** (`GIROS_DESDE`); no se importaron giros anteriores.
 
 - **Sin giro no hay "Pagué socio"**: `pagado_socio` (del mes y de `cuotas_pendientes`) solo se pone en `true` al guardar un giro (`registrarGiro`) y vuelve a `false` solo al anular el giro que la cubría. `toggleConcil`, `conciliBtn` y `conciliBtnCuota` ignoran el campo `pagado_socio`; el botón es `giroBtn(loan, periodo)`.
-- **Documento**: `{id, socio, socio_email, fecha, monto (COP), modalidad, modalidad_detalle, referencia, tipo, cuotas:[{loanId, periodo, monto}], nota, creado_en, anula_a?}`.
+- **Documento**: `{id, socio, socio_email, fecha, monto (COP), modalidad, modalidad_detalle, referencia, tipo, cuotas:[{loanId, periodo, monto, adelanto?}], nota, creado_en, anula_a?}`.
   - `modalidad`: `'transferencia' | 'efectivo' | 'abono_tarjeta' | 'otro'`.
   - `tipo`: `'intereses' | 'devolucion_capital' | 'aporte_capital'`. En capital, `cuotas` lleva los préstamos asociados con `periodo: null`.
   - `anula_a` solo existe en anulaciones.
@@ -174,6 +174,13 @@ Cada pago a un socio se registra como un **giro**. Arranca en **octubre de 2026*
 - **Nunca se editan ni se borran**. Para corregir: "Anular giro" pide motivo y crea un giro nuevo con `anula_a = <id>`. Un giro está anulado si existe otro con `anula_a` igual a su id (`giroVigente`). Las cuotas del anulado vuelven a pendientes de girar (si el mes ya estaba cerrado, se agrega una cuota arrastrada).
 - **Estado girado de una cuota** (`cuotaGirada(l, periodo)`): la cuota arrastrada de ese periodo si existe; si el periodo no está archivado, `l.pagado_socio`; si está archivado y sin arrastre, se considera resuelta.
 - **Cuotas por girar** (`cuotasPorGirar(socio)`): con pago del cliente registrado y sin girar (mes en curso + arrastradas). El aviso (`alertasSinGirar`) muestra las de más de 3 días.
+- **Adelantos al socio** (girar una cuota que el cliente **aún no paga**):
+  - En "Registrar giro" (`showGiroModal`), debajo de las cobradas, sección "💸 Adelantar (el cliente aún no paga)" con `cuotasAdelantables(socio)`: cuotas girables (`cuotaGirable`) del mes en curso (préstamo activo) y arrastradas, **sin pago del cliente** y sin girar. Desmarcadas por defecto; al tocar una aparece una confirmación dentro del modal ("Sí, adelantar" / "No") y solo entonces queda marcada.
+  - En el giro esas cuotas van como `{loanId, periodo, monto, adelanto:true}`. `registrarGiro` no cambia: la cuota queda `pagado_socio=true` y `recibido=false`. `sanitizeGiro` conserva `adelanto`.
+  - "Adelantada" es **derivado**, no se guarda en el préstamo: `giroAdelantoDeCuota(loanId, periodo)` (giro vigente que la cubre con `adelanto:true`) y sin pago del cliente (`hasPagoForPeriodo`). `cuotaEstadoCobros` devuelve `'adelantada'` → etiqueta "💸 Adelantada · falta cobrar" (`cqKind` → `'adel'`, morado `--st-adel`), con el botón de pago y la etiqueta "💸 Adelantado · fecha" del giro. Al registrar el pago del cliente queda "✓ Completo" normal. Sigue contando en mora (`paidMth` no cambia).
+  - Resumen: "💸 Adelantos por recuperar" (`adelantosPorRecuperar()`): total y lista socio · cliente · día · cuota · fecha del giro. Desaparece cuando el cliente paga o se anula el giro.
+  - Cierre: si sigue sin pago, `generarArrastrePendientes` la arrastra con `recibido:false, pagado_socio:true` ("Sin cobrar · ya girada" en la lista del cierre). Como ya está girada, **nunca vuelve a "por girar"**; en "Pendientes del mes anterior" se ve como adelantada hasta que el cliente pague.
+  - `socio.html` la ve como pagada y nunca menciona el adelanto: su `cuotaResuelta` de arrastradas es solo `pagado_socio`. El mensaje de WhatsApp del giro (`waGiroMsg`) es igual que siempre.
 - **Escritura**: fuera de `fbPushAll`. `fbCreateGiro` hace `set` con 2 reintentos (antes de reintentar comprueba si el doc ya existe, porque un segundo `set` sería un update y las reglas lo rechazan). Si falla, aviso rojo visible y cola `_pendingGiros`, que `flushPendingGiros` reintenta en cada `fbPushAll`.
 - **Carga**: `loadGiros` al iniciar sesión de admin (Firestore + cache local `jitel_giros_v1`). En modo sin Firebase solo la cache local.
 - **Vistas**: Socios → sección "Giros" por mes (generado = interés de las cuotas del periodo, girado = cuotas de ese periodo en giros vigentes, diferencia; anulados tachados con motivo). `socio.html` → "Mis giros" con el mismo cálculo. Después de guardar se ofrece el mensaje de WhatsApp (`waGiroMsg`, sin nombres de clientes; cada cuota identifica su préstamo, ver "Mensajes al socio sobre pagos/cuotas").
