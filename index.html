@@ -55,6 +55,11 @@ select option{background:var(--card)}
 :root{--st-adel:#b48cff;--st-adel-bg:#2a1a4a}
 .cq-adel{border-left-color:var(--st-adel)}
 .cq-tag-adel{color:var(--st-adel);background:var(--st-adel-bg)}
+/* 🆕 Nuevo (aún no se cobra): borde punteado gris y contenido atenuado, sin acciones. */
+.cq-nuevo{border-left:5px dashed var(--mut)}
+.cq-nuevo>.cq-nuevo-body{opacity:.55}
+.cq-tag-nuevo{color:var(--st-pend);background:var(--st-pend-bg)}
+.chip-nuevo{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:800;color:var(--st-pend);background:var(--st-pend-bg);white-space:nowrap}
 .bo{background:var(--st-girar-bg);color:var(--st-girar);border:1px solid var(--st-girar)}
 .chip-girar{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:800;color:var(--st-girar);background:var(--st-girar-bg);border:1px solid var(--st-girar);white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--bor);border-radius:12px;padding:14px}
@@ -3359,16 +3364,34 @@ function showResumenCobrosCliente(g){
 }
 
 // ── VIEW: COBROS ──
+// Tarjeta atenuada de Cobros para un préstamo que aún no se cobra (!isCollectable).
+// Solo informa (capital, socio, cliente y primer cobro); tocarla abre showLoanDetail.
+function nuevoCardCobros(ln){
+  var card=D('cq cq-nuevo',{cursor:'pointer'},null);
+  card.setAttribute('data-estado','nuevo');
+  card.addEventListener('click',function(){showLoanDetail(ln.id);});
+  var tr=D('cq-tagrow',null,null),tag=S('cq-tag cq-tag-nuevo',null,null);
+  var pm=ln.mes_comienzo?nextMk(ln.mes_comienzo):CURR_MK,mn=mesNombreLargo(pm);
+  tag.textContent='🆕 Nuevo · primer cobro: '+mn.charAt(0).toUpperCase()+mn.slice(1)+' '+pm.split('-')[0];
+  tr.appendChild(tag);card.appendChild(tr);
+  var z=D('cq-nuevo-body',{padding:'8px 10px 10px'},null);
+  var n1=D(null,{fontWeight:'700',fontSize:'14px',color:'var(--acc)',marginBottom:'1px'},null);n1.textContent=ln.socio||'—';
+  var n2=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'2px'},null);n2.textContent=ln.responsable||'—';
+  var n3=D(null,{fontSize:'11px',color:'var(--blu)',fontFamily:'Courier New,monospace'},null);n3.textContent='Capital: '+COP(montoCOP(ln))+(isUSD(ln)?' · '+USD(ln.monto):'');
+  z.appendChild(n1);z.appendChild(n2);z.appendChild(n3);card.appendChild(z);
+  return card;
+}
 function vCobros(){
-  var active=[],i;
-  // Filter: only loans whose start month (mes_comienzo) is <= current month appear in Cobros.
-  // mes_comienzo is stored as 'YYYY-MM' so string comparison works correctly.
-  // Loans created today with a future start month are excluded from this view ONLY.
-  // The active count in the topbar header (renderApp) is unaffected — it uses ST.loans directly.
+  var active=[],nuevos=[],i;
+  // `active`: cuotas que se cobran este mes (alimentan TODOS los totales y contadores).
+  // `nuevos`: préstamos activos que aún no se cobran (!isCollectable: empezaron este mes, su
+  // primer cobro es el mes siguiente a mes_comienzo). Se muestran en su día como tarjeta
+  // atenuada "🆕 Nuevo", sin acciones, y NO cuentan en totales, pendientes, cobrados, girados,
+  // mora ni avisados — van en g.nuevos, nunca en g.loans.
   for(i=0;i<ST.loans.length;i++){
     var l0=ST.loans[i];
     if(l0.status==='active'){
-      if(!isCollectable(l0))continue; // not yet started; first billing is the month after mes_comienzo
+      if(!isCollectable(l0)){nuevos.push(l0);continue;}
       active.push(l0);
     }else if(l0.status==='paid'&&paidMth(l0)){
       // Cerrado, pero ya tenía un pago de este mes antes de cerrarse: sigue contando en los
@@ -3376,7 +3399,9 @@ function vCobros(){
       active.push(l0);
     }
   }
-  var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IMc(l);if(paidMth(l))gm[l.dia].pagado+=IMc(l);}
+  var gm={};for(i=0;i<active.length;i++){var l=active[i];if(!gm[l.dia])gm[l.dia]={dia:l.dia,loans:[],nuevos:[],total:0,pagado:0};gm[l.dia].loans.push(l);gm[l.dia].total+=IMc(l);if(paidMth(l))gm[l.dia].pagado+=IMc(l);}
+  // Nuevos: solo se agregan a su día (crean el grupo si no existe), sin tocar total/pagado.
+  for(i=0;i<nuevos.length;i++){var lnv=nuevos[i];if(!gm[lnv.dia])gm[lnv.dia]={dia:lnv.dia,loans:[],nuevos:[],total:0,pagado:0};gm[lnv.dia].nuevos.push(lnv);}
   var groups=[];var dks=Object.keys(gm);for(i=0;i<dks.length;i++)groups.push(gm[dks[i]]);groups.sort(function(a,b){return a.dia-b.dia;});
   var tm=0,tc=0,myPending=0,myPaid=0;
   for(i=0;i<groups.length;i++){tm+=groups[i].total;tc+=groups[i].pagado;}
@@ -3446,7 +3471,7 @@ function vCobros(){
 
   var sgBanner=alertaSinGirarBanner();if(sgBanner)w.appendChild(sgBanner); // cobrado sin girar > 3 días
 
-  w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups);},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
+  w.appendChild(BTN('bb','📋 Mensaje multi-día',function(){showMensajeMultidia(groups.filter(function(gx){return gx.loans.length>0;}));},{width:'100%',marginBottom:'14px',fontSize:'12px'}));
 
   // ── PENDIENTES DEL MES ANTERIOR (cuotas arrastradas, agrupadas por periodo y día) ──
   if(arrastre.length>0){
@@ -3533,8 +3558,10 @@ function vCobros(){
   for(var gi=0;gi<groups.length;gi++){
     (function(g){
       var pend=[],done=[];for(var pi=0;pi<g.loans.length;pi++){if(paidMth(g.loans[pi]))done.push(g.loans[pi]);else pend.push(g.loans[pi]);}
-      var allPaid=pend.length===0;
-      var urg=urgency(g,allPaid);
+      // Día con solo préstamos nuevos: no hay nada que cobrar → sin mora, sin "✓ Listo", sin total.
+      var soloNuevos=g.loans.length===0;
+      var allPaid=pend.length===0&&!soloNuevos;
+      var urg=soloNuevos?'nuevo':urgency(g,allPaid);
 
       // ── Urgency-based styling ──
       var dgBorderClass = urg==='vencido'?'dg-vencido':urg==='hoy'?'dg-hoy':urg==='pronto'?'dg-pronto':allPaid?'':'';
@@ -3568,6 +3595,10 @@ function vCobros(){
       var ds=D(null,{fontSize:'12px',color:'var(--mut)'},null);ds.textContent=g.loans.length+' préstamo'+(g.loans.length!==1?'s':'')+' · '+nCobrados+' cobrado'+(nCobrados!==1?'s':'')+' · '+nGirados+' girado'+(nGirados!==1?'s':'')+(nAvisados>0?' · '+nAvisados+' avisado'+(nAvisados!==1?'s':'')+' sin registrar':'');
       var nPorGirar=0;for(gcj=0;gcj<g.loans.length;gcj++){if(cuotaEstadoCobros(g.loans[gcj],CURR_MK)==='por_girar')nPorGirar++;}
       if(nPorGirar>0){var chipG=S('chip-girar',null,null);chipG.textContent='🏦 '+nPorGirar+' por girar';ds.appendChild(chipG);}
+      // Los nuevos se nombran aparte; no entran en "N préstamos/cobrados/girados/avisados".
+      var nNuevos=g.nuevos.length;
+      if(soloNuevos)ds.textContent='🆕 '+nNuevos+' nuevo'+(nNuevos!==1?'s':'')+' · sin cobro este mes';
+      else if(nNuevos>0){var chipN=S('chip-nuevo',null,null);chipN.textContent='🆕 '+nNuevos+' nuevo'+(nNuevos!==1?'s':'');ds.appendChild(chipN);}
       diInfo.appendChild(dt);diInfo.appendChild(ds);
       dhl.appendChild(dn);dhl.appendChild(diInfo);
 
@@ -3603,7 +3634,8 @@ function vCobros(){
 
       // ── Header right: total + paid badge ──
       var dhr=D(null,{textAlign:'right',flexShrink:'0',marginLeft:'6px'},null);
-      var da=D('mn',{fontWeight:'700',color:allPaid?'var(--grn)':'var(--acc)',fontSize:'13px'},null);da.textContent=COP(g.total);dhr.appendChild(da);
+      if(soloNuevos){var dnv=S('chip-nuevo',{marginLeft:'0'},null);dnv.textContent='🆕 Nuevo';dhr.appendChild(dnv);}
+      else{var da=D('mn',{fontWeight:'700',color:allPaid?'var(--grn)':'var(--acc)',fontSize:'13px'},null);da.textContent=COP(g.total);dhr.appendChild(da);}
       if(!allPaid&&g.pagado>0){var dp=D(null,{fontSize:'11px',color:'var(--grn)'},null);dp.textContent='✓ '+COP(g.pagado);dhr.appendChild(dp);}
       if(allPaid){var dbg=S(null,{background:'var(--c-paid-bg)',color:'var(--grn)',padding:'2px 8px',borderRadius:'20px',fontSize:'11px',fontWeight:'600'},null);dbg.textContent='✓ Listo';dhr.appendChild(dbg);}
       dh.appendChild(dhr);
@@ -3715,6 +3747,12 @@ function vCobros(){
             })(doneOrd[di2]);
           }
           body.appendChild(BTN('bh','📋 Ver notificaciones',function(){showWaModal(done,g.dia);},{width:'100%',fontSize:'12px',marginTop:'6px'}));
+        }
+        // 🆕 Nuevos: informativos, sin Pagar/Cobré/Girar. Tocar abre el detalle (Extender corrige el inicio).
+        if(g.nuevos.length>0){
+          var nh=D(null,{fontSize:'11px',color:'var(--mut)',marginBottom:'8px',textTransform:'uppercase',letterSpacing:'1px',marginTop:g.loans.length?'10px':'0'},null);
+          nh.textContent='🆕 Nuevos · no se cobran este mes';body.appendChild(nh);
+          for(var nvi=0;nvi<g.nuevos.length;nvi++)body.appendChild(nuevoCardCobros(g.nuevos[nvi]));
         }
         return body;
       }
